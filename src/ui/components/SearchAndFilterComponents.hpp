@@ -9,7 +9,7 @@
 #include <span>
 #include <string>
 
-namespace DigitizerUi::components {
+namespace gr::od::components {
 
 struct TagFilterRow {
     std::string pendingInput;
@@ -68,6 +68,6 @@ struct SearchSortInput {
 
 [[nodiscard]] std::optional<std::size_t> drawFilterTags(const char* strId, std::span<const std::string> labels);
 
-} // namespace DigitizerUi::components
+} // namespace gr::od::components
 
 #endif

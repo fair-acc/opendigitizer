@@ -16,7 +16,7 @@
 #include <variant>
 #include <vector>
 
-namespace DigitizerUi::components {
+namespace gr::od::components {
 
 struct SortFilterTreeModelNode {
     std::string_view             name;
@@ -38,41 +38,6 @@ struct SortFilterTreeModelParams {
 struct SortFilterTreeModel {
     static constexpr std::size_t kDefaultMaxWorkPerCall = 512UZ;
 
-    explicit SortFilterTreeModel(SortFilterTreeModelParams params)
-        : _params(std::move(params)),             //
-          _maxWorkPerCall(kDefaultMaxWorkPerCall) //
-    {}
-
-    void work() {
-        const std::size_t chunkEnd = std::min(_params.numItems, _nextItemToProcess + _maxWorkPerCall);
-        for (; _nextItemToProcess < chunkEnd; ++_nextItemToProcess) {
-            insertItem(_nextItemToProcess);
-        }
-
-        // request more work if we need it
-        if (!isComplete()) {
-            EventLoop::instance().executeLater([] { globalFramePacer().requestFrame(); });
-        }
-    }
-
-    [[nodiscard]] bool isComplete() const { return _nextItemToProcess >= _params.numItems; }
-
-    /// fraction of items processed so far in [0, 1]
-    [[nodiscard]] float progress() const { //
-        return _params.numItems == 0UZ     //
-                   ? 1.f
-                   : static_cast<float>(_nextItemToProcess) / static_cast<float>(_params.numItems);
-    }
-
-    /// @param beforeVisitor returns true if we should recurse into children.
-    /// @param afterVisitor runs at the end of iterating over all of a branch's children
-    template<typename BeforeCallable, typename AfterCallable>
-    requires std::is_invocable_r_v<bool, BeforeCallable&, const SortFilterTreeModelNode&> && std::is_invocable_v<AfterCallable&, const SortFilterTreeModelNode&>
-    void visitAllItemsDepthFirst(BeforeCallable&& beforeVisitor, AfterCallable&& afterVisitor) const {
-        std::vector<std::string> ancestorNames;
-        visitChildren(_root, ancestorNames, beforeVisitor, afterVisitor);
-    }
-
     struct Branch;
 
     struct Child {
@@ -89,6 +54,44 @@ struct SortFilterTreeModel {
     struct Branch {
         std::vector<Child> children; // should always be in sorted order
     };
+
+    Branch                    _root;
+    SortFilterTreeModelParams _params;
+    std::size_t               _nextItemToProcess = 0UZ;
+    std::size_t               _maxWorkPerCall;
+
+    explicit SortFilterTreeModel(SortFilterTreeModelParams params)
+        : _params(std::move(params)),             //
+          _maxWorkPerCall(kDefaultMaxWorkPerCall) //
+    {}
+
+    void work() {
+        const std::size_t chunkEnd = std::min(_params.numItems, _nextItemToProcess + _maxWorkPerCall);
+        for (; _nextItemToProcess < chunkEnd; ++_nextItemToProcess) {
+            insertItem(_nextItemToProcess);
+        }
+
+        if (!isComplete()) {
+            EventLoop::instance().executeLater([] { globalFramePacer().requestFrame(); });
+        }
+    }
+
+    [[nodiscard]] bool isComplete() const { return _nextItemToProcess >= _params.numItems; }
+
+    /// fraction of items processed so far in [0, 1]
+    [[nodiscard]] float progress() const { //
+        return _params.numItems == 0UZ     //
+                   ? 1.f
+                   : static_cast<float>(_nextItemToProcess) / static_cast<float>(_params.numItems);
+    }
+
+    /// `beforeVisitor` returns whether to recurse into the children, `afterVisitor` runs after a branch's children
+    template<typename BeforeCallable, typename AfterCallable>
+    requires std::is_invocable_r_v<bool, BeforeCallable&, const SortFilterTreeModelNode&> && std::is_invocable_v<AfterCallable&, const SortFilterTreeModelNode&>
+    void visitAllItemsDepthFirst(BeforeCallable&& beforeVisitor, AfterCallable&& afterVisitor) const {
+        std::vector<std::string> ancestorNames;
+        visitChildren(_root, ancestorNames, beforeVisitor, afterVisitor);
+    }
 
     template<typename BeforeCallable, typename AfterCallable>
     void visitChildren(const Branch& branch, std::vector<std::string>& ancestorNames, BeforeCallable& beforeVisitor, AfterCallable& afterVisitor) const {
@@ -159,13 +162,8 @@ struct SortFilterTreeModel {
         assert(numItems > 0UZ);
         _maxWorkPerCall = numItems;
     }
-
-    Branch                    _root;
-    SortFilterTreeModelParams _params;
-    std::size_t               _nextItemToProcess = 0UZ;
-    std::size_t               _maxWorkPerCall;
 };
 
-} // namespace DigitizerUi::components
+} // namespace gr::od::components
 
 #endif

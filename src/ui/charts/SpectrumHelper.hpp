@@ -26,7 +26,7 @@
 #include "Chart.hpp"
 #include <implot.h>
 
-namespace opendigitizer::charts {
+namespace gr::od::charts {
 
 static constexpr std::size_t kColormapSize = 256;
 
@@ -131,12 +131,8 @@ void forEachNewSpectrum(const SpectrumFrame& newest, std::size_t count, Fn&& fn)
     return sec;
 }
 
-/**
- * @brief Accumulates max-hold, min-hold, and exponential-average traces over successive spectrum frames.
- *
- * Max/min-hold tracks the per-bin extremes with optional exponential decay
- * controlled by a time constant in frames (tau = 0 means infinite hold).
- */
+/// max-hold, min-hold and exponential-average traces over successive spectrum frames;
+/// the holds decay with a time constant in frames, tau = 0 holds for ever
 struct TraceAccumulator {
     std::vector<float> _maxHold;
     std::vector<float> _minHold;
@@ -214,8 +210,8 @@ inline void plotTrace(const char* label, std::span<const float> xValues, std::sp
         &ctx, static_cast<int>(count));
 }
 
-/// Gates per-frame accumulation (hold/decay, waterfall/surface rows) to the data rate, not the UI redraw rate.
-/// The DataSet timestamp can't serve this because gr::blocks::fft::FFT hardcodes it to 0.
+/// gates per-frame accumulation (hold/decay, waterfall/surface rows) to the data rate, not the UI redraw rate;
+/// the DataSet timestamp cannot serve this because gr::blocks::fft::FFT hardcodes it to 0
 [[nodiscard]] inline std::size_t consumeNewData(std::size_t& lastCount, std::size_t currentCount) noexcept {
     const std::size_t nNew = currentCount >= lastCount ? currentCount - lastCount : currentCount;
     lastCount              = currentCount;
@@ -225,8 +221,9 @@ inline void plotTrace(const char* label, std::span<const float> xValues, std::sp
 /// fixed number of log-spaced display columns for a log-frequency spectrum (waterfall/density/surface).
 inline constexpr std::size_t kLogSpectrumColumns = 2048;
 
-/// Re-sample a linear spectrum (`freqs`/`mags`, `nBins`) onto `out.size()` log-spaced columns over [fMin, fMax]:
-/// peak-preserving max-aggregate, then fill columns finer than the bin spacing. Keeps low-frequency detail on a log axis.
+/// re-samples a linear spectrum (`freqs`/`mags`, `nBins`) onto `out.size()` log-spaced columns over [fMin, fMax]:
+/// a peak-preserving maximum per column, then columns finer than the bin spacing are filled.
+/// This keeps low-frequency detail on a log axis.
 inline void buildLogBinnedRow(std::span<const float> freqs, std::span<const float> mags, std::size_t nBins, double fMin, double fMax, std::span<float> out) {
     std::ranges::fill(out, -std::numeric_limits<float>::infinity());
     const std::size_t nCols  = out.size();
@@ -273,13 +270,13 @@ inline void drawTraceOverlays(TraceAccumulator& traces, const SpectrumFrame& new
     }
 
     if (showMaxHold) {
-        plotTrace("##maxHold", newest.xValues, traces.maxHold(), newest.nBins, ImVec4(baseColor.x, baseColor.y, baseColor.z, DigitizerUi::LookAndFeel::instance().chartStyle.maxHoldTraceAlpha));
+        plotTrace("##maxHold", newest.xValues, traces.maxHold(), newest.nBins, ImVec4(baseColor.x, baseColor.y, baseColor.z, LookAndFeel::instance().chartStyle.maxHoldTraceAlpha));
     }
     if (showMinHold) {
-        plotTrace("##minHold", newest.xValues, traces.minHold(), newest.nBins, ImVec4(baseColor.x, baseColor.y, baseColor.z, DigitizerUi::LookAndFeel::instance().chartStyle.minHoldTraceAlpha));
+        plotTrace("##minHold", newest.xValues, traces.minHold(), newest.nBins, ImVec4(baseColor.x, baseColor.y, baseColor.z, LookAndFeel::instance().chartStyle.minHoldTraceAlpha));
     }
     if (showAverage) {
-        plotTrace("##average", newest.xValues, traces.average(), newest.nBins, ImVec4(baseColor.x, baseColor.y, baseColor.z, DigitizerUi::LookAndFeel::instance().chartStyle.averageTraceAlpha));
+        plotTrace("##average", newest.xValues, traces.average(), newest.nBins, ImVec4(baseColor.x, baseColor.y, baseColor.z, LookAndFeel::instance().chartStyle.averageTraceAlpha));
     }
 }
 
@@ -358,7 +355,7 @@ inline void followColourScale(double& scaleMin, double& scaleMax, double frameMi
     scaleMax += (frameMax - scaleMax) * kAlpha;
 }
 
-namespace gl = opendigitizer::shader;
+namespace gl = shader;
 
 template<typename TexId = ImTextureID>
 [[nodiscard]] TexId toTextureId(GLuint id) {
@@ -378,20 +375,11 @@ void withTextureBound(GLuint texture, TFn&& fn) {
     glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(previous));
 }
 
-/**
- * @brief GPU-accelerated 2D density histogram with automatic CPU fallback.
- *
- * Accumulates incoming 1D spectrum lines into a 2D frequency-vs-amplitude
- * histogram with exponential decay, then colormaps the result into an RGBA8
- * texture for display via ImPlot::PlotImage.
- *
- * The GPU path uses a two-pass fullscreen-triangle pipeline (GLES3 / WebGL2):
- *   pass 1 — decay previous histogram + accumulate new spectrum (ping-pong R32F FBOs)
- *   pass 2 — normalise by peak density and sample a 256-entry colormap LUT → RGBA8
- *
- * If the driver lacks EXT_color_buffer_float or shader compilation fails,
- * the implementation transparently falls back to an equivalent CPU path.
- */
+/// a frequency-vs-amplitude histogram of successive spectrum lines with exponential decay, colour-mapped into an RGBA8 texture for ImPlot::PlotImage.
+/// The GPU path (GLES3 / WebGL2) draws two fullscreen-triangle passes:
+/// pass 1 decays the previous histogram and accumulates the new spectrum (ping-pong R32F FBOs),
+/// pass 2 normalises by the peak density and samples a 256-entry colormap LUT into RGBA8.
+/// Without EXT_color_buffer_float or on a shader compile failure, an equivalent CPU path runs.
 struct DensityHistogram {
     std::size_t _specBins      = 0;
     std::size_t _ampBins       = 0;
@@ -401,7 +389,6 @@ struct DensityHistogram {
     bool        _initAttempted = false;
     bool        _gpuAvailable  = false;
 
-    // GPU path — ping-pong R32F histogram + RGBA8 output
     std::array<GLuint, 2UZ> _histogramTextures{};
     std::array<GLuint, 2UZ> _histogramFBOs{};
     int                     _pingPongIndex      = 0;
@@ -422,11 +409,9 @@ struct DensityHistogram {
     GLint                   _locCmMaxDensity    = -1;
     float                   _peakDensity        = 0.f;
 
-    // reusable scratch buffers (avoid per-frame heap allocations)
     std::vector<float> _scratchBuffer;
     std::vector<float> _logRow; // linear spectrum re-binned onto log-spaced columns
 
-    // CPU fallback — full histogram in system memory, RGBA8 texture upload per frame
     std::vector<float>                  _cpuHistogram;
     std::vector<uint32_t>               _cpuPixels;
     GLuint                              _cpuTexture        = 0;
@@ -450,10 +435,10 @@ struct DensityHistogram {
     }
 
     [[nodiscard]] bool tryInitGpu() {
-        using namespace opendigitizer::shader;
+        using namespace shader;
 
-        // fullscreen triangle from gl_VertexID — no VBO needed, just an empty VAO + glDrawArrays(GL_TRIANGLES, 0, 3)
-        // vertices: (-1,-1), (3,-1), (-1,3) — the GPU clips the oversized triangle to the viewport
+        // fullscreen triangle from gl_VertexID, with an empty VAO and no VBO:
+        // the vertices (-1,-1), (3,-1), (-1,3) are clipped by the GPU to the viewport
         static constexpr auto* kVertBody = R"glsl(
 out vec2 v_uv;
 void main() {
@@ -464,9 +449,8 @@ void main() {
 }
 )glsl";
 
-        // decay + accumulate: reads the previous R32F histogram (ping-pong) and the new 1D spectrum line (R32F, specBins×1)
-        // spectrum values are pre-normalised to [0,1] on CPU; (1-specVal) maps high amplitudes to the top of the texture
-        // each fragment checks whether its amplitude bin matches the new spectrum value (±0.5 bin tolerance)
+        // the spectrum line (R32F, specBins×1) arrives normalised to [0,1]; (1-specVal) puts high amplitudes at the top of the texture
+        // a fragment accumulates when its amplitude bin lies within ±0.5 bins of the new spectrum value
         static constexpr auto* kAccumulateFragBody = R"glsl(
 in vec2 v_uv;
 out float fragDensity;
@@ -486,7 +470,6 @@ void main() {
 }
 )glsl";
 
-        // colormap: normalises accumulated density by peak and samples a 256×1 RGBA8 LUT texture
         static constexpr auto* kColormapFragBody = R"glsl(
 in vec2 v_uv;
 out vec4 fragColor;
@@ -658,7 +641,7 @@ void main() {
     }
 
     void gpuUpdate(std::span<const float> yValues, std::size_t nBins, std::size_t ampBins, double decayTau, double yMin, double yMax, ImPlotColormap colormap) {
-        // save GL state before any GL calls (resize/reset/upload all modify bindings)
+        // before any GL call: resize, reset and upload all change bindings
         GLint                  prevFBO = 0, prevProgram = 0, prevActiveTexture = 0, prevVAO = 0;
         GLint                  prevTexture0 = 0, prevTexture1 = 0;
         std::array<GLint, 4UZ> prevViewport{};
@@ -686,7 +669,6 @@ void main() {
 
         gpuUpdateColormapLut(colormap);
 
-        // normalise spectrum to [0,1] range for the shader (reuses _scratchBuffer)
         _scratchBuffer.resize(nBins);
         const double ampRange = yMax - yMin;
         if (ampRange > 0.0) {
@@ -706,7 +688,6 @@ void main() {
 
         glBindVertexArray(_emptyVAO);
 
-        // pass 1: accumulate — read from ping, write to pong
         const auto src = static_cast<std::size_t>(_pingPongIndex);
         const auto dst = static_cast<std::size_t>(1 - _pingPongIndex);
 
@@ -731,10 +712,8 @@ void main() {
 
         _pingPongIndex = 1 - _pingPongIndex;
 
-        // track peak density on CPU
         _peakDensity = _peakDensity * decayFactor + 1.f;
 
-        // pass 2: colormap — read histogram, write RGBA8
         glBindFramebuffer(GL_FRAMEBUFFER, _colormapFBO);
         glViewport(0, 0, w, h);
         glUseProgram(_colormapProgram);
@@ -751,7 +730,6 @@ void main() {
 
         glDrawArrays(GL_TRIANGLES, 0, 3);
 
-        // restore GL state
         glActiveTexture(GL_TEXTURE1);
         glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(prevTexture1));
         glActiveTexture(GL_TEXTURE0);
@@ -899,14 +877,9 @@ struct FrequencySpan {
     double freqMax;
 };
 
-/**
- * @brief GPU ring-buffer texture for scrolling spectrogram (waterfall) display.
- *
- * Manages an RGBA8 texture with GL_REPEAT wrapping on the T-axis so that
- * advancing the write row and adjusting UV coordinates produces a scrolling
- * effect without any data movement. Each new spectrum row is colour-mapped
- * on the CPU and uploaded via a single-row glTexSubImage2D call.
- */
+/// ring-buffer RGBA8 texture of a scrolling spectrogram:
+/// GL_REPEAT on the time axis scrolls by moving the write row and the UVs, without moving data;
+/// each new spectrum row is colour-mapped on the CPU and uploaded by a single-row glTexSubImage2D
 struct WaterfallBuffer {
     std::size_t _width      = 0;
     std::size_t _height     = 0;
@@ -949,9 +922,9 @@ struct WaterfallBuffer {
 
         _timestamps.assign(_height, 0.0);
 
-        // Always create the GPU texture: PlotImage maps it in screen space, so it renders correctly on log-frequency axes,
-        // whereas PlotHeatmap places cells in linear data space and mis-positions log-binned columns. The renderCpu/
-        // PlotHeatmap path below is retained only as a fallback for the rare case where no GL texture can be allocated.
+        // always the GPU texture: PlotImage maps it in screen space, so it renders correctly on log-frequency axes,
+        // whereas PlotHeatmap places cells in linear data space and mis-positions log-binned columns.
+        // The renderCpu/PlotHeatmap path below is only the fallback for when no GL texture can be allocated.
         glGenTextures(1, &_texture);
         if (_texture != 0U) {
             _pixels.assign(_width * _height, 0U);
@@ -1051,15 +1024,15 @@ struct WaterfallBuffer {
             return;
         }
 
-        // center-of-texel UVs avoid GL_NEAREST boundary ambiguity at the write-head seam; the time axis (texture V)
-        // wraps via GL_REPEAT, so vNewest/vOldest may fall outside [0,1].
+        // centre-of-texel UVs avoid GL_NEAREST boundary ambiguity at the write-head seam;
+        // the time axis (texture V) wraps via GL_REPEAT, so vNewest/vOldest may fall outside [0,1]
         const auto  fHeight = static_cast<float>(_height);
         const float vNewest = (static_cast<float>(_writeRow) - 0.5f) / fHeight;
         const float vOldest = (static_cast<float>(_writeRow) - static_cast<float>(_filledRows) + 0.5f) / fHeight;
 
         if (horizontal) {
-            // PlotImage can't transpose, so map the quad explicitly: texture U (freq) -> Y, V (time) -> X.
-            // U 0->freqMin (bottom) .. 1->freqMax (top); V newest at the high-time end (right) when newestLeading.
+            // PlotImage cannot transpose, so the quad maps texture U (frequency) to Y and V (time) to X:
+            // U 0 is freqMin (bottom), 1 freqMax (top); V newest is at the high-time end (right) when newestLeading
             const float  vRight   = newestLeading ? vNewest : vOldest;
             const float  vLeft    = newestLeading ? vOldest : vNewest;
             ImDrawList*  drawList = ImPlot::GetPlotDrawList();
@@ -1158,8 +1131,8 @@ struct WaterfallBuffer {
     }
 
     void updateAutoScale(std::span<const float> yValues, std::size_t nBins) {
-        // ignore non-finite bins: a dB spectrum has -inf where the magnitude is ~0 (e.g. empty bands of a
-        // wideband FFT), which would otherwise drag scaleMin to -inf and collapse the whole colour mapping.
+        // non-finite bins ignored: a dB spectrum has -inf where the magnitude is ~0 (e.g. empty bands of a wideband FFT),
+        // which would drag scaleMin to -inf and collapse the whole colour mapping
         double fMin = std::numeric_limits<double>::infinity();
         double fMax = -std::numeric_limits<double>::infinity();
         for (const float y : yValues | std::views::take(static_cast<std::ptrdiff_t>(nBins))) {
@@ -1196,6 +1169,6 @@ struct WaterfallBuffer {
     [[nodiscard]] double      scaleMax() const noexcept { return _scaleMax; }
 };
 
-} // namespace opendigitizer::charts
+} // namespace gr::od::charts
 
 #endif // OPENDIGITIZER_CHARTS_SPECTRUMHELPER_HPP

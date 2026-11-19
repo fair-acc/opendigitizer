@@ -7,10 +7,12 @@
 #include <numbers>
 #include <thread>
 
+using namespace gr::od;
+
 int main() {
     using namespace boost::ut;
-    using namespace opendigitizer::charts;
-    using namespace opendigitizer::test;
+    using namespace charts;
+    using namespace test;
 
     "TestStreamingSink basic usage"_test = [] {
         auto sink = std::make_shared<TestStreamingSink>("test_sink", 100);
@@ -73,7 +75,7 @@ int main() {
         sink->requestCapacity("chart2", 5000);
         expect(eq(sink->bufferCapacity(), 5000UZ));
 
-        const auto now = opendigitizer::CapacityRequests::clock::now();
+        const auto now = CapacityRequests::clock::now();
         sink->requestCapacity("chart3", 7000, std::chrono::seconds{0}, now);
         expect(eq(sink->bufferCapacity(), 7000UZ));
 
@@ -163,7 +165,7 @@ int main() {
         bool removedCalled = false;
 
         void* owner = reinterpret_cast<void*>(456);
-        registry.addListener(owner, [&](opendigitizer::SignalSink& /*sink*/, bool isAdded) {
+        registry.addListener(owner, [&](SignalSink& /*sink*/, bool isAdded) {
             if (isAdded) {
                 addedCalled = true;
             } else {

@@ -5,11 +5,11 @@
 #include "SinkRegistry.hpp"
 
 #include "../blocks/ToolbarBlock.hpp"
-#include "../common/ImguiWrap.hpp"
+#include "../common/Imw.hpp"
 #include "../common/LookAndFeel.hpp"
 #include "../components/AutoHide.hpp"
 #include "../components/ImGuiNotify.hpp"
-#include "../components/StyledStandardWidgets.hpp"
+#include "../components/StyledWidgets.hpp"
 
 #include <imgui.h>
 #include <implot.h>
@@ -44,7 +44,7 @@
 #include <utility>
 #include <vector>
 
-namespace opendigitizer::charts {
+namespace gr::od::charts {
 
 enum class XAxisMode : std::uint8_t { UtcTime, RelativeTime, SampleIndex };
 
@@ -67,13 +67,7 @@ using SnapToBinsSetting      = gr::Annotated<bool, "snap to bins", gr::Doc<"rele
 using RangeLabelsSetting     = gr::Annotated<bool, "range labels", gr::Doc<"f₋ and f₊ with their frequencies on the axis">>;
 using F0LabelsSetting        = gr::Annotated<bool, "f0 labels", gr::Doc<"f₀ with its frequency on the axis">>;
 
-enum class AxisScale {
-    Linear = 0,    // standard linear scale [min, max]
-    LinearReverse, // reversed linear scale [max, min]
-    Time,          // datetime/timestamp scale
-    Log10,         // logarithmic base 10
-    SymLog         // symmetric log (handles negative values)
-};
+enum class AxisScale { Linear = 0, LinearReverse, Time, Log10, SymLog };
 
 [[nodiscard]] inline double xOffset(AxisScale scale, double xFirst, double xLast) noexcept {
     switch (scale) {
@@ -87,21 +81,21 @@ enum class LabelFormat {
     Auto = 0,     // automatic based on range
     Metric,       // SI prefixes (k, M, G, etc.)
     MetricInline, // SI prefixes inline with value
-    Scientific,   // scientific notation
-    None,         // no labels
-    Default       // default floating-point format
+    Scientific,
+    None,
+    Default
 };
 
 enum class HistoryUnit : int {
     seconds = 0, // time-based history depth (resolved via sample rate)
-    samples = 1  // sample-count-based history depth
+    samples = 1
 };
 
 enum class AxisKind { X = 0, Y, Z };
 
 [[nodiscard]] inline ImVec4 sinkColor(std::uint32_t rgb) { return ImGui::ColorConvertU32ToFloat4(rgbToImGuiABGR(rgb)); }
 
-[[nodiscard]] inline float seriesLineWidth(const SignalSink& sink) { return DigitizerUi::LookAndFeel::instance().chartStyle.lineWidth.value_or(sink.lineWidth()); }
+[[nodiscard]] inline float seriesLineWidth(const SignalSink& sink) { return LookAndFeel::instance().chartStyle.lineWidth.value_or(sink.lineWidth()); }
 
 [[nodiscard]] inline std::string plotLabel(const SignalSink& sink) { return std::format("{}###{}", sink.signalName().empty() ? sink.name() : sink.signalName(), sink.uniqueName()); }
 
@@ -142,15 +136,15 @@ struct AxisConfig {
     return std::nullopt;
 }
 
-inline constexpr float defaultAxisLabelWidth = std::numeric_limits<float>::max();
+inline constexpr float kDefaultAxisLabelWidth = std::numeric_limits<float>::max();
 
-[[nodiscard]] inline float axisLabelWidthOrDefault(const std::optional<AxisConfig>& config, float defaultWidth = defaultAxisLabelWidth) noexcept { return config && std::isfinite(config->width) ? config->width : defaultWidth; }
+[[nodiscard]] inline float axisLabelWidthOrDefault(const std::optional<AxisConfig>& config, float defaultWidth = kDefaultAxisLabelWidth) noexcept { return config && std::isfinite(config->width) ? config->width : defaultWidth; }
 
 [[nodiscard]] inline float defaultAxisLabelWidthFor(ImAxis axisId, const ImVec2& plotSize) noexcept {
-    constexpr float labelBudgetFraction = 0.9f;
-    const bool      isX                 = axisId == ImAxis_X1 || axisId == ImAxis_X2 || axisId == ImAxis_X3;
-    const float     axisExtent          = isX ? plotSize.x : plotSize.y;
-    return std::isfinite(axisExtent) && axisExtent > 0.f ? axisExtent * labelBudgetFraction : defaultAxisLabelWidth;
+    constexpr float kLabelBudgetFraction = 0.9f;
+    const bool      isX                  = axisId == ImAxis_X1 || axisId == ImAxis_X2 || axisId == ImAxis_X3;
+    const float     axisExtent           = isX ? plotSize.x : plotSize.y;
+    return std::isfinite(axisExtent) && axisExtent > 0.f ? axisExtent * kLabelBudgetFraction : kDefaultAxisLabelWidth;
 }
 
 struct LogFreqRange {
@@ -158,8 +152,8 @@ struct LogFreqRange {
     double max;
 };
 
-/// The [min, max] display range when `xCfg` is a Log10 axis with a finite, strictly-positive range, else nullopt.
-/// Texture/surface spectrum charts re-bin a linear FFT onto log-spaced columns drawn over this range (buildLogBinnedRow).
+/// the [min, max] display range when `xCfg` is a Log10 axis with a finite, strictly positive range, else nullopt;
+/// texture and surface spectrum charts re-bin a linear FFT onto log-spaced columns drawn over this range (buildLogBinnedRow)
 [[nodiscard]] inline std::optional<LogFreqRange> logFreqRange(const std::optional<AxisConfig>& xCfg) {
     if (xCfg && xCfg->scale == AxisScale::Log10 && std::isfinite(xCfg->min) && std::isfinite(xCfg->max) && xCfg->min > 0.f) {
         return LogFreqRange{static_cast<double>(xCfg->min), static_cast<double>(xCfg->max)};
@@ -259,9 +253,9 @@ enum class ConstrainedWhen : std::uint8_t { autoScaled, always };
 [[nodiscard]] inline std::string labelWithUnit(std::string_view name, std::string_view unit) { return unit.empty() ? std::string(name) : std::format("{} [{}]", name, unit); }
 
 struct AxisCategory {
-    std::string   quantity;              // Physical quantity (e.g., "voltage", "frequency")
-    std::string   unit;                  // Unit of measurement (e.g., "V", "Hz")
-    std::uint32_t color    = 0xFFFFFFFF; // Color for axis labels/ticks
+    std::string   quantity;
+    std::string   unit;
+    std::uint32_t color    = 0xFFFFFFFF; // of the axis labels and ticks
     AxisScale     scale    = AxisScale::Linear;
     bool          plotTags = true;
 
@@ -297,9 +291,9 @@ inline constexpr std::string_view boundedStringView(const char* ptr, std::size_t
 inline int formatMetric(double value, char* buff, int size, void* data) {
     constexpr std::array<double, 11UZ>      kScales{1e15, 1e12, 1e9, 1e6, 1e3, 1.0, 1e-3, 1e-6, 1e-9, 1e-12, 1e-15};
     constexpr std::array<const char*, 11UZ> kPrefixes{"P", "T", "G", "M", "k", "", "m", "u", "n", "p", "f"};
-    constexpr std::size_t                   maxUnitLength = 10UZ;
+    constexpr std::size_t                   kMaxUnitLength = 10UZ;
 
-    const std::string_view unit = boundedStringView(static_cast<const char*>(data), maxUnitLength);
+    const std::string_view unit = boundedStringView(static_cast<const char*>(data), kMaxUnitLength);
     if (value == 0.0) {
         return enforceNullTerminate(buff, size, std::format_to_n(buff, static_cast<std::ptrdiff_t>(size), "0{}", unit));
     }
@@ -352,8 +346,8 @@ inline std::string formatMinimalScientific(double value, int maxDecimals = 2) {
 }
 
 inline int formatScientific(double value, char* buff, int size, void* data) {
-    constexpr std::size_t  maxUnitLength = 10UZ;
-    const std::string_view unit          = boundedStringView(static_cast<const char*>(data), maxUnitLength);
+    constexpr std::size_t  kMaxUnitLength = 10UZ;
+    const std::string_view unit           = boundedStringView(static_cast<const char*>(data), kMaxUnitLength);
 
     if (value == 0.0) {
         return enforceNullTerminate(buff, size, std::format_to_n(buff, static_cast<std::ptrdiff_t>(size), "0{}", unit));
@@ -367,8 +361,8 @@ inline int formatScientific(double value, char* buff, int size, void* data) {
 }
 
 inline int formatDefault(double value, char* buff, int size, void* data) {
-    constexpr std::size_t  maxUnitLength = 10UZ;
-    const std::string_view unit          = boundedStringView(static_cast<const char*>(data), maxUnitLength);
+    constexpr std::size_t  kMaxUnitLength = 10UZ;
+    const std::string_view unit           = boundedStringView(static_cast<const char*>(data), kMaxUnitLength);
 
     if (value == 0.0) {
         return enforceNullTerminate(buff, size, std::format_to_n(buff, static_cast<std::ptrdiff_t>(size), "0{}", unit));
@@ -393,9 +387,9 @@ inline std::string truncateLabel(std::string_view original, float availableWidth
     return std::format("...{}", original.substr(original.size() - fitCharCount));
 }
 
-// The bi-symmetric logarithm sign(v) log10(1 + |v|/c): linear within about ±c, logarithmic beyond, for data spanning
-// decades on both sides of zero. ImPlot's own SymLog fixes c at about 1. After J. B. W. Webber, "A bi-symmetric log
-// transformation for wide-range data," Meas. Sci. Technol., vol. 24, no. 2, p. 027001, 2013.
+// the bi-symmetric logarithm sign(v) log10(1 + |v|/c): linear within about ±c, logarithmic beyond, for data spanning decades on both sides of zero.
+// ImPlot's own SymLog fixes c at about 1.
+// After J. B. W. Webber, "A bi-symmetric log transformation for wide-range data," Meas. Sci. Technol., vol. 24, no. 2, p. 027001, 2013.
 [[nodiscard]] inline double symLogForward(double value, void* linearThreshold) noexcept {
     const double c = *static_cast<const double*>(linearThreshold);
     return std::copysign(std::log10(1.0 + std::abs(value) / c), value);
@@ -406,9 +400,9 @@ inline std::string truncateLabel(std::string_view original, float availableWidth
     return std::copysign(c * (std::pow(10.0, std::abs(value)) - 1.0), value);
 }
 
-// A trace of more points than its plot has pixel columns, reduced to each column's smallest and largest value in the
-// order they came, as an oscilloscope's peak detect does: the envelope drawn is that of every point, at two points a
-// column, which keeps a trace of hundreds of thousands of samples interactive. A shorter trace is left as it is.
+// a trace of more points than its plot has pixel columns, reduced to each column's smallest and largest value in the order they came, as an oscilloscope's peak detect does:
+// the envelope drawn is that of every point, at two points a column, which keeps a trace of hundreds of thousands of samples interactive.
+// A shorter trace is left as it is.
 inline void reduceToColumns(std::vector<double>& x, std::vector<double>& y, std::size_t columns) {
     if (columns == 0UZ || x.size() != y.size() || x.size() <= 2UZ * columns) {
         return;
@@ -468,8 +462,8 @@ inline void setupAxis(ImAxis axisId, const std::optional<AxisCategory>& category
         flags |= ImPlotAxisFlags_Opposite;
     }
 
-    bool                           pushedColor = false;
-    const DigitizerUi::ChartStyle& chartStyle  = DigitizerUi::LookAndFeel::instance().chartStyle;
+    bool              pushedColor = false;
+    const ChartStyle& chartStyle  = LookAndFeel::instance().chartStyle;
     if ((nTotalAxes > 1) && !isX && chartStyle.colourAxesBySignal) {
         ImVec4 col = sinkColor(category->color);
         if (chartStyle.axisAlpha) {
@@ -499,8 +493,8 @@ inline void setupAxis(ImAxis axisId, const std::optional<AxisCategory>& category
             } else if (std::ranges::contains(kLinearUnits, unit)) {
                 ImPlot::SetupAxisFormat(axisId, formatDefault, nullptr);
             } else if (isX) {
-                constexpr const char* str = "s";
-                ImPlot::SetupAxisFormat(axisId, formatMetric, const_cast<void*>(static_cast<const void*>(str)));
+                constexpr const char* kStr = "s";
+                ImPlot::SetupAxisFormat(axisId, formatMetric, const_cast<void*>(static_cast<const void*>(kStr)));
             } else {
                 ImPlot::SetupAxisFormat(axisId, formatScientific, nullptr);
             }
@@ -511,7 +505,7 @@ inline void setupAxis(ImAxis axisId, const std::optional<AxisCategory>& category
             ImPlot::SetupAxisFormat(axisId, formatMetric, const_cast<void*>(static_cast<const void*>(unitStringStorage[static_cast<std::size_t>(axisId)].c_str())));
         } break;
         case LabelFormat::Scientific: ImPlot::SetupAxisFormat(axisId, formatScientific, nullptr); break;
-        case LabelFormat::None: break; // tick labels suppressed via ImPlotAxisFlags_NoTickLabels
+        case LabelFormat::None: break;
         case LabelFormat::Default:
         default: ImPlot::SetupAxisFormat(axisId, formatDefault, nullptr);
         }
@@ -528,8 +522,7 @@ inline void setupAxis(ImAxis axisId, const std::optional<AxisCategory>& category
         constexpr double kDecadesWhenAutoScaled = 12.0;
         const double     maxMagnitude           = finiteMin && finiteMax ? std::max(std::abs(minLimit), std::abs(maxLimit)) : *symLogLinearThreshold * std::pow(10.0, kDecadesWhenAutoScaled);
         const auto       ticks                  = symLogDecadeTicks(*symLogLinearThreshold, maxMagnitude);
-        // labelled here with the axis' own formatter: without labels ImPlot hands a formatter that has no data its
-        // default "%g" instead, which the formatters above would print as a unit
+        // labelled here with the axis' own formatter: without labels ImPlot hands a formatter that has no data its default "%g" instead, which the formatters above would print as a unit
         const ImPlotAxis&        plotAxis = ImPlot::GetCurrentPlot()->Axes[axisId];
         std::vector<std::string> labels;
         labels.reserve(ticks.size());
@@ -568,13 +561,11 @@ inline void setupAxis(ImAxis axisId, const std::optional<AxisCategory>& category
 }
 
 inline std::optional<std::size_t> findOrCreateCategory(std::array<std::optional<AxisCategory>, 3>& categories, std::string_view quantity, std::string_view unit, std::uint32_t color) {
-    // Find existing category with matching quantity/unit
     auto existingIt = std::ranges::find_if(categories, [&](const auto& cat) { return cat.has_value() && cat->matches(quantity, unit); });
     if (existingIt != categories.end()) {
         return static_cast<std::size_t>(std::distance(categories.begin(), existingIt));
     }
 
-    // Find first empty slot and create new category
     auto emptyIt = std::ranges::find_if(categories, [](const auto& cat) { return !cat.has_value(); });
     if (emptyIt != categories.end()) {
         *emptyIt = AxisCategory{.quantity = std::string(quantity), .unit = std::string(unit), .color = color};
@@ -618,7 +609,7 @@ constexpr bool isCompatible(SignalKind signal, SignalKind chartSupport) { return
 } // namespace detail
 
 inline std::pair<ImFont*, float> chartTextFont(ImFont* defaultFace) {
-    const auto& lnf   = DigitizerUi::LookAndFeel::instance();
+    const auto& lnf   = LookAndFeel::instance();
     const auto& style = lnf.chartStyle;
     if (style.labelFont == nullptr && !style.labelFontSize) {
         return {defaultFace, lnf.relativeFontSize(defaultFace)};
@@ -628,7 +619,7 @@ inline std::pair<ImFont*, float> chartTextFont(ImFont* defaultFace) {
 
 namespace tags {
 
-/// Marker key for tags that appear out-of-order or have suspicious timestamps.
+/// marks tags that arrive out of order or carry suspicious timestamps
 inline constexpr std::string_view kFishyTagKey = "ui_fishy_tag";
 
 [[nodiscard]] inline std::string tagText(const gr::property_map& properties, std::string_view key, std::string_view fallback = {}) {
@@ -674,9 +665,9 @@ inline ImVec2 plotVerticalTagLabel(std::string_view label, double xData, const I
 
 template<typename ForEachTagFn>
 inline void drawTags(ForEachTagFn&& forEachTagFn, AxisScale axisScale, double xMin, double xMax, ImVec4 tagColor) {
-    const auto& lnf               = DigitizerUi::LookAndFeel::instance();
+    const auto& lnf               = LookAndFeel::instance();
     const auto [tagFace, tagSize] = chartTextFont(lnf.fontTiny());
-    DigitizerUi::IMW::FontWithSize titleFont(tagFace, tagSize);
+    imw::FontWithSize titleFont(tagFace, tagSize);
 
     const float fontHeight  = ImGui::GetFontSize();
     const auto  plotLimits  = ImPlot::GetPlotLimits(IMPLOT_AUTO, IMPLOT_AUTO);
@@ -697,18 +688,17 @@ inline void drawTags(ForEachTagFn&& forEachTagFn, AxisScale axisScale, double xM
         const float xPixelPos    = ImPlot::PlotToPixels(xTagPosition, 0.0).x;
 
         const bool isDrop = properties.contains(gr::tag::kNDroppedSamples);
-        // highlight fishy tags (out-of-order timestamps) magenta, lost-sample markers red
         if (properties.contains(kFishyTagKey)) {
-            ImPlot::SetNextLineStyle(DigitizerUi::LookAndFeel::instance().palette().chartTagFishy);
+            ImPlot::SetNextLineStyle(LookAndFeel::instance().palette().chartTagFishy);
         } else if (isDrop) {
-            ImPlot::SetNextLineStyle(DigitizerUi::LookAndFeel::instance().palette().chartTagDroppedSamples);
+            ImPlot::SetNextLineStyle(LookAndFeel::instance().palette().chartTagDroppedSamples);
         } else {
             ImPlot::SetNextLineStyle(tagColor);
         }
         ImPlot::PlotInfLines("", &xTagPosition, 1, ImPlotInfLinesFlags_None);
 
-        // suppress tag labels if too close to previous or to axis extremities
-        if ((xPixelPos - lastTextPixelX) > 1.5f * fontHeight && (lastAxisPixelX - xPixelPos) > 2.0f * fontHeight) {
+        const bool labelClearOfNeighbourAndAxisEnd = (xPixelPos - lastTextPixelX) > 1.5f * fontHeight && (lastAxisPixelX - xPixelPos) > 2.0f * fontHeight;
+        if (labelClearOfNeighbourAndAxisEnd) {
             if (isDrop) {
                 lastTextPixelX = plotVerticalTagLabel("dropped samples", xTagPosition, plotLimits, true).x;
                 return;
@@ -727,7 +717,7 @@ inline void drawDataSetTimingEvents(const gr::DataSet<T>& dataSet, ImVec4 baseCo
     }
 
     ImVec4 tagColor = baseColor;
-    tagColor.w *= DigitizerUi::LookAndFeel::instance().chartStyle.tagAlpha;
+    tagColor.w *= LookAndFeel::instance().chartStyle.tagAlpha;
 
     const auto&  xAxisSpan   = dataSet.axisValues(0);
     const double xMin        = static_cast<double>(xAxisSpan.front());
@@ -766,7 +756,7 @@ inline void drawDataSetTimingEvents(const gr::DataSet<T>& dataSet, ImVec4 baseCo
 
 namespace tooltip {
 
-inline void showPlotMouseTooltip(double onDelay = DigitizerUi::LookAndFeel::instance().plotTooltipDelay, double offDelay = DigitizerUi::LookAndFeel::instance().plotTooltipDuration) {
+inline void showPlotMouseTooltip(double onDelay = LookAndFeel::instance().plotTooltipDelay, double offDelay = LookAndFeel::instance().plotTooltipDuration) {
     if (!ImPlot::IsPlotHovered()) {
         return;
     }
@@ -782,7 +772,7 @@ inline void showPlotMouseTooltip(double onDelay = DigitizerUi::LookAndFeel::inst
     static double lastTime = 0.0;
     const double  now      = ImGui::GetTime();
 
-    const float epsilon = DigitizerUi::LookAndFeel::instance().plotTooltipStillDistance;
+    const float epsilon = LookAndFeel::instance().plotTooltipStillDistance;
     const bool  samePos = std::abs(px.x - lastPX.x) < epsilon && std::abs(px.y - lastPX.y) < epsilon;
 
     if (!samePos) {
@@ -795,7 +785,6 @@ inline void showPlotMouseTooltip(double onDelay = DigitizerUi::LookAndFeel::inst
         return;
     }
 
-    // Format axis value according to axis scale/formatter
     const auto formatAxisValue = [](const ImPlotAxis& axis, double value, char* buf, int size) {
         if (axis.Scale == ImPlotScale_Time) {
             using Clock                                                                                = std::chrono::system_clock;
@@ -812,8 +801,8 @@ inline void showPlotMouseTooltip(double onDelay = DigitizerUi::LookAndFeel::inst
         }
     };
 
-    auto drawAxisTooltip = [&formatAxisValue](ImPlotPlot* plot_, ImAxis axisIdx) {
-        ImPlotAxis& axis = plot_->Axes[axisIdx];
+    auto drawAxisTooltip = [&formatAxisValue](ImPlotPlot* currentPlot, ImAxis axisIdx) {
+        ImPlotAxis& axis = currentPlot->Axes[axisIdx];
         if (!axis.Enabled) {
             return;
         }
@@ -826,15 +815,15 @@ inline void showPlotMouseTooltip(double onDelay = DigitizerUi::LookAndFeel::inst
         if (axis.LabelOffset < 0) {
             ImGui::Text("%s", buf);
         } else {
-            ImGui::Text("%s: %s", plot_->GetAxisLabel(axis), buf);
+            ImGui::Text("%s: %s", currentPlot->GetAxisLabel(axis), buf);
         }
     };
 
     {
-        const auto& lnf                       = DigitizerUi::LookAndFeel::instance();
+        const auto& lnf                       = LookAndFeel::instance();
         const auto [tooltipFace, tooltipSize] = chartTextFont(lnf.fontSmall());
-        DigitizerUi::IMW::FontWithSize font(tooltipFace, tooltipSize);
-        DigitizerUi::IMW::ToolTip      tip;
+        imw::FontWithSize font(tooltipFace, tooltipSize);
+        imw::ToolTip      tip;
         for (int i = 0; i < 3; ++i) {
             drawAxisTooltip(plot, ImAxis_X1 + i);
         }
@@ -859,40 +848,40 @@ constexpr void copyToBuffer(char (&dest)[N], std::string_view src) noexcept {
 }
 
 struct Payload {
-    char       sink_unique_name[256] = {};
-    char       source_chart_id[64]   = {};
-    SignalKind sink_type             = SignalKind::None;
+    char       sinkUniqueName[256] = {};
+    char       sourceChartId[64]   = {};
+    SignalKind sinkType            = SignalKind::None;
 
-    [[nodiscard]] bool hasSource() const noexcept { return source_chart_id[0] != '\0'; }
-    [[nodiscard]] bool isValid() const noexcept { return sink_unique_name[0] != '\0'; }
+    [[nodiscard]] bool hasSource() const noexcept { return sourceChartId[0] != '\0'; }
+    [[nodiscard]] bool isValid() const noexcept { return sinkUniqueName[0] != '\0'; }
 };
 
 [[nodiscard]] inline Payload makePayload(const SignalSink& sink, std::string_view sourceChartId = {}) {
-    Payload payload{.sink_type = sink.signalKind()};
-    if (sink.uniqueName().size() >= sizeof(payload.sink_unique_name) || sourceChartId.size() >= sizeof(payload.source_chart_id)) {
+    Payload payload{.sinkType = sink.signalKind()};
+    if (sink.uniqueName().size() >= sizeof(payload.sinkUniqueName) || sourceChartId.size() >= sizeof(payload.sourceChartId)) {
         return {};
     }
-    copyToBuffer(payload.sink_unique_name, sink.uniqueName());
+    copyToBuffer(payload.sinkUniqueName, sink.uniqueName());
     if (!sourceChartId.empty()) {
-        copyToBuffer(payload.source_chart_id, sourceChartId);
+        copyToBuffer(payload.sourceChartId, sourceChartId);
     }
     return payload;
 }
 
 struct State {
     bool        accepted = false;
-    std::string source_chart_id;
-    std::string sink_unique_name;
+    std::string sourceChartId;
+    std::string sinkUniqueName;
 
     void reset() {
         accepted = false;
-        source_chart_id.clear();
-        sink_unique_name.clear();
+        sourceChartId.clear();
+        sinkUniqueName.clear();
     }
 
-    [[nodiscard]] bool isAcceptedFrom(std::string_view chartId) const { return accepted && source_chart_id == chartId; }
+    [[nodiscard]] bool isAcceptedFrom(std::string_view chartId) const { return accepted && sourceChartId == chartId; }
 };
-inline State g_state;
+inline State gState;
 
 struct PayloadStatus {
     const Payload* payload{};
@@ -902,14 +891,14 @@ struct PayloadStatus {
 [[nodiscard]] inline PayloadStatus getPayloadStatus(const char* payloadType, SignalKind supportedKinds) {
     if (const ImGuiPayload* payload = ImGui::GetDragDropPayload(); payload && payload->Data && payload->IsDataType(payloadType)) {
         const auto* dnd = static_cast<const Payload*>(payload->Data);
-        return {.payload = dnd, .isCompatible = detail::isCompatible(dnd->sink_type, supportedKinds)};
+        return {.payload = dnd, .isCompatible = detail::isCompatible(dnd->sinkType, supportedKinds)};
     }
     return {};
 }
 
 template<typename Callable>
 requires std::is_invocable_r_v<bool, Callable, const Payload&>
-inline bool handleDropTarget(Callable&& handler, const char* payloadType, SignalKind supportedKinds = SignalKind::All) {
+inline bool acceptDrop(Callable&& handler, const char* payloadType, SignalKind supportedKinds = SignalKind::All) {
     const auto payloadResult = getPayloadStatus(payloadType, supportedKinds);
     if (payloadResult.payload && !payloadResult.isCompatible) {
         return false;
@@ -918,15 +907,15 @@ inline bool handleDropTarget(Callable&& handler, const char* payloadType, Signal
     if (ImGui::BeginDragDropTarget()) {
         gr::on_scope_exit _([] { ImGui::EndDragDropTarget(); });
         if (ImGui::AcceptDragDropPayload(payloadType) && payloadResult.payload && payloadResult.payload->isValid()) {
-            g_state.accepted = std::invoke(handler, *payloadResult.payload);
-            return g_state.accepted;
+            gState.accepted = std::invoke(handler, *payloadResult.payload);
+            return gState.accepted;
         }
     }
     return false;
 }
 
-inline bool handleLegendDropTarget(const char* payloadType = kPayloadType) {
-    return handleDropTarget([](const Payload& payload) { return payload.hasSource(); }, payloadType);
+inline bool acceptLegendDrop(const char* payloadType = kPayloadType) {
+    return acceptDrop([](const Payload& payload) { return payload.hasSource(); }, payloadType);
 }
 
 inline void setupPayload(const std::shared_ptr<SignalSink>& sink, std::string_view sourceChartId, const char* payloadType = kPayloadType) {
@@ -935,14 +924,14 @@ inline void setupPayload(const std::shared_ptr<SignalSink>& sink, std::string_vi
     }
     const auto payload = makePayload(*sink, sourceChartId);
     if (!payload.isValid()) {
-        g_state.reset();
+        gState.reset();
         return;
     }
     ImGui::SetDragDropPayload(payloadType, &payload, sizeof(payload));
 
-    g_state.accepted         = false;
-    g_state.source_chart_id  = sourceChartId;
-    g_state.sink_unique_name = sink->uniqueName();
+    gState.accepted       = false;
+    gState.sourceChartId  = sourceChartId;
+    gState.sinkUniqueName = sink->uniqueName();
 }
 
 inline void renderDragTooltip(const std::shared_ptr<SignalSink>& sink) {
@@ -951,7 +940,7 @@ inline void renderDragTooltip(const std::shared_ptr<SignalSink>& sink) {
     }
     const ImVec2 cursorPos = ImGui::GetCursorScreenPos();
     const float  boxSize   = ImGui::GetTextLineHeight();
-    ImGui::GetWindowDrawList()->AddRectFilled(cursorPos, ImVec2(cursorPos.x + boxSize, cursorPos.y + boxSize), rgbToImGuiABGR(sink->color()), DigitizerUi::LookAndFeel::instance().dashboardStyle.legendSwatchRounding);
+    ImGui::GetWindowDrawList()->AddRectFilled(cursorPos, ImVec2(cursorPos.x + boxSize, cursorPos.y + boxSize), rgbToImGuiABGR(sink->color()), LookAndFeel::instance().dashboardStyle.legendSwatchRounding);
     ImGui::Dummy(ImVec2(boxSize, boxSize));
     ImGui::SameLine();
     const auto signalName = sink->signalName();
@@ -966,7 +955,7 @@ struct ChartRequests {
     std::function<void(std::string_view chartId)>                                remove;
 };
 
-inline ChartRequests* g_chartRequests = nullptr;
+inline ChartRequests* gChartRequests = nullptr;
 
 /// Font Awesome icon constants for context menus.
 namespace menu_icons {
@@ -991,21 +980,19 @@ inline constexpr const char* kHistory    = "\uf1da"; // clock-rotate-left
 inline constexpr const char* kArrow      = "\uf061"; // arrow-right
 inline constexpr const char* kFormat     = "\uf031"; // font
 
-/// Renders icon followed by text, using fontIconsSolid for the icon portion.
 inline void iconText(const char* icon, const char* text) {
     {
-        DigitizerUi::IMW::Font iconFont(DigitizerUi::LookAndFeel::instance().fontIconsSolid);
+        imw::Font iconFont(LookAndFeel::instance().fontIconsSolid);
         ImGui::TextUnformatted(icon);
     }
     ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
     ImGui::TextUnformatted(text);
 }
 
-/// MenuItem with icon (icon rendered with fontIconsSolid font).
 inline bool menuItemWithIcon(const char* icon, const char* label, bool selected = false, bool enabled = true) {
     bool clicked = false;
     {
-        DigitizerUi::IMW::Font iconFont(DigitizerUi::LookAndFeel::instance().fontIconsSolid);
+        imw::Font iconFont(LookAndFeel::instance().fontIconsSolid);
         ImGui::TextUnformatted(icon);
     }
     ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
@@ -1015,16 +1002,13 @@ inline bool menuItemWithIcon(const char* icon, const char* label, bool selected 
     return clicked;
 }
 
-/// BeginMenu with icon (icon rendered with fontIconsSolid font).
-/// Returns true if menu is open - caller must call ImGui::EndMenu() when done.
+/// true when the menu is open: the caller then calls ImGui::EndMenu()
 inline bool beginMenuWithIcon(const char* icon, const char* label, bool enabled = true) {
-    // Draw icon with icon font
     {
-        DigitizerUi::IMW::Font iconFont(DigitizerUi::LookAndFeel::instance().fontIconsSolid);
+        imw::Font iconFont(LookAndFeel::instance().fontIconsSolid);
         ImGui::TextUnformatted(icon);
     }
     ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
-    // BeginMenu handles its own ID - don't add extra PushID/PopID
     return ImGui::BeginMenu(label, enabled);
 }
 
@@ -1032,16 +1016,16 @@ inline bool beginMenuWithIcon(const char* icon, const char* label, bool enabled 
 
 inline void drawDuplicateChartMenuItem(std::string_view uniqueName) {
     if (menu_icons::menuItemWithIcon(menu_icons::kDuplicate, "Duplicate")) {
-        if (g_chartRequests && g_chartRequests->duplicate) {
-            g_chartRequests->duplicate(uniqueName);
+        if (gChartRequests && gChartRequests->duplicate) {
+            gChartRequests->duplicate(uniqueName);
         }
     }
 }
 
 inline void drawRemoveChartMenuItem(std::string_view uniqueName) {
     if (menu_icons::menuItemWithIcon(menu_icons::kRemove, "Remove")) {
-        if (g_chartRequests && g_chartRequests->remove) {
-            g_chartRequests->remove(uniqueName);
+        if (gChartRequests && gChartRequests->remove) {
+            gChartRequests->remove(uniqueName);
         }
     }
 }
@@ -1062,24 +1046,12 @@ inline constexpr std::string_view kChartModeKey = "chartMode";
     return mode.value_or(ChartMode::View);
 }
 
-class ScopedChartStyle {
-    int _nColours = 0;
-    int _nVars    = 0;
-
-    void pushColour(ImPlotCol colourId, ImVec4 colour) {
-        ImPlot::PushStyleColor(colourId, colour);
-        ++_nColours;
-    }
-    void pushAlpha(ImPlotCol colourId, float alpha) {
-        ImVec4 colour = ImPlot::GetStyleColorVec4(colourId);
-        colour.w      = alpha;
-        pushColour(colourId, colour);
-    }
-
+struct ScopedChartStyle {
+    int  _nColours   = 0;
+    int  _nVars      = 0;
     bool _pushedFont = false;
 
-public:
-    explicit ScopedChartStyle(const DigitizerUi::ChartStyle& style, float legendAlphaScale = 1.f) {
+    explicit ScopedChartStyle(const ChartStyle& style, float legendAlphaScale = 1.f) {
         if (style.labelFont != nullptr || style.labelFontSize) { // ImPlot measures and draws its text with the current font
             ImGui::PushFont(style.labelFont, style.labelFontSize.value_or(0.f));
             _pushedFont = true;
@@ -1124,11 +1096,21 @@ public:
     }
     ScopedChartStyle(const ScopedChartStyle&)            = delete;
     ScopedChartStyle& operator=(const ScopedChartStyle&) = delete;
+
+    void pushColour(ImPlotCol colourId, ImVec4 colour) {
+        ImPlot::PushStyleColor(colourId, colour);
+        ++_nColours;
+    }
+    void pushAlpha(ImPlotCol colourId, float alpha) {
+        ImVec4 colour = ImPlot::GetStyleColorVec4(colourId);
+        colour.w      = alpha;
+        pushColour(colourId, colour);
+    }
 };
 
 inline void setupFinish() {
     // ImPlot keeps the legend location across frames: an unset one is reset
-    ImPlot::SetupLegend(DigitizerUi::LookAndFeel::instance().chartStyle.legendLocation.value_or(ImPlotLocation_NorthWest));
+    ImPlot::SetupLegend(LookAndFeel::instance().chartStyle.legendLocation.value_or(ImPlotLocation_NorthWest));
     ImPlot::SetupFinish();
 }
 
@@ -1183,8 +1165,7 @@ inline void onScrollWheel(auto&& apply) {
 
 template<typename TChart>
 void registerChart(gr::BlockRegistry& registry) {
-    std::ignore = gr::registerBlock<TChart>(registry);
-    chartTypes().insert_or_assign(std::string(gr::meta::type_name<TChart>()), TChart::supportedSignals);
+    chartTypes().insert_or_assign(registerWithIdPrefix<TChart>(registry, kOpendigitizerIdPrefix), TChart::kSupportedSignals);
 }
 
 /// sorted, those the global registry knows
@@ -1201,18 +1182,18 @@ inline std::vector<std::string> registeredChartTypes() {
 template<typename TOnToggled, typename TOnFitOnce>
 void drawAutoFitControls(bool& autoFit, TOnToggled&& onToggled, TOnFitOnce&& onFitOnce) {
     {
-        DigitizerUi::IMW::Font iconFont(DigitizerUi::LookAndFeel::instance().fontIconsSolid);
+        imw::Font iconFont(LookAndFeel::instance().fontIconsSolid);
         ImGui::TextUnformatted(menu_icons::kAutoFit);
     }
     ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
-    if (DigitizerUi::Checkbox("##auto", &autoFit)) {
+    if (checkbox("##auto", &autoFit)) {
         onToggled();
     }
     if (ImGui::IsItemHovered()) {
         ImGui::SetTooltip("Auto-fit axis range");
     }
     ImGui::SameLine();
-    if (DigitizerUi::TextButton("Fit once")) {
+    if (textButton("Fit once")) {
         onFitOnce();
     }
     if (ImGui::IsItemHovered()) {
@@ -1225,7 +1206,7 @@ void drawLimitSpinners(bool disabled, double minVal, double maxVal, TSetMin&& se
     if (disabled) {
         ImGui::BeginDisabled();
     }
-    const auto&  chartStyle = DigitizerUi::LookAndFeel::instance().chartStyle;
+    const auto&  chartStyle = LookAndFeel::instance().chartStyle;
     const double range      = std::abs(maxVal - minVal);
     const double increment  = (range > 0.0 && range < 1e10) ? range * 0.01 : 0.1;
     const float  dragSpeed  = static_cast<float>(increment * 0.1);
@@ -1235,8 +1216,8 @@ void drawLimitSpinners(bool disabled, double minVal, double maxVal, TSetMin&& se
         const std::string incId  = std::format("\uf0fe##{}_inc", id);
         const std::string dragId = std::format("##{}", id);
         {
-            DigitizerUi::IMW::Font iconFont(DigitizerUi::LookAndFeel::instance().fontIconsSolid);
-            if (DigitizerUi::Button(decId.c_str())) {
+            imw::Font iconFont(LookAndFeel::instance().fontIconsSolid);
+            if (button(decId.c_str())) {
                 val -= increment;
                 assign(val);
             }
@@ -1252,8 +1233,8 @@ void drawLimitSpinners(bool disabled, double minVal, double maxVal, TSetMin&& se
         });
         ImGui::SameLine(0.0f, chartStyle.menuSpinnerSpacing);
         {
-            DigitizerUi::IMW::Font iconFont(DigitizerUi::LookAndFeel::instance().fontIconsSolid);
-            if (DigitizerUi::Button(incId.c_str())) {
+            imw::Font iconFont(LookAndFeel::instance().fontIconsSolid);
+            if (button(incId.c_str())) {
                 val += increment;
                 assign(val);
             }
@@ -1270,13 +1251,41 @@ void drawLimitSpinners(bool disabled, double minVal, double maxVal, TSetMin&& se
     }
 }
 
-/// Non-polymorphic CRTP mixin for chart signal sink storage and D&D using C++23 deducing this.
-/// Derived classes must: inherit gr::Block<Derived>, define kChartTypeName, data_sinks.
+/// signal sink storage, drag and drop, axes and menus shared by the chart blocks;
+/// the deriving chart inherits gr::Block<Derived> and defines kChartTypeName and data_sinks
 struct Chart {
     static constexpr std::size_t kDefaultHistorySize             = 4096;
     static constexpr std::size_t kDefaultDataSetHistorySize      = 8;
     static constexpr double      kCapacityRefreshIntervalSeconds = 30.0; // refresh before 60s timeout
     static constexpr double      kCapacityDebounceSeconds        = 0.3;  // debounce resize to avoid discontinuities
+
+    struct FrequencyMarkers { // the spectrum charts' range and f0 handles, shared by a chart's frequency panes
+        static constexpr std::size_t         kPanes = 2UZ;
+        std::optional<std::array<double, 2>> draggedRange; // override the inputs while follow_inputs is false
+        std::optional<double>                draggedF0;
+        std::array<bool, kPanes>             rangeHeld{};
+        std::array<bool, kPanes>             f0Held{};
+        std::optional<std::array<ImVec2, 3>> drawnHandles; // pane 0's last draw, screen points on low, high and f0, for tests
+        std::vector<std::string>             drawnLabels;  // pane 0's last draw
+    };
+
+    std::vector<std::shared_ptr<SignalSink>> _signalSinks;
+    components::AutoHide                     _legendAutoHide;
+    FrequencyMarkers                         _markers;
+
+    double                  _lastCapacityRefreshTime = 0.0;
+    double                  _pendingResizeTime       = 0.0;             // 0 = no pending resize
+    std::atomic<bool>       _renderResetPending{false};                 // GR4 runs reset() on a scheduler thread; GL and draw state belong to the render thread
+    HistoryUnit             _historyDisplayUnit = HistoryUnit::seconds; // UI-only, not persisted
+    std::optional<ImAxis>   _hoveredAxisForMenu;
+    std::array<int, 3UZ>    _fitOnceX            = {}; // per-axis: 0=idle, 2=auto-fit pending, 1=capture next frame
+    std::array<int, 3UZ>    _fitOnceY            = {};
+    std::array<double, 3UZ> _prevXMin            = {std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()};
+    std::array<double, 3UZ> _prevXMax            = {std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()};
+    std::array<double, 3UZ> _prevYMin            = {std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()};
+    std::array<double, 3UZ> _prevYMax            = {std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()};
+    std::array<bool, 3UZ>   _limitsForceAppliedX = {};
+    std::array<bool, 3UZ>   _limitsForceAppliedY = {};
 
     // helpers that abstract over scalar (bool / double) vs per-axis array (std::array<T,3>) properties
     template<typename Field>
@@ -1359,20 +1368,6 @@ struct Chart {
         (axis == AxisKind::X ? self._fitOnceX : self._fitOnceY)[axisIndex] = 2;
     }
 
-    std::vector<std::shared_ptr<SignalSink>> _signalSinks;
-    DigitizerUi::components::AutoHide        _legendAutoHide;
-
-    struct FrequencyMarkers { // the spectrum charts' range and f0 handles, shared by a chart's frequency panes
-        static constexpr std::size_t         kPanes = 2UZ;
-        std::optional<std::array<double, 2>> draggedRange; // override the inputs while follow_inputs is false
-        std::optional<double>                draggedF0;
-        std::array<bool, kPanes>             rangeHeld{};
-        std::array<bool, kPanes>             f0Held{};
-        std::optional<std::array<ImVec2, 3>> drawnHandles; // pane 0's last draw, screen points on low, high and f0, for tests
-        std::vector<std::string>             drawnLabels;  // pane 0's last draw
-    };
-    FrequencyMarkers _markers;
-
     [[nodiscard]] float legendVisibility() const noexcept { return 1.f - _legendAutoHide.hidden; }
 
     template<typename Self>
@@ -1431,13 +1426,13 @@ struct Chart {
         if (!(high > low)) { // the axis has not fitted the spectrum yet
             return;
         }
-        const double     inset      = DigitizerUi::LookAndFeel::instance().chartStyle.markerInitialInset * (high - low);
+        const double     inset      = LookAndFeel::instance().chartStyle.markerInitialInset * (high - low);
         const bool       rangeShown = self.range_style.value != RangeStyle::hidden;
         gr::property_map placed;
         const auto       place = [&](auto& setting, double value, std::string_view key, std::string_view targets) {
             setting.value                 = value;
             placed[std::pmr::string(key)] = value;
-            DigitizerUi::toolbar::sendToTargets(self.msgOut, targets, value);
+            toolbar::sendToTargets(self.msgOut, targets, value);
         };
         if (rangeShown && std::isnan(self.range_min.value)) {
             place(self.range_min, low + inset, "range_min", self.range_min_targets.value);
@@ -1456,7 +1451,7 @@ struct Chart {
 
     template<typename Self>
     void drawFrequencyMarkers(this Self& self, std::size_t pane, ImAxis frequencyAxis = ImAxis_X1) {
-        const auto&       look     = DigitizerUi::LookAndFeel::instance().chartStyle;
+        const auto&       look     = LookAndFeel::instance().chartStyle;
         const bool        onY      = frequencyAxis != ImAxis_X1;
         const ImPlotRect  limits   = ImPlot::GetPlotLimits();
         const ImPlotRange other    = onY ? limits.X : limits.Y;
@@ -1578,14 +1573,14 @@ struct Chart {
                 (*m.draggedRange)[0] = self.nearestBin((*m.draggedRange)[0]);
                 (*m.draggedRange)[1] = self.nearestBin((*m.draggedRange)[1], (*m.draggedRange)[0] + std::max(0.0, self.range_min_width.value));
             }
-            DigitizerUi::toolbar::sendToTargets(self.msgOut, self.range_min_targets.value, (*m.draggedRange)[0]);
-            DigitizerUi::toolbar::sendToTargets(self.msgOut, self.range_max_targets.value, (*m.draggedRange)[1]);
+            toolbar::sendToTargets(self.msgOut, self.range_min_targets.value, (*m.draggedRange)[0]);
+            toolbar::sendToTargets(self.msgOut, self.range_max_targets.value, (*m.draggedRange)[1]);
         }
         if (m.f0Held[p] && !f0Held && m.draggedF0) {
             if (self.snap_to_bins.value) {
                 *m.draggedF0 = self.nearestBin(*m.draggedF0);
             }
-            DigitizerUi::toolbar::sendToTargets(self.msgOut, self.f0_targets.value, *m.draggedF0);
+            toolbar::sendToTargets(self.msgOut, self.f0_targets.value, *m.draggedF0);
         }
         m.rangeHeld[p] = rangeHeld;
         m.f0Held[p]    = f0Held;
@@ -1601,22 +1596,9 @@ struct Chart {
     [[nodiscard]] auto enabledSinks() const {
         return _signalSinks | std::views::filter([](const auto& s) { return s && s->drawEnabled(); });
     }
-    double                  _lastCapacityRefreshTime = 0.0;
-    double                  _pendingResizeTime       = 0.0;             // 0 = no pending resize
-    std::atomic<bool>       _renderResetPending{false};                 // GR4 runs reset() on a scheduler thread; GL and draw state belong to the render thread
-    HistoryUnit             _historyDisplayUnit = HistoryUnit::seconds; // UI-only, not persisted
-    std::optional<ImAxis>   _hoveredAxisForMenu;                        // specific axis ID for right-click popup
-    std::array<int, 3UZ>    _fitOnceX            = {};                  // per-axis: 0=idle, 2=auto-fit pending, 1=capture next frame
-    std::array<int, 3UZ>    _fitOnceY            = {};
-    std::array<double, 3UZ> _prevXMin            = {std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()};
-    std::array<double, 3UZ> _prevXMax            = {std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()};
-    std::array<double, 3UZ> _prevYMin            = {std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()};
-    std::array<double, 3UZ> _prevYMax            = {std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()};
-    std::array<bool, 3UZ>   _limitsForceAppliedX = {}; // true on frame where limits were force-applied
-    std::array<bool, 3UZ>   _limitsForceAppliedY = {};
 
     template<typename Self>
-    [[nodiscard]] inline SignalKind minimumSinkCompatibility(this const Self& self) noexcept {
+    [[nodiscard]] inline SignalKind displayedSignalKinds(this const Self& self) noexcept {
         auto result = SignalKind::None;
         for (const auto& signalSinkPtr : self._signalSinks) {
             if (signalSinkPtr) {
@@ -1764,7 +1746,7 @@ struct Chart {
             if (other && other != *sink && (matchesRemovedSink(other->name()) || matchesRemovedSink(other->signalName()))) {
                 const std::string reference = findSinkReference(*other);
                 if (reference.empty()) {
-                    DigitizerUi::components::Notification::warning("Cannot remove this signal: give the other signals in the chart distinct block names first.");
+                    components::Notification::warning("Cannot remove this signal: give the other signals in the chart distinct block names first.");
                     return;
                 }
                 if (std::ranges::find(remainingNames, reference) == remainingNames.end()) {
@@ -1785,8 +1767,8 @@ struct Chart {
 
     template<typename Self>
     [[nodiscard]] bool onSinkAddedFromDnd(this Self& self, const dnd::Payload& payload) {
-        auto sink = SinkRegistry::instance().getSink(payload.sink_unique_name);
-        if (!sink || !detail::isCompatible(sink->signalKind(), Self::supportedSignals)) {
+        auto sink = SinkRegistry::instance().getSink(payload.sinkUniqueName);
+        if (!sink || !detail::isCompatible(sink->signalKind(), Self::kSupportedSignals)) {
             return false;
         }
         const std::string sinkName = findSinkReference(*sink);
@@ -1805,8 +1787,8 @@ struct Chart {
         }
         self.addSignalSink(std::move(sink));
         const auto fitAutoAxes = [&](AxisKind axis, const auto& autoScaleField) {
-            constexpr std::size_t axisCount = requires { autoScaleField.value[0]; } ? 3UZ : 1UZ;
-            for (std::size_t i = 0UZ; i < axisCount; ++i) {
+            constexpr std::size_t kAxisCount = requires { autoScaleField.value[0]; } ? 3UZ : 1UZ;
+            for (std::size_t i = 0UZ; i < kAxisCount; ++i) {
                 if (readAutoScale(autoScaleField, i)) {
                     self.enableAxisAutoFit(axis, i);
                 }
@@ -1818,10 +1800,10 @@ struct Chart {
     }
 
     template<typename Self>
-    void processAcceptedDndRemoval(this Self& self) {
-        if (dnd::g_state.isAcceptedFrom(self.unique_name)) {
-            self.onSinkRemovedFromDnd(dnd::g_state.sink_unique_name);
-            dnd::g_state.reset();
+    void removeSinkDraggedAway(this Self& self) {
+        if (dnd::gState.isAcceptedFrom(self.unique_name)) {
+            self.onSinkRemovedFromDnd(dnd::gState.sinkUniqueName);
+            dnd::gState.reset();
         }
     }
 
@@ -1838,12 +1820,12 @@ struct Chart {
     }
 
     template<typename Self>
-    bool handlePlotDropTarget(this Self& self, const char* payloadType = dnd::kPayloadType) {
+    bool acceptPlotDrop(this Self& self, const char* payloadType = dnd::kPayloadType) {
         static constexpr bool hasSupportedSignals = requires {
-            { Self::supportedSignals };
+            { Self::kSupportedSignals };
         };
-        static_assert(hasSupportedSignals, "Every chart type must define `static constexpr SignalKind supportedSignals = ...`");
-        const auto payloadResult = dnd::getPayloadStatus(payloadType, Self::supportedSignals);
+        static_assert(hasSupportedSignals, "Every chart type must define `static constexpr SignalKind kSupportedSignals = ...`");
+        const auto payloadResult = dnd::getPayloadStatus(payloadType, Self::kSupportedSignals);
         if (payloadResult.payload && !payloadResult.isCompatible) {
             return false;
         }
@@ -1860,7 +1842,7 @@ struct Chart {
             }
 
             if (payloadResult.payload->hasSource()) {
-                dnd::g_state.accepted = true;
+                dnd::gState.accepted = true;
             }
             return true;
         }
@@ -1870,19 +1852,19 @@ struct Chart {
     template<typename Self>
     void drawChartTypeSubmenu(this Self& self) {
         if (menu_icons::beginMenuWithIcon(menu_icons::kChangeType, "Change Type")) {
-            const auto minimumCompatibility = self.minimumSinkCompatibility();
+            const auto minimumCompatibility = self.displayedSignalKinds();
             for (const auto& type : registeredChartTypes()) {
                 bool disabled                     = false;
                 auto otherSignalCompatibilityIter = chartTypes().find(type);
                 if (otherSignalCompatibilityIter != chartTypes().end() && (otherSignalCompatibilityIter->second & minimumCompatibility) != minimumCompatibility) {
-                    disabled = true; // this chart type does not support all the signal types we are displaying
+                    disabled = true;
                 }
 
-                DigitizerUi::IMW::Disabled _(disabled);
-                bool                       isCurrent = type.ends_with(std::remove_cvref_t<Self>::kChartTypeName);
+                imw::Disabled _(disabled);
+                bool          isCurrent = type.ends_with(std::remove_cvref_t<Self>::kChartTypeName);
                 if (ImGui::MenuItem(type.c_str(), nullptr, isCurrent)) {
-                    if (!isCurrent && g_chartRequests && g_chartRequests->transmute) {
-                        g_chartRequests->transmute(self.unique_name, type);
+                    if (!isCurrent && gChartRequests && gChartRequests->transmute) {
+                        gChartRequests->transmute(self.unique_name, type);
                     }
                 }
             }
@@ -1890,12 +1872,10 @@ struct Chart {
         }
     }
 
-    /// Axis submenu content with scale, auto-fit, and min/max controls.
     template<typename Self>
     void drawAxisSubmenuContent(this Self& self, AxisKind axis, std::size_t axisIndex = 0UZ) {
         const bool isX = (axis == AxisKind::X);
 
-        // Get current plot limits for the specific axis being edited
         const ImAxis targetXAxis = ImAxis_X1 + static_cast<int>(isX ? axisIndex : 0);
         const ImAxis targetYAxis = ImAxis_Y1 + static_cast<int>(isX ? 0 : axisIndex);
         const auto   plotLimits  = ImPlot::GetPlotLimits(targetXAxis, targetYAxis);
@@ -1903,7 +1883,6 @@ struct Chart {
         const double plotMin     = axisLimits.Min;
         const double plotMax     = axisLimits.Max;
 
-        // axis header: identify which axis is being edited
         {
             std::string headerLabel;
             if constexpr (requires {
@@ -1934,9 +1913,9 @@ struct Chart {
                 return maxW + ImGui::GetStyle().FramePadding.x * 2.0f + ImGui::GetFrameHeight();
             }();
             ImGui::SetNextItemWidth(w);
-            if (DigitizerUi::BeginCombo(comboId, gr::meta::enumName(current).value_or("").data())) {
+            if (beginCombo(comboId, gr::meta::enumName(current).value_or("").data())) {
                 for (auto e : gr::meta::enumValues<E>()) {
-                    if (DigitizerUi::Selectable(gr::meta::enumName(e).value_or("").data(), e == current)) {
+                    if (selectable(gr::meta::enumName(e).value_or("").data(), e == current)) {
                         setter(e);
                     }
                     if (e == current) {
@@ -2011,15 +1990,12 @@ struct Chart {
         }
     }
 
-    /// draws the full history depth control widget: value input + unit combo + log slider + status line
-    /// n_history (gr::Size_t, samples) is the persistent property; display unit is UI-only state
     template<typename Self>
     void drawHistoryDepthWidget(this Self& self) {
-        const auto&          chartStyle  = DigitizerUi::LookAndFeel::instance().chartStyle;
+        const auto&          chartStyle  = LookAndFeel::instance().chartStyle;
         constexpr gr::Size_t kMinSamples = 4U;
         constexpr gr::Size_t kMaxSamples = 1'000'000U;
 
-        // canonical 1-2-5 decade stops for time and sample count
         constexpr std::array                   kTimeStops   = {0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1.0, 2.0, 3.0, 4.0, 5.0, 10.0, 20.0, 30.0, 60.0, 120.0, 300.0, 600.0, 1800.0, 3600.0};
         constexpr std::array<gr::Size_t, 22UZ> kSampleStops = {4U, 10U, 20U, 50U, 100U, 200U, 500U, 1'000U, 2'000U, 5'000U, 10'000U, 20'000U, 50'000U, 100'000U, 200'000U, 500'000U, 1'000'000U, 2'000'000U, 5'000'000U, 10'000'000U, 50'000'000U, 100'000'000U};
 
@@ -2053,15 +2029,14 @@ struct Chart {
         const auto   step            = [&] { return std::max(inSeconds() ? 0.1 : 100.0, displayValue * 0.1); };
         const double minDisplayValue = inSeconds() ? 0.001 : static_cast<double>(kMinSamples);
 
-        // --- Row 1: Icon + [- value +] [unit combo] ---
         {
-            DigitizerUi::IMW::Font iconFont(DigitizerUi::LookAndFeel::instance().fontIconsSolid);
+            imw::Font iconFont(LookAndFeel::instance().fontIconsSolid);
             ImGui::TextUnformatted(menu_icons::kHistory);
         }
         ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
         {
-            DigitizerUi::IMW::Font iconFont(DigitizerUi::LookAndFeel::instance().fontIconsSolid);
-            if (DigitizerUi::Button("\u{f146}##depthDec")) { // minus-square
+            imw::Font iconFont(LookAndFeel::instance().fontIconsSolid);
+            if (button("\u{f146}##depthDec")) { // minus-square
                 displayValue = std::max(displayValue - step(), minDisplayValue);
                 applyDisplayValue();
             }
@@ -2082,8 +2057,8 @@ struct Chart {
 
         ImGui::SameLine(0.0f, chartStyle.menuSpinnerSpacing);
         {
-            DigitizerUi::IMW::Font iconFont(DigitizerUi::LookAndFeel::instance().fontIconsSolid);
-            if (DigitizerUi::Button("\u{f0fe}##depthInc")) { // plus-square
+            imw::Font iconFont(LookAndFeel::instance().fontIconsSolid);
+            if (button("\u{f0fe}##depthInc")) { // plus-square
                 displayValue += step();
                 applyDisplayValue();
             }
@@ -2091,10 +2066,9 @@ struct Chart {
 
         ImGui::SameLine();
 
-        // unit combo (display unit only, not persisted)
         ImGui::SetNextItemWidth(chartStyle.historyDepthComboWidth);
         auto currentUnitName = gr::meta::enumName(self._historyDisplayUnit).value_or("");
-        if (DigitizerUi::BeginCombo("##historyUnit", currentUnitName.data())) {
+        if (beginCombo("##historyUnit", currentUnitName.data())) {
             for (auto unit : gr::meta::enumValues<HistoryUnit>()) {
                 bool enabled  = (unit != HistoryUnit::seconds) || rateKnown;
                 bool selected = (unit == self._historyDisplayUnit);
@@ -2102,8 +2076,8 @@ struct Chart {
                 if (!enabled) {
                     ImGui::BeginDisabled();
                 }
-                if (DigitizerUi::Selectable(gr::meta::enumName(unit).value_or("").data(), selected)) {
-                    self._historyDisplayUnit = unit; // just change display, n_history stays unchanged
+                if (selectable(gr::meta::enumName(unit).value_or("").data(), selected)) {
+                    self._historyDisplayUnit = unit;
                 }
                 if (selected) {
                     ImGui::SetItemDefaultFocus();
@@ -2126,7 +2100,6 @@ struct Chart {
             }
         });
 
-        // --- Row 2: Quick-adjust slider, snapped to the nearest stop ---
         const auto drawStopSlider = [&](const auto& stops, double current, auto&& formatStop, auto&& samplesAt) {
             const float sliderMin = 0.0f;
             const float sliderMax = static_cast<float>(stops.size() - 1);
@@ -2139,7 +2112,7 @@ struct Chart {
                     bestIdx  = static_cast<float>(i);
                 }
             }
-            if (DigitizerUi::SliderScalar("##historySlider", {.dataType = ImGuiDataType_Float, .data = &bestIdx, .min = &sliderMin, .max = &sliderMax, .format = formatStop(stops[static_cast<std::size_t>(std::round(bestIdx))]).c_str(), .flags = ImGuiSliderFlags_NoInput}) != DigitizerUi::SliderAction::NotEdited) {
+            if (sliderScalar("##historySlider", {.dataType = ImGuiDataType_Float, .data = &bestIdx, .min = &sliderMin, .max = &sliderMax, .format = formatStop(stops[static_cast<std::size_t>(std::round(bestIdx))]).c_str(), .flags = ImGuiSliderFlags_NoInput}) != SliderAction::NotEdited) {
                 self.n_history = samplesAt(stops[static_cast<std::size_t>(std::clamp(std::round(bestIdx), sliderMin, sliderMax))]);
                 scheduleResize();
             }
@@ -2178,7 +2151,6 @@ struct Chart {
             drawStopSlider(kSampleStops, static_cast<double>(self.n_history.value), formatSampleStop, [&](gr::Size_t samples) { return std::clamp(samples, kMinSamples, kMaxSamples); });
         }
 
-        // --- Row 3: Status line ---
         const gr::Size_t nSamples = self.n_history.value;
         if (self._historyDisplayUnit == HistoryUnit::seconds) {
             if (rateKnown) {
@@ -2210,18 +2182,15 @@ struct Chart {
         self._lastCapacityRefreshTime = ImGui::GetTime();
     }
 
-    /// processes pending debounced resize and periodic capacity refresh
     template<typename Self>
     void refreshCapacityIfNeeded(this Self& self) {
         const double now = ImGui::GetTime();
 
-        // debounced resize: apply pending capacity change after user stops adjusting
         if (self._pendingResizeTime > 0.0 && now >= self._pendingResizeTime) {
             self._pendingResizeTime = 0.0;
             self.updateAllSinksCapacity();
         }
 
-        // periodic refresh to keep capacity requests alive (before 60s expiry)
         if ((now - self._lastCapacityRefreshTime) >= kCapacityRefreshIntervalSeconds) {
             self.updateAllSinksCapacity();
         }
@@ -2249,7 +2218,7 @@ struct Chart {
         if (self.settings().changed()) {
             std::ignore = self.settings().applyStagedParameters();
         }
-        self.processAcceptedDndRemoval();
+        self.removeSinkDraggedAway();
         self.syncSinksIfNeeded(self.data_sinks.value);
         self.refreshCapacityIfNeeded();
 
@@ -2261,16 +2230,16 @@ struct Chart {
             effectiveShowLegend = chartMode == ChartMode::Interaction && self.show_legend.value;
         }
 
-        float  layoutOffset = layoutMode ? DigitizerUi::LookAndFeel::instance().dashboardStyle.layoutModeChartInset : 0.f;
+        float  layoutOffset = layoutMode ? LookAndFeel::instance().dashboardStyle.layoutModeChartInset : 0.f;
         ImVec2 plotSize     = ImGui::GetContentRegionAvail() - ImVec2(2 * layoutOffset, 2 * layoutOffset);
         float  legendShown  = 1.f;
-        if (effectiveShowLegend && DigitizerUi::LookAndFeel::instance().autoHideLegends) {
+        if (effectiveShowLegend && LookAndFeel::instance().autoHideLegends) {
             const ImGuiIO& io     = ImGui::GetIO();
             const ImVec2   corner = ImGui::GetCursorScreenPos();
             const bool     moving = ImRect(corner, corner + plotSize).Contains(io.MousePos) && (io.MouseDelta.x != 0.f || io.MouseDelta.y != 0.f);
             legendShown           = 1.f - self._legendAutoHide.advance(moving, io.DeltaTime);
             if (legendShown > 0.f) { // the countdown or the fade still running
-                DigitizerUi::globalFramePacer().requestFrame();
+                globalFramePacer().requestFrame();
             }
             effectiveShowLegend = legendShown > 0.f;
         }
@@ -2288,11 +2257,11 @@ struct Chart {
             effectiveShowGrid = self.show_grid.value;
         }
 
-        return DrawPrologue{.plotFlags = plotFlags, .plotSize = plotSize, .showLegend = effectiveShowLegend, .chartMode = chartMode, .showGrid = effectiveShowGrid, .style = ScopedChartStyle(DigitizerUi::LookAndFeel::instance().chartStyle, legendShown)};
+        return DrawPrologue{.plotFlags = plotFlags, .plotSize = plotSize, .showLegend = effectiveShowLegend, .chartMode = chartMode, .showGrid = effectiveShowGrid, .style = ScopedChartStyle(LookAndFeel::instance().chartStyle, legendShown)};
     }
 
     template<typename Self>
-    void handleSettingsChanged(this Self& self, const gr::property_map& newSettings) {
+    void applyChartSettings(this Self& self, const gr::property_map& newSettings) {
         if (newSettings.contains("data_sinks")) {
             self.onDataSinksChanged(self.data_sinks.value);
         }
@@ -2390,7 +2359,7 @@ struct Chart {
     }
 
     template<typename Self>
-    void handleCommonInteractions(this Self& self, ChartMode mode) {
+    void updateInteractions(this Self& self, ChartMode mode) {
         if (mode == ChartMode::Layout) {
             return;
         }
@@ -2403,7 +2372,6 @@ struct Chart {
                           self.y_min;
                           self.y_max;
                       }) {
-            // fit-once state machine and zoom detection — per-axis
             auto detectUserZoom = [](bool autoScale, auto& autoScaleField, auto& minField, auto& maxField, std::size_t idx, double plotMin, double plotMax, double prevMin, double prevMax, bool forceApplied) {
                 if (!autoScale || forceApplied || !std::isfinite(prevMin) || !std::isfinite(prevMax)) {
                     return;
@@ -2447,13 +2415,13 @@ struct Chart {
         self.drawContextMenu(mode, popupId.c_str());
         if (mode == ChartMode::Interaction) {
             self.setupLegendDragSources();
-            self.handlePlotDropTarget();
+            self.acceptPlotDrop();
         }
     }
 
     template<typename Self>
     void drawEmptyPlot(this Self& self, const char* message, ImPlotFlags plotFlags, const ImVec2& size, ChartMode chartMode) {
-        if (DigitizerUi::TouchHandler<>::BeginZoomablePlot(self.chart_name.value, size, plotFlags)) {
+        if (TouchHandler<>::beginZoomablePlot(self.chart_name.value, size, plotFlags)) {
             ImPlot::SetupAxis(ImAxis_X1, "X", ImPlotAxisFlags_None);
             ImPlot::SetupAxis(ImAxis_Y1, "Y", ImPlotAxisFlags_None);
             ImPlot::SetupAxisLimits(ImAxis_X1, -1.0, 1.0, ImPlotCond_Once);
@@ -2462,31 +2430,31 @@ struct Chart {
             auto limits = ImPlot::GetPlotLimits();
             ImPlot::PlotText(message, (limits.X.Min + limits.X.Max) / 2, (limits.Y.Min + limits.Y.Max) / 2);
             tooltip::showPlotMouseTooltip();
-            self.handleCommonInteractions(chartMode);
-            DigitizerUi::TouchHandler<>::EndZoomablePlot();
+            self.updateInteractions(chartMode);
+            TouchHandler<>::endZoomablePlot();
         }
     }
 
     template<typename FieldType>
     static void drawAutoSettingWidget(FieldType& field, std::string_view fieldName) {
-        using ValueType             = FieldType::value_type;
-        using LimitType             = FieldType::LimitType;
-        const float    kWidgetWidth = DigitizerUi::LookAndFeel::instance().chartStyle.menuSettingWidgetWidth;
-        constexpr bool hasLimits    = (LimitType::MinRange != LimitType::MaxRange);
-        constexpr bool useLog       = hasLimits && (static_cast<double>(LimitType::MaxRange) - static_cast<double>(LimitType::MinRange)) > 100'000.0;
+        using ValueType            = FieldType::value_type;
+        using LimitType            = FieldType::LimitType;
+        const float    widgetWidth = LookAndFeel::instance().chartStyle.menuSettingWidgetWidth;
+        constexpr bool kHasLimits  = (LimitType::MinRange != LimitType::MaxRange);
+        constexpr bool kUseLog     = kHasLimits && (static_cast<double>(LimitType::MaxRange) - static_cast<double>(LimitType::MinRange)) > 100'000.0;
 
         const auto             label       = std::format("##{}", fieldName);
-        const ImGuiSliderFlags sliderFlags = useLog ? ImGuiSliderFlags_Logarithmic : ImGuiSliderFlags_None;
+        const ImGuiSliderFlags sliderFlags = kUseLog ? ImGuiSliderFlags_Logarithmic : ImGuiSliderFlags_None;
 
         if constexpr (std::is_same_v<ValueType, bool>) {
             bool val = field.value;
-            if (DigitizerUi::Checkbox(label.c_str(), &val)) {
+            if (checkbox(label.c_str(), &val)) {
                 field = val;
             }
         } else if constexpr (std::is_floating_point_v<ValueType>) {
-            ImGui::SetNextItemWidth(kWidgetWidth);
+            ImGui::SetNextItemWidth(widgetWidth);
             float val = static_cast<float>(field.value);
-            if constexpr (hasLimits) {
+            if constexpr (kHasLimits) {
                 constexpr float              kMin = static_cast<float>(LimitType::MinRange);
                 constexpr float              kMax = static_cast<float>(LimitType::MaxRange);
                 const SliderScalarParameters sliderParams{
@@ -2497,11 +2465,11 @@ struct Chart {
                     .format   = "%.2f",
                     .flags    = sliderFlags,
                 };
-                if (DigitizerUi::SliderScalar(label.c_str(), sliderParams) != DigitizerUi::SliderAction::NotEdited) {
+                if (sliderScalar(label.c_str(), sliderParams) != SliderAction::NotEdited) {
                     field = static_cast<ValueType>(val);
                 }
                 detail::onScrollWheel([&](float wheel) {
-                    if constexpr (useLog) {
+                    if constexpr (kUseLog) {
                         val *= std::pow(1.1f, wheel);
                     } else {
                         val += wheel * (kMax - kMin) * 0.01f;
@@ -2520,7 +2488,7 @@ struct Chart {
         } else if constexpr (std::is_integral_v<ValueType> && !std::is_same_v<ValueType, bool>) {
             bool isColourPicker = false;
             if constexpr (std::is_same_v<ValueType, std::uint32_t>) {
-                if (DigitizerUi::isColorUnit(FieldType::unit())) {
+                if (isColorUnit(FieldType::unit())) {
                     isColourPicker = true;
                     ImVec4 col     = sinkColor(field.value);
                     float  rgb[3]{col.x, col.y, col.z};
@@ -2530,9 +2498,9 @@ struct Chart {
                 }
             }
             if (!isColourPicker) {
-                ImGui::SetNextItemWidth(kWidgetWidth);
+                ImGui::SetNextItemWidth(widgetWidth);
                 int val = static_cast<int>(field.value);
-                if constexpr (hasLimits) {
+                if constexpr (kHasLimits) {
                     constexpr int                kMin = static_cast<int>(LimitType::MinRange);
                     constexpr int                kMax = static_cast<int>(LimitType::MaxRange);
                     const SliderScalarParameters sliderParams{
@@ -2543,11 +2511,11 @@ struct Chart {
                         .format   = "%d",
                         .flags    = sliderFlags,
                     };
-                    if (DigitizerUi::SliderScalar(label.c_str(), sliderParams) != DigitizerUi::SliderAction::NotEdited) {
+                    if (sliderScalar(label.c_str(), sliderParams) != SliderAction::NotEdited) {
                         field = static_cast<ValueType>(val);
                     }
                     detail::onScrollWheel([&](float wheel) {
-                        if constexpr (useLog) {
+                        if constexpr (kUseLog) {
                             int newVal = static_cast<int>(std::round(static_cast<float>(val) * std::pow(1.1f, wheel)));
                             if (newVal == val) {
                                 newVal += (wheel > 0.0f) ? 1 : -1;
@@ -2569,22 +2537,23 @@ struct Chart {
                 }
             }
         } else if constexpr (std::is_same_v<ValueType, ImPlotColormap_>) {
-            ImGui::SetNextItemWidth(kWidgetWidth);
+            ImGui::SetNextItemWidth(widgetWidth);
             auto current = static_cast<ImPlotColormap>(field.value);
-            if (DigitizerUi::BeginCombo(label.c_str(), ImPlot::GetColormapName(current))) {
+            if (beginCombo(label.c_str(), ImPlot::GetColormapName(current))) {
                 const float gradientWidth = ImGui::GetContentRegionAvail().x;
                 const float lineHeight    = ImGui::GetTextLineHeight();
                 for (int i = 0; i < ImPlot::GetColormapCount(); ++i) {
                     bool   selected = (i == current);
                     ImVec2 pos      = ImGui::GetCursorScreenPos();
-                    if (DigitizerUi::Selectable(std::format("##{}", i).c_str(), selected, 0, ImVec2(gradientWidth, lineHeight))) {
+                    if (selectable(std::format("##{}", i).c_str(), selected, 0, ImVec2(gradientWidth, lineHeight))) {
                         field = static_cast<ImPlotColormap_>(i);
                     }
                     auto*       drawList = ImGui::GetWindowDrawList();
-                    const float step     = gradientWidth / 32.0f;
-                    for (int s = 0; s < 32; ++s) {
-                        float  t0 = static_cast<float>(s) / 32.0f;
-                        float  t1 = static_cast<float>(s + 1) / 32.0f;
+                    const int   steps    = LookAndFeel::instance().chartStyle.colormapPreviewSteps;
+                    const float step     = gradientWidth / static_cast<float>(steps);
+                    for (int s = 0; s < steps; ++s) {
+                        float  t0 = static_cast<float>(s) / static_cast<float>(steps);
+                        float  t1 = static_cast<float>(s + 1) / static_cast<float>(steps);
                         ImVec4 c0 = ImPlot::SampleColormap(t0, i);
                         ImVec4 c1 = ImPlot::SampleColormap(t1, i);
                         drawList->AddRectFilledMultiColor(ImVec2(pos.x + step * static_cast<float>(s), pos.y), ImVec2(pos.x + step * static_cast<float>(s + 1), pos.y + lineHeight), ImGui::GetColorU32(c0), ImGui::GetColorU32(c1), ImGui::GetColorU32(c1), ImGui::GetColorU32(c0));
@@ -2599,12 +2568,12 @@ struct Chart {
                 ImGui::EndCombo();
             }
         } else if constexpr (std::is_enum_v<ValueType>) {
-            ImGui::SetNextItemWidth(kWidgetWidth);
+            ImGui::SetNextItemWidth(widgetWidth);
             auto current = field.value;
-            if (DigitizerUi::BeginCombo(label.c_str(), gr::meta::enumName(current).value_or("").data())) {
+            if (beginCombo(label.c_str(), gr::meta::enumName(current).value_or("").data())) {
                 for (auto e : gr::meta::enumValues<ValueType>()) {
                     bool selected = (e == current);
-                    if (DigitizerUi::Selectable(gr::meta::enumName(e).value_or("").data(), selected)) {
+                    if (selectable(gr::meta::enumName(e).value_or("").data(), selected)) {
                         field = e;
                     }
                     if (selected) {
@@ -2614,7 +2583,7 @@ struct Chart {
                 ImGui::EndCombo();
             }
         } else if constexpr (std::is_same_v<ValueType, std::string>) {
-            ImGui::SetNextItemWidth(kWidgetWidth);
+            ImGui::SetNextItemWidth(widgetWidth);
             std::array<char, 256UZ> buf{};
             std::ranges::copy(field.value | std::views::take(buf.size() - 1), buf.begin());
             if (ImGui::InputText(label.c_str(), buf.data(), buf.size())) {
@@ -2628,18 +2597,18 @@ struct Chart {
     template<typename Self>
     void drawAutoGeneratedSettings(this Self& self, bool visibleOnly) {
         using SelfType = std::remove_cvref_t<Self>;
-        gr::refl::for_each_data_member_index<SelfType>([&](auto kIdx) {
-            constexpr std::size_t idx = decltype(kIdx)::value;
-            using MemberType          = gr::refl::data_member_type<SelfType, idx>;
-            using RawType             = std::remove_cvref_t<MemberType>;
+        gr::refl::for_each_data_member_index<SelfType>([&](auto index) {
+            constexpr std::size_t kIndex = decltype(index)::value;
+            using MemberType             = gr::refl::data_member_type<SelfType, kIndex>;
+            using RawType                = std::remove_cvref_t<MemberType>;
 
             if constexpr (gr::AnnotatedType<RawType>) {
-                constexpr std::string_view name = gr::refl::data_member_name<SelfType, idx>;
-                if constexpr (!detail::isExcludedFromAutoSettings(name)) {
-                    constexpr bool isVisible = RawType::visible();
-                    if (isVisible == visibleOnly) {
-                        auto& field = gr::refl::data_member<idx>(self);
-                        drawAutoSettingWidget(field, name);
+                constexpr std::string_view kName = gr::refl::data_member_name<SelfType, kIndex>;
+                if constexpr (!detail::isExcludedFromAutoSettings(kName)) {
+                    constexpr bool kIsVisible = RawType::visible();
+                    if (kIsVisible == visibleOnly) {
+                        auto& field = gr::refl::data_member<kIndex>(self);
+                        drawAutoSettingWidget(field, kName);
                     }
                 }
             }
@@ -2667,18 +2636,16 @@ struct Chart {
         if (mode == ChartMode::Interaction) {
             ImGui::Separator();
             self.drawChartTypeSubmenu();
-            opendigitizer::charts::drawRemoveChartMenuItem(self.unique_name);
+            drawRemoveChartMenuItem(self.unique_name);
         }
     }
 
-    /// draws axis-specific or full context menu depending on what was right-clicked
     template<typename Self>
     void drawContextMenu(this Self& self, ChartMode mode, const char* popupId) {
         if (mode == ChartMode::Layout) {
             return;
         }
 
-        // detect which specific axis (if any) is hovered
         std::optional<ImAxis> hoveredAxis;
         for (int i = 0; i < 3; ++i) {
             if (ImPlot::IsAxisHovered(ImAxis_X1 + i)) {
@@ -2700,7 +2667,6 @@ struct Chart {
             ImGui::OpenPopup(popupId);
         }
 
-        // detect double-click on any axis for fit-once
         if constexpr (requires {
                           self.x_auto_scale;
                           self.y_auto_scale;
@@ -2718,7 +2684,6 @@ struct Chart {
             }
         }
 
-        // axis-specific popup: show only controls for the clicked axis
         if (ImGui::BeginPopup("AxisContextMenu")) {
             if (self._hoveredAxisForMenu) {
                 const ImAxis      axis      = *self._hoveredAxisForMenu;
@@ -2729,7 +2694,6 @@ struct Chart {
             ImGui::EndPopup();
         }
 
-        // full canvas popup
         if (ImGui::BeginPopup(popupId)) {
             self.drawCommonContextMenuItems(mode);
             ImGui::EndPopup();
@@ -2737,6 +2701,6 @@ struct Chart {
     }
 };
 
-} // namespace opendigitizer::charts
+} // namespace gr::od::charts
 
 #endif // OPENDIGITIZER_CHARTS_CHART_HPP

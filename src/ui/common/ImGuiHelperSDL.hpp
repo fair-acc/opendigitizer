@@ -26,7 +26,7 @@
 #include <functional>
 #include <print>
 
-namespace imgui_helper {
+namespace gr::od::sdl {
 inline SDL_Window*   gWindow               = nullptr;
 inline SDL_GLContext gGLContext            = nullptr;
 inline bool          gImGuiSDL3Initialised = false;
@@ -39,7 +39,6 @@ inline bool requestGLContext(std::string_view windowTitle, ImVec2 windowSize, st
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
-    // glslVersionOut = "#version 300 es"; //TODO: check compatibility of this
     glslVersionOut = "#version 100";
 #else
 #ifdef __APPLE__
@@ -63,15 +62,15 @@ inline bool requestGLContext(std::string_view windowTitle, ImVec2 windowSize, st
     SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
 
 #ifdef __APPLE__
-    constexpr SDL_WindowFlags windowFlags = SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY | SDL_WINDOW_ALLOW_HIGHDPI;
+    constexpr SDL_WindowFlags kWindowFlags = SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY | SDL_WINDOW_ALLOW_HIGHDPI;
 #else
-    constexpr SDL_WindowFlags windowFlags = SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY;
+    constexpr SDL_WindowFlags kWindowFlags = SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY;
 #endif
     if (gWindow != nullptr) {
         SDL_DestroyWindow(gWindow);
         gWindow = nullptr;
     }
-    gWindow = SDL_CreateWindow(windowTitle.data(), static_cast<int>(windowSize.x), static_cast<int>(windowSize.y), windowFlags | extraWindowFlags);
+    gWindow = SDL_CreateWindow(windowTitle.data(), static_cast<int>(windowSize.x), static_cast<int>(windowSize.y), kWindowFlags | extraWindowFlags);
     if (!gWindow) {
         std::println(stderr, "[Main] SDL_CreateWindow failed: '{}'", SDL_GetError());
         return false;
@@ -110,7 +109,7 @@ inline bool initSDL(std::string& glslVersion, std::string_view windowTitle = "Op
 
 inline bool initImGui(const std::string& glslVersion) {
     if (gImGuiSDL3Initialised) {
-        return true; // already initialised
+        return true;
     }
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
@@ -124,9 +123,7 @@ inline bool initImGui(const std::string& glslVersion) {
     ImPlot::GetInputMap().Select = ImGuiMouseButton_Left;
     ImPlot::GetInputMap().Pan    = ImGuiMouseButton_Middle;
 
-    // For an Emscripten build we are disabling file-system access, so let's not
-    // attempt to do a fopen() of the imgui.ini file. You may manually call
-    // LoadIniSettingsFromMemory() to load settings from your own storage.
+    // the Emscripten build has no file-system access, so no imgui.ini
     io.IniFilename = nullptr;
 
     io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
@@ -138,7 +135,7 @@ inline bool initImGui(const std::string& glslVersion) {
         SDL_Quit();
         return false;
     }
-    ImXkcd::Init();
+    xkcd::init();
     gImGuiSDL3Initialised = true;
     return true;
 }
@@ -184,7 +181,7 @@ struct EventPumpResult {
     bool hadInput = false;
 };
 
-[[nodiscard]] inline EventPumpResult processEvents() {
+[[nodiscard]] inline EventPumpResult pollEvents() {
     EventPumpResult result;
     SDL_Event       event;
     while (SDL_PollEvent(&event)) {
@@ -197,13 +194,13 @@ struct EventPumpResult {
         case SDL_EVENT_QUIT:
         case SDL_EVENT_WINDOW_CLOSE_REQUESTED: result.running = false; return result;
         case SDL_EVENT_WINDOW_RESTORED:
-            DigitizerUi::gAppState.windowMode = WindowMode::RESTORED;
-            result.hadInput                   = true;
+            gAppState.windowMode = WindowMode::RESTORED;
+            result.hadInput      = true;
             break;
-        case SDL_EVENT_WINDOW_MINIMIZED: DigitizerUi::gAppState.windowMode = WindowMode::MINIMISED; break;
+        case SDL_EVENT_WINDOW_MINIMIZED: gAppState.windowMode = WindowMode::MINIMISED; break;
         case SDL_EVENT_WINDOW_MAXIMIZED:
-            DigitizerUi::gAppState.windowMode = WindowMode::MAXIMISED;
-            result.hadInput                   = true;
+            gAppState.windowMode = WindowMode::MAXIMISED;
+            result.hadInput      = true;
             break;
         case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
         case SDL_EVENT_WINDOW_RESIZED: { // SDL3 recommends this one for logical size changes
@@ -228,18 +225,18 @@ struct EventPumpResult {
         case SDL_EVENT_FINGER_MOTION: result.hadInput = true; break;
         default: break;
         }
-        DigitizerUi::TouchHandler<>::processSDLEvent(event);
+        TouchHandler<>::onSdlEvent(event);
     }
 
-    DigitizerUi::EventLoop::instance().fireCallbacks();
-    DigitizerUi::TouchHandler<>::updateGestures();
+    EventLoop::instance().fireCallbacks();
+    TouchHandler<>::updateGestures();
     return result;
 }
 
 [[maybe_unused]] inline bool newFrame() {
     ImGui_ImplOpenGL3_NewFrame();
     ImGui_ImplSDL3_NewFrame();
-    DigitizerUi::LookAndFeel::mutableInstance().updateFormFactor(ImGui::GetIO().DisplaySize);
+    LookAndFeel::mutableInstance().updateFormFactor(ImGui::GetIO().DisplaySize);
     ImGui::NewFrame();
 
     ImGui::SetNextWindowPos({0, 0});
@@ -252,8 +249,8 @@ struct EventPumpResult {
 
 [[maybe_unused]] inline bool renderFrame(const std::function<void()>& beforeSwap = {}) {
     ImGui::Render();
-    if (DigitizerUi::gAppState.prototypeMode) {
-        ImXkcd::Apply(ImGui::GetDrawData());
+    if (gAppState.prototypeMode) {
+        xkcd::apply(ImGui::GetDrawData());
     }
     if (!SDL_GL_MakeCurrent(gWindow, gGLContext)) {
         std::println("[Main] SDL_GL_MakeCurrent failed: '{}'", SDL_GetError());
@@ -262,7 +259,7 @@ struct EventPumpResult {
     const ImGuiIO& io = ImGui::GetIO();
     glViewport(0, 0, int(io.DisplaySize.x), int(io.DisplaySize.y));
     {
-        const ImVec4& clearColor = DigitizerUi::LookAndFeel::instance().palette().clearColor;
+        const ImVec4& clearColor = LookAndFeel::instance().palette().clearColor;
         glClearColor(clearColor.x, clearColor.y, clearColor.z, clearColor.w);
     }
     glClear(GL_COLOR_BUFFER_BIT);
@@ -271,7 +268,7 @@ struct EventPumpResult {
         beforeSwap();
     }
     SDL_GL_SwapWindow(gWindow);
-    setWindowMode(gWindow, DigitizerUi::gAppState.windowMode);
+    setWindowMode(gWindow, gAppState.windowMode);
     return true;
 }
 
@@ -282,7 +279,7 @@ inline bool teardownSDL() {
     if (gGLContext == nullptr) {
         return false;
     }
-    ImXkcd::Shutdown();
+    xkcd::shutdown();
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplSDL3_Shutdown();
     ImPlot3D::DestroyContext();
@@ -297,6 +294,6 @@ inline bool teardownSDL() {
     gGLContext = nullptr;
     return true;
 }
-} // namespace imgui_helper
+} // namespace gr::od::sdl
 
 #endif // IMGUIHELPERSDL_HPP

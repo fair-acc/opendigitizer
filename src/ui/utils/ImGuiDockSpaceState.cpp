@@ -7,30 +7,29 @@
 
 #include <imgui_internal.h>
 
-namespace {
-using namespace DigitizerUi::dock_space;
+using namespace gr::od;
 
-constexpr auto defaultSplitRatio = 1.F;
+namespace {
+using namespace dock_space;
+
+constexpr auto kDefaultSplitRatio = 1.F;
 
 gr::property_map saveLayoutVisitor(ImGuiDockNode* node, std::unordered_map<std::string_view, ImGuiWindow*>& remainingWindowsByName) noexcept {
     const auto [left, right] = node->ChildNodes;
 
     if (node->Windows.size() > 0) {
-        // this seems to only really be possible for floating windows, you can dock
-        // onto the window frame and both windows will take up the same node. We
-        // just don't save this
+        // only floating windows can share a node by docking onto the window frame: not saved
         return {};
     }
     if (!left && !right && node->Windows.size() == 0UL) {
-        // this node has no children or windows so it does not need to be
-        // remembered, probably the root node with nothing docked in it
+        // no children and no windows, probably the empty root node: nothing to remember
         return {};
     }
 
     gr::property_map out;
 
     // children share the size less the separator: a ratio of the node's size shrinks child 1 per save
-    const auto splitRatio = !left && !right ? defaultSplitRatio : [node, left, right] {
+    const auto splitRatio = !left && !right ? kDefaultSplitRatio : [node, left, right] {
         if (node->SplitAxis == ImGuiAxis_X) {
             return left && right ? left->Size.x / (left->Size.x + right->Size.x) : (left ? left->Size.x : right->Size.x) / node->Size.x;
         } else {
@@ -38,7 +37,7 @@ gr::property_map saveLayoutVisitor(ImGuiDockNode* node, std::unordered_map<std::
         }
     }();
 
-    if (splitRatio != defaultSplitRatio) {
+    if (splitRatio != kDefaultSplitRatio) {
         out.try_emplace(kRatio, splitRatio);
     }
 
@@ -72,7 +71,7 @@ void applyLayoutVisitor(const gr::property_map& region, ImGuiID nodeId) noexcept
         const bool  splitIsHorizontal = split->horizontal;
         const auto& regionInner       = split->inner;
         const auto  ratioIter         = regionInner.find(kRatio);
-        const float ratio             = ratioIter != regionInner.end() ? ratioIter->second.value_or(defaultSplitRatio) : defaultSplitRatio;
+        const float ratio             = ratioIter != regionInner.end() ? ratioIter->second.value_or(kDefaultSplitRatio) : kDefaultSplitRatio;
 
         const auto firstIter  = regionInner.find(kFirst);
         const auto secondIter = regionInner.find(kSecond);
@@ -97,7 +96,7 @@ void applyLayoutVisitor(const gr::property_map& region, ImGuiID nodeId) noexcept
 };
 } // namespace
 
-namespace DigitizerUi {
+namespace gr::od {
 std::optional<dock_space::Split> dock_space::findSplit(const gr::property_map& region) noexcept {
     const auto hsplit = region.find(kHSplit);
     const auto vsplit = region.find(kVSplit);
@@ -111,16 +110,13 @@ std::optional<dock_space::Split> dock_space::findSplit(const gr::property_map& r
     return std::nullopt;
 }
 
-/// Custom serialization of ImGui dockspace state. ImGui::SaveIniSettingsToMemory()
-/// and ImGui::LoadIniSettingsFromMemory() are also available and they mostly
-/// handle this, but then we end up doing something like putting an entire INI file
-/// as a string into our dashboard yaml, and we can't control what gets serialized.
+/// custom serialisation: ImGui::SaveIniSettingsToMemory() and LoadIniSettingsFromMemory() mostly handle this,
+/// but would put an entire INI file into the dashboard yaml, without control over what gets serialised
 gr::property_map saveDockSpaceState(std::span<const std::string_view> relevantWindowsNames, ImGuiID dockspaceNodeID) noexcept {
     ImGuiContext&  g                    = *GImGui;
     ImGuiDockNode* centralDockspaceNode = ImGui::DockBuilderGetNode(dockspaceNodeID);
     assert(centralDockspaceNode);
 
-    // pair up relevant window names with their imgui windows
     std::unordered_map<std::string_view, ImGuiWindow*> remainingWindowsByName;
     remainingWindowsByName.reserve(relevantWindowsNames.size());
     for (std::string_view windowName : relevantWindowsNames) {
@@ -188,4 +184,4 @@ bool restoreDockSpaceState(const gr::property_map& state, ImGuiID rootNodeID) no
     }
     return docked;
 }
-} // namespace DigitizerUi
+} // namespace gr::od

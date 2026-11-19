@@ -29,7 +29,7 @@
 #include <gnuradio-4.0/Tag.hpp>
 #include <gnuradio-4.0/Tensor.hpp>
 
-#include "../common/ImguiWrap.hpp"
+#include "../common/Imw.hpp"
 #include "../common/LookAndFeel.hpp"
 
 #include "../components/SignalColours.hpp"
@@ -42,9 +42,9 @@
 #include "../charts/Chart.hpp"
 #include "../charts/SignalSink.hpp"
 #include "../charts/SinkRegistry.hpp"
-#include "../utils/EmscriptenHelper.hpp"
+#include "../utils/Browser.hpp"
 
-namespace opendigitizer {
+namespace gr::od {
 
 using charts::AxisScale;
 using charts::tags::kFishyTagKey;
@@ -67,42 +67,40 @@ using charts::tags::drawTags;
 
 template<typename T>
 struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Content, "ImGui">> {
-    using ValueType                   = gr::meta::fundamental_base_value_type_t<T>;
-    using LineStyle                   = opendigitizer::LineStyle;
-    static constexpr bool IsStreaming = std::is_arithmetic_v<T>;
-    static constexpr bool IsDataSet   = gr::DataSetLike<T>;
-    static constexpr bool IsTensor    = gr::TensorLike<T>;
-    static constexpr bool IsEvents    = std::is_same_v<T, gr::property_map>;
+    using ValueType = gr::meta::fundamental_base_value_type_t<T>;
+    using LineStyle = gr::od::LineStyle;
+    template<typename U, gr::meta::fixed_string description = "", typename... Arguments>
+    using A = gr::Annotated<U, description, Arguments...>;
+
+    static constexpr bool kIsStreaming = std::is_arithmetic_v<T>;
+    static constexpr bool kIsDataSet   = gr::DataSetLike<T>;
+    static constexpr bool kIsTensor    = gr::TensorLike<T>;
+    static constexpr bool kIsEvents    = std::is_same_v<T, gr::property_map>;
 
     static constexpr SignalKind kSignalKind = []() consteval -> SignalKind {
-        if constexpr (IsEvents) {
+        if constexpr (kIsEvents) {
             return SignalKind::Events;
-        } else if constexpr (IsTensor) {
+        } else if constexpr (kIsTensor) {
             return SignalKind::Image2D;
-        } else if constexpr (IsDataSet) {
+        } else if constexpr (kIsDataSet) {
             return SignalKind::Dataset1D;
         } else {
             return SignalKind::Streaming;
         }
     }();
     static constexpr gr::Size_t kDefaultRequiredSize = []() consteval -> gr::Size_t {
-        if constexpr (IsTensor) {
+        if constexpr (kIsTensor) {
             return 1U;
-        } else if constexpr (IsEvents) {
+        } else if constexpr (kIsEvents) {
             return 64U;
-        } else if constexpr (IsDataSet) {
+        } else if constexpr (kIsDataSet) {
             return static_cast<gr::Size_t>(charts::Chart::kDefaultDataSetHistorySize);
         } else {
             return 2048U;
         }
     }();
 
-    template<typename U, gr::meta::fixed_string description = "", typename... Arguments>
-    using A = gr::Annotated<U, description, Arguments...>;
-
-    std::conditional_t<IsTensor, gr::TensorPortIn<ValueType>, std::conditional_t<IsEvents, gr::EventPortIn, gr::PortIn<T>>> in;
-
-    ManagedColour _colour;
+    std::conditional_t<kIsTensor, gr::TensorPortIn<ValueType>, std::conditional_t<kIsEvents, gr::EventPortIn, gr::PortIn<T>>> in;
 
     A<bool, "visible", gr::Doc<"Whether the signal is drawn in charts">>                                 visible = true;
     A<std::pmr::string, "name", gr::Doc<"Human-readable identifier for the signal">, gr::Visible>        signal_name;
@@ -128,22 +126,23 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
     GR_MAKE_REFLECTABLE(ImPlotSink, in, visible, signal_name, color, line_style, line_width, signal_quantity, signal_unit, signal_min, signal_max, sample_rate, abscissa_quantity, abscissa_unit, required_size, //
         dataset_index, n_history, history_offset, plot_tags, max_backlog);
 
+    ManagedColour _colour;
+
     double _xUtcOffset = [] {
         using namespace std::chrono;
         auto now = system_clock::now().time_since_epoch();
         return duration<double, std::nano>(now).count() * 1e-9;
     }(); // utc timestamp of the last tag or first sample
-    bool                      _xUtcOffsetInitialised = false; // set to true after first Tag with kTriggerTime arrives and the _xUtcOffset is set
+    bool                      _xUtcOffsetInitialised = false; // after the first kTriggerTime tag
     gr::HistoryBuffer<double> _xValues{required_size};        // needs to be 'double' because of required ns-level UTC timestamp precision
     gr::HistoryBuffer<T>      _yValues{required_size};
     std::deque<TagData>       _tagValues{};
 
-    double      _sample_period    = 1.0 / static_cast<double>(sample_rate);
-    std::size_t _sample_count     = 0UZ;
+    double      _samplePeriod     = 1.0 / static_cast<double>(sample_rate);
+    std::size_t _sampleCount      = 0UZ;
     std::size_t _totalSampleCount = 0UZ;
 
-    // shared mutex for thread-safe data access between processBulk() and draw()
-    // shared_ptr so SinkAdapter can safely hold a reference that outlives the block
+    // shared with the SinkAdapter, which may outlive the block
     std::shared_ptr<std::mutex> _dataMutex = std::make_shared<std::mutex>();
 
     CapacityRequests _capacityRequests{.minimum = gr::DataSetLike<T> ? charts::Chart::kDefaultDataSetHistorySize : 2048UZ};
@@ -151,31 +150,12 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
     // DataSet cache for float conversion
     mutable std::vector<gr::DataSet<float>> _dsCache;
 
-    std::deque<std::conditional_t<IsTensor, T, std::monostate>> _frames;               // Tensor<T> sinks: the newest max_backlog + 1 frames
-    std::uint64_t                                               _frameGeneration = 0U; // of _frames.back(), counting every received frame
-    std::vector<gr::property_map>                               _events;               // event sinks: the newest required_size events, owned
-    std::atomic<std::uint64_t>                                  _eventGeneration = 0U; // read by charts without the data guard
-    std::array<ImageAxis, 2>                                    _axes{};               // Tensor<T> sinks: from the latest gr:axis_* tags
+    std::deque<std::conditional_t<kIsTensor, T, std::monostate>> _frames;               // Tensor<T> sinks: the newest max_backlog + 1 frames
+    std::uint64_t                                                _frameGeneration = 0U; // of _frames.back(), counting every received frame
+    std::vector<gr::property_map>                                _events;               // event sinks: the newest required_size events, owned
+    std::atomic<std::uint64_t>                                   _eventGeneration = 0U; // read by charts without the data guard
+    std::array<ImageAxis, 2>                                     _axes{};               // Tensor<T> sinks: from the latest gr:axis_* tags
 
-    [[nodiscard]] std::span<const gr::property_map> events() const noexcept { return _events; }
-    [[nodiscard]] std::uint64_t                     eventGeneration() const noexcept { return _eventGeneration.load(std::memory_order_acquire); }
-
-    [[nodiscard]] ImageFrame imageFrame(std::uint64_t next = 0U) const {
-        if constexpr (IsTensor) {
-            if (_frames.empty()) {
-                return {};
-            }
-            const std::uint64_t oldest     = _frameGeneration + 1U - _frames.size();
-            const std::uint64_t generation = next == 0U ? _frameGeneration : std::clamp(next, oldest, _frameGeneration);
-            const T&            frame      = *std::next(_frames.begin(), static_cast<std::ptrdiff_t>(generation - oldest));
-            if (frame.rank() == 2UZ) {
-                return {.pixels = std::span<const ValueType>(frame.data(), frame.size()), .rows = frame.extents()[0], .columns = frame.extents()[1], .generation = generation, .axes = _axes};
-            }
-        }
-        return {};
-    }
-
-    // Adapter for SinkRegistry registration (shared ownership with registry)
     std::shared_ptr<SignalSink> _sinkAdapter;
 
     ImPlotSink(gr::property_map initParameters) : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Content, "ImGui">>(std::move(initParameters)) {}
@@ -184,6 +164,22 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
         if (_sinkAdapter) {
             static_cast<SinkAdapter<ImPlotSink<T>>*>(_sinkAdapter.get())->invalidate();
             charts::SinkRegistry::instance().unregisterSink(this->unique_name);
+        }
+    }
+
+    gr::work::Status processBulk(gr::InputSpanLike auto& input) noexcept {
+        if constexpr (kIsEvents) {
+            std::lock_guard lock(*_dataMutex);
+            for (const gr::property_map_view& event : input) {
+                _events.emplace_back(event);
+            }
+            const std::size_t excess = _events.size() - std::min(_events.size(), static_cast<std::size_t>(required_size.value));
+            _events.erase(_events.begin(), _events.begin() + static_cast<std::ptrdiff_t>(excess));
+            _eventGeneration.fetch_add(input.size(), std::memory_order_release);
+            std::ignore = input.consume(input.size());
+            return gr::work::Status::OK;
+        } else {
+            return appendSamples(input);
         }
     }
 
@@ -206,13 +202,30 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
             }
         }
 
-        _sample_period = 1.0 / static_cast<double>(sample_rate);
+        _samplePeriod = 1.0 / static_cast<double>(sample_rate);
 
-        // Register with SinkRegistry (only once)
         if (!_sinkAdapter) {
             _sinkAdapter = std::make_shared<SinkAdapter<ImPlotSink<T>>>(*this);
             charts::SinkRegistry::instance().registerSink(_sinkAdapter);
         }
+    }
+
+    [[nodiscard]] std::span<const gr::property_map> events() const noexcept { return _events; }
+    [[nodiscard]] std::uint64_t                     eventGeneration() const noexcept { return _eventGeneration.load(std::memory_order_acquire); }
+
+    [[nodiscard]] ImageFrame imageFrame(std::uint64_t next = 0U) const {
+        if constexpr (kIsTensor) {
+            if (_frames.empty()) {
+                return {};
+            }
+            const std::uint64_t oldest     = _frameGeneration + 1U - _frames.size();
+            const std::uint64_t generation = next == 0U ? _frameGeneration : std::clamp(next, oldest, _frameGeneration);
+            const T&            frame      = *std::next(_frames.begin(), static_cast<std::ptrdiff_t>(generation - oldest));
+            if (frame.rank() == 2UZ) {
+                return {.pixels = std::span<const ValueType>(frame.data(), frame.size()), .rows = frame.extents()[0], .columns = frame.extents()[1], .generation = generation, .axes = _axes};
+            }
+        }
+        return {};
     }
 
     [[nodiscard]] std::string_view signalName() const noexcept { return signal_name.value.empty() ? std::string_view(this->name.value) : std::string_view(signal_name.value); }
@@ -225,7 +238,7 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
     [[nodiscard]] std::string_view abscissaUnit() const noexcept { return abscissa_unit; }
 
     void updateAxisMetadataFromDataSet(const T& ds) {
-        if constexpr (IsDataSet) {
+        if constexpr (kIsDataSet) {
             const auto autoUpdate = this->settings().autoUpdateParameters(this->settings().activeContext());
             if (std::ranges::contains(autoUpdate, std::string_view{"abscissa_quantity"}) && !ds.axis_names.empty() && !ds.axis_names[0].empty()) {
                 abscissa_quantity = ds.axis_names[0];
@@ -245,9 +258,9 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
     [[nodiscard]] std::size_t totalSampleCount() const noexcept { return _totalSampleCount; }
 
     [[nodiscard]] std::size_t size() const noexcept {
-        if constexpr (IsStreaming) {
+        if constexpr (kIsStreaming) {
             return _xValues.size();
-        } else if constexpr (IsDataSet) {
+        } else if constexpr (kIsDataSet) {
             if (_yValues.empty()) {
                 return 0;
             }
@@ -261,9 +274,9 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
     }
 
     [[nodiscard]] double xAt(std::size_t i) const {
-        if constexpr (IsStreaming) {
+        if constexpr (kIsStreaming) {
             return _xValues.get_span(0)[i];
-        } else if constexpr (IsDataSet) {
+        } else if constexpr (kIsDataSet) {
             if (_yValues.empty()) {
                 return 0.0;
             }
@@ -277,9 +290,9 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
     }
 
     [[nodiscard]] float yAt(std::size_t i) const {
-        if constexpr (IsStreaming) {
+        if constexpr (kIsStreaming) {
             return static_cast<float>(_yValues.get_span(0)[i]);
-        } else if constexpr (IsDataSet) {
+        } else if constexpr (kIsDataSet) {
             if (_yValues.empty()) {
                 return 0.0f;
             }
@@ -301,12 +314,12 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
         return 0.0f;
     }
 
-    [[nodiscard]] bool        hasDataSets() const noexcept { return IsDataSet && _yValues.size() > 0; }
-    [[nodiscard]] std::size_t dataSetCount() const noexcept { return IsDataSet ? _yValues.size() : 0; }
+    [[nodiscard]] bool        hasDataSets() const noexcept { return kIsDataSet && _yValues.size() > 0; }
+    [[nodiscard]] std::size_t dataSetCount() const noexcept { return kIsDataSet ? _yValues.size() : 0; }
     [[nodiscard]] SignalKind  signalKind() const noexcept { return kSignalKind; }
 
     [[nodiscard]] std::span<const gr::DataSet<float>> dataSets() const {
-        if constexpr (IsDataSet) {
+        if constexpr (kIsDataSet) {
             auto span = _yValues.get_span(0);
             if constexpr (std::is_same_v<T, gr::DataSet<float>>) {
                 return span;
@@ -333,7 +346,7 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
     }
 
     void forEachTag(std::function<void(double, const gr::property_map&)> callback) const {
-        if constexpr (IsStreaming) {
+        if constexpr (kIsStreaming) {
             for (const auto& tag : _tagValues) {
                 callback(tag.timestamp, tag.map);
             }
@@ -341,7 +354,7 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
     }
 
     [[nodiscard]] double timeLast() const noexcept {
-        if constexpr (IsStreaming) {
+        if constexpr (kIsStreaming) {
             return _xValues.empty() ? 0.0 : _xValues.get_span(0).back();
         }
         return 0.0;
@@ -402,25 +415,9 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
         }
     }
 
-    gr::work::Status processBulk(gr::InputSpanLike auto& input) noexcept {
-        if constexpr (IsEvents) {
-            std::lock_guard lock(*_dataMutex);
-            for (const gr::property_map_view& event : input) {
-                _events.emplace_back(event);
-            }
-            const std::size_t excess = _events.size() - std::min(_events.size(), static_cast<std::size_t>(required_size.value));
-            _events.erase(_events.begin(), _events.begin() + static_cast<std::ptrdiff_t>(excess));
-            _eventGeneration.fetch_add(input.size(), std::memory_order_release);
-            std::ignore = input.consume(input.size());
-            return gr::work::Status::OK;
-        } else {
-            return processSamples(input);
-        }
-    }
-
-    gr::work::Status processSamples(gr::InputSpanLike auto& input) noexcept {
+    gr::work::Status appendSamples(gr::InputSpanLike auto& input) noexcept {
         std::lock_guard lock(*_dataMutex);
-        if constexpr (IsTensor) {
+        if constexpr (kIsTensor) {
             for (const auto& [relIndex, tagMapRef] : input.tags()) {
                 updateAxes(tagMapRef.get());
             }
@@ -442,7 +439,7 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
                 _frames.pop_front();
             }
             _frameGeneration += input.size();
-            _sample_count += input.size();
+            _sampleCount += input.size();
             _totalSampleCount += input.size();
             return gr::work::Status::OK;
         }
@@ -464,13 +461,13 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
                 const bool firstTrigger = !_xUtcOffsetInitialised;
 
                 if ((triggerTimeNs > 0U || tagEventTime > 0.0) && (firstTrigger || tagEventTime > _xUtcOffset)) {
-                    if constexpr (IsStreaming) {
+                    if constexpr (kIsStreaming) {
                         if (firstTrigger) {
-                            // Rebase provisional history so the next sample starts at the first valid trigger time.
-                            const double      timestampShift = tagEventTime - (_xUtcOffset + static_cast<double>(_sample_count) * _sample_period);
+                            // the provisional history rebased so that the next sample starts at the first valid trigger time
+                            const double      timestampShift = tagEventTime - (_xUtcOffset + static_cast<double>(_sampleCount) * _samplePeriod);
                             const std::size_t historySize    = _xValues.size();
                             for (std::size_t i = 0UZ; i < historySize; ++i) {
-                                const double timestamp = _xValues.front(); // Copy before pop_front()
+                                const double timestamp = _xValues.front();
                                 _xValues.pop_front();
                                 _xValues.push_back(timestamp + timestampShift);
                             }
@@ -479,14 +476,14 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
                             }
                         }
                         _xUtcOffset            = tagEventTime;
-                        _sample_count          = 0UZ;
+                        _sampleCount           = 0UZ;
                         _xUtcOffsetInitialised = true;
                     }
                 } else {
                     tagOK = false; // mark fishy tag
                 }
 
-                if (plot_tags && IsStreaming) {
+                if (plot_tags && kIsStreaming) {
                     _tagValues.push_back({.timestamp = _xUtcOffset, .map = tagMap});
                     if (!tagOK) {
                         _tagValues.back().map[std::pmr::string(kFishyTagKey)] = true;
@@ -495,26 +492,25 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
             }
 
             // surface dropped-sample tags at the current position so the gap is visible in the plot
-            if (plot_tags && IsStreaming && tagMap.contains(gr::tag::kNDroppedSamples)) {
-                _tagValues.push_back({.timestamp = _xUtcOffset + static_cast<double>(_sample_count) * _sample_period, .map = tagMap});
+            if (plot_tags && kIsStreaming && tagMap.contains(gr::tag::kNDroppedSamples)) {
+                _tagValues.push_back({.timestamp = _xUtcOffset + static_cast<double>(_sampleCount) * _samplePeriod, .map = tagMap});
             }
         }
 
-        // Process all samples in the span
         for (const auto& sample : input) {
             if constexpr (std::is_arithmetic_v<T>) {
-                _xValues.push_back(_xUtcOffset + static_cast<double>(_sample_count) * _sample_period);
+                _xValues.push_back(_xUtcOffset + static_cast<double>(_sampleCount) * _samplePeriod);
             }
             _yValues.push_back(sample);
-            _sample_count++;
+            _sampleCount++;
             _totalSampleCount++;
 
-            if constexpr (IsDataSet) {
+            if constexpr (kIsDataSet) {
                 updateAxisMetadataFromDataSet(sample);
             }
         }
 
-        if constexpr (IsStreaming) {
+        if constexpr (kIsStreaming) {
             if (!_xValues.empty()) {
                 const double oldestSampleTime = _xValues.get_span(0).front();
                 std::erase_if(_tagValues, [oldestSampleTime](const auto& tag) { return tag.timestamp < oldestSampleTime; });
@@ -525,7 +521,7 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
     }
 
     gr::work::Status draw(const gr::property_map& config = {}) noexcept {
-        if constexpr (IsEvents) {
+        if constexpr (kIsEvents) {
             return gr::work::Status::OK;
         } else {
             return drawSamples(config);
@@ -534,7 +530,7 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
 
     gr::work::Status drawSamples(const gr::property_map& config) noexcept {
         using enum AxisScale;
-        if constexpr (IsTensor) {
+        if constexpr (kIsTensor) {
             return gr::work::Status::OK;
         }
 
@@ -542,16 +538,14 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
             return gr::work::Status::OK;
         }
 
-        // Acquire lock for thread-safe data access during rendering.
-        // Data is copied to GPU buffers by ImPlot API calls below.
+        // the ImPlot calls below copy the data to GPU buffers
         std::lock_guard lock(*_dataMutex);
 
-        // Set axes from config
         {
-            static constexpr ImAxis xAxes[] = {ImAxis_X1, ImAxis_X2, ImAxis_X3};
-            static constexpr ImAxis yAxes[] = {ImAxis_Y1, ImAxis_Y2, ImAxis_Y3};
-            ImPlot::SetAxis(xAxes[std::clamp(getValueOrDefault<std::size_t>(config, "xAxisID", 0UZ), 0UZ, 2UZ)]);
-            ImPlot::SetAxis(yAxes[std::clamp(getValueOrDefault<std::size_t>(config, "yAxisID", 0UZ), 0UZ, 2UZ)]);
+            static constexpr ImAxis kXAxes[] = {ImAxis_X1, ImAxis_X2, ImAxis_X3};
+            static constexpr ImAxis kYAxes[] = {ImAxis_Y1, ImAxis_Y2, ImAxis_Y3};
+            ImPlot::SetAxis(kXAxes[std::clamp(getValueOrDefault<std::size_t>(config, "xAxisID", 0UZ), 0UZ, 2UZ)]);
+            ImPlot::SetAxis(kYAxes[std::clamp(getValueOrDefault<std::size_t>(config, "yAxisID", 0UZ), 0UZ, 2UZ)]);
         }
         std::string     scaleStr  = config.contains("scale") ? config.find_value("scale").value_or(gr::pmt::Value{}).value_or(std::string{"Linear"}) : std::string{"Linear"};
         const AxisScale axisScale = gr::meta::parseEnum<AxisScale>(Digitizer::trimWhitespace(scaleStr)).value_or(AxisScale::Linear);
@@ -564,28 +558,27 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
         }
 
         struct PlotLineContext {
-            std::span<const double>    x_values;
-            std::span<const ValueType> y_values;
-            AxisScale                  axis_scale;
-            ValueType                  y_offset{0};
+            std::span<const double>    xValues;
+            std::span<const ValueType> yValues;
+            AxisScale                  axisScale;
+            ValueType                  yOffset{0};
         };
 
-        constexpr auto pointGetter = +[](int signedIndex, void* user_data) -> ImPlotPoint {
+        constexpr auto pointGetter = +[](int signedIndex, void* userData) -> ImPlotPoint {
             std::size_t idx = static_cast<std::size_t>(signedIndex);
-            auto*       ctx = static_cast<PlotLineContext*>(user_data);
+            auto*       ctx = static_cast<PlotLineContext*>(userData);
 
-            double xVal = ctx->x_values[idx];
-            double yVal = static_cast<double>(ctx->y_values[idx] + ctx->y_offset);
+            double xVal = ctx->xValues[idx];
+            double yVal = static_cast<double>(ctx->yValues[idx] + ctx->yOffset);
 
-            switch (ctx->axis_scale) {
+            switch (ctx->axisScale) {
             case Time: return {xVal, yVal};
 
             case LinearReverse: {
                 if constexpr (gr::DataSetLike<T>) {
                     return {xVal, yVal};
                 } else {
-                    // fundamental types
-                    double xMax = ctx->x_values.back();
+                    double xMax = ctx->xValues.back();
                     return {xVal - xMax, yVal};
                 }
             }
@@ -597,8 +590,7 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
                 if constexpr (gr::DataSetLike<T>) {
                     return {xVal, yVal};
                 } else {
-                    // fundamental types
-                    double xMin = ctx->x_values.front();
+                    double xMin = ctx->xValues.front();
                     return {xVal - xMin, yVal};
                 }
             }
@@ -613,7 +605,7 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
             // draw tags before data (data is drawn on top)
             if (getValueOrDefault<bool>(config, "draw_tag", false)) {
                 ImVec4 tagColor = lineColor;
-                tagColor.w *= DigitizerUi::LookAndFeel::instance().chartStyle.tagAlpha;
+                tagColor.w *= LookAndFeel::instance().chartStyle.tagAlpha;
                 drawTags(
                     [&](auto&& fn) {
                         for (const auto& t : _tagValues) {
@@ -624,14 +616,13 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
             }
 
             PlotLineContext ctx{_xValues.get_span(0UZ), _yValues.get_span(0UZ), axisScale, ValueType{0}};
-            ImPlot::PlotLineG(label, pointGetter, &ctx, static_cast<int>(_xValues.size())); // limited to int, even if x_values can have long values
+            ImPlot::PlotLineG(label, pointGetter, &ctx, static_cast<int>(_xValues.size())); // limited to int, even if xValues can have long values
         } else if constexpr (gr::DataSetLike<T>) {
             const std::size_t nMax = std::min(_yValues.size(), static_cast<std::size_t>(n_history));
             for (std::size_t historyIdx = nMax; historyIdx-- > 0;) {
                 // draw newest DataSet last -> on top
-                const gr::DataSet<ValueType>& dataSet = _yValues.at(historyIdx);
-                // dimension checks
-                const std::size_t nsignals = dataSet.size();
+                const gr::DataSet<ValueType>& dataSet  = _yValues.at(historyIdx);
+                const std::size_t             nsignals = dataSet.size();
                 if (dataSet.extents.size() != 1UZ && nsignals < 1UZ) {
                     continue; // not 1D signal or not enough signals
                 }
@@ -641,7 +632,6 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
 
                 std::vector<double> xAxisDouble;
                 if constexpr (!std::is_same_v<ValueType, double>) {
-                    // TODO: find a smarter zero-copy solution
                     if (!dataSet.axis_values.empty()) {
                         auto xSpan = dataSet.axisValues(0UZ);
                         xAxisDouble.assign(xSpan.begin(), xSpan.end());
@@ -658,7 +648,6 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
                 // NOTE: npoints is long int, while ImPlot lines are limited to int
                 const auto npoints = cast_to_signed(dataSet.axisValues(0UZ).size());
                 if (dataset_index == std::numeric_limits<gr::Size_t>::max()) {
-                    // draw all signals
                     auto [minVal, maxVal] = std::ranges::minmax(dataSet.signal_values);
                     ValueType baseOffset  = static_cast<ValueType>(history_offset) * (maxVal - minVal);
                     for (std::size_t sigIdx = 0UZ; sigIdx < nsignals; ++sigIdx) {
@@ -677,7 +666,7 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
                     ImPlot::PlotLineG(dataSet.signal_names[sigIdx].c_str(), pointGetter, &ctx, static_cast<int>(npoints));
                 }
             }
-        } //  if constexpr (gr::DataSetLike<T>) { .. }
+        }
 
         return gr::work::Status::OK;
     }
@@ -685,10 +674,9 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
 
 template<typename... T>
 void registerPlotSinks(gr::BlockRegistry& registry) {
-    std::ignore = gr::registerBlock<ImPlotSink, T...>(registry);
-    (plotSinkTypes().insert_or_assign(std::string(gr::meta::type_name<ImPlotSink<T>>()), gr::meta::is_instantiation_of<T, gr::DataSet>), ...);
+    (plotSinkTypes().insert_or_assign(registerWithIdPrefix<ImPlotSink<T>>(registry, kOpendigitizerIdPrefix), gr::meta::is_instantiation_of<T, gr::DataSet>), ...);
 }
 
-} // namespace opendigitizer
+} // namespace gr::od
 
 #endif

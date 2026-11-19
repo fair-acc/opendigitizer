@@ -289,15 +289,15 @@ endif()
 # each layer links only the one below; consumers pick the lowest layer they need via the opendigitizer:: aliases
 add_library(
   opendigitizer-ui-common STATIC
-  common/AppDefinitions.hpp
+  common/ViewMode.hpp
   common/AppState.hpp
   common/Events.hpp
   common/FramePacer.hpp
-  common/ImguiWrap.cpp
-  common/ImguiWrap.hpp
+  common/Imw.cpp
+  common/Imw.hpp
   common/LookAndFeel.hpp
   common/TouchHandler.hpp
-  utils/EmscriptenHelper.hpp
+  utils/Browser.hpp
   utils/TransparentStringHash.hpp)
 target_include_directories(opendigitizer-ui-common PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>)
 target_link_libraries(
@@ -330,8 +330,8 @@ add_library(
   components/SortFilterTreeModel.hpp
   components/Splitter.cpp
   components/Splitter.hpp
-  components/StyledStandardWidgets.cpp
-  components/StyledStandardWidgets.hpp
+  components/StyledWidgets.cpp
+  components/StyledWidgets.hpp
   components/VirtualScrollTable.hpp
   components/ViewModeBlocker.hpp
   components/YesNoPopup.hpp)
@@ -441,11 +441,11 @@ add_library(
   MapUtils.hpp
   PaneBlocks.cpp
   PaneBlocks.hpp
-  Setup.cpp
-  Setup.hpp
-  SetupLocalisationBlocks.cpp
-  SetupSignalBlocks.cpp
-  SetupVideoBlocks.cpp
+  DashboardBlocks.cpp
+  DashboardBlocks.hpp
+  DashboardBlocksLocalisation.cpp
+  DashboardBlocksSignal.cpp
+  DashboardBlocksVideo.cpp
   StatusBarView.cpp
   StatusBarView.hpp
   ToolbarView.cpp
@@ -453,7 +453,7 @@ add_library(
   UniqueNameRegistry.hpp
   blocks/Arithmetic.hpp
   blocks/RemoteSource.hpp
-  blocks/StatusBarBlock.hpp
+  blocks/SchedulerStateIndicator.hpp
   blocks/StridedWindow.hpp
   blocks/TagToSample.hpp
   blocks/TestSpectrumGenerator.hpp
@@ -665,11 +665,11 @@ if(EMSCRIPTEN)
 #include <array>
 #include <string_view>
 
-namespace Digitizer {
+namespace gr::od {
 // Generated from GNURADIO4_WASM_PLUGIN_FILES (Audio excluded), sorted smallest-first.
 inline constexpr std::array<std::string_view, ${_od_plugin_count}> kPluginWasmNames{
 ${_od_plugin_names_code}};
-} // namespace Digitizer
+} // namespace gr::od
 ")
     target_include_directories(opendigitizer-dashboard PUBLIC "${CMAKE_CURRENT_BINARY_DIR}/include")
     message(STATUS "Using gnuradio4 SIDE_MODULE plugins: ${_od_plugin_name_list}")

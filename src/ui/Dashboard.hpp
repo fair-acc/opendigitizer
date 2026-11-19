@@ -36,18 +36,14 @@ class Graph;
 class BlockModel;
 } // namespace gr
 
-namespace opendigitizer {
-struct SignalSink; // forward declaration
-}
+namespace gr::od {
 
-namespace DigitizerUi {
-
+struct SignalSink;
 struct DashboardDescription;
 struct SignalData;
 
-// Use axis types from charts namespace (avoid duplication)
-using AxisScale   = opendigitizer::charts::AxisScale;
-using LabelFormat = opendigitizer::charts::LabelFormat;
+using AxisScale   = charts::AxisScale;
+using LabelFormat = charts::LabelFormat;
 
 enum class StorageKind { Memory, Remote, Example, File };
 
@@ -77,9 +73,9 @@ struct DashboardStorageInfo {
 
 struct DashboardDescription {
     using OptionalTimePoint = std::optional<std::chrono::time_point<std::chrono::system_clock>>;
-    using StringMap         = std::unordered_map<std::string, std::string, opendigitizer::TransparentStringHash, std::equal_to<>>;
+    using StringMap         = std::unordered_map<std::string, std::string, TransparentStringHash, std::equal_to<>>;
 
-    static constexpr const char* fileExtension = ".ddd";
+    static constexpr const char* kFileExtension = ".ddd";
 
     std::string                           name;
     std::shared_ptr<DashboardStorageInfo> storageInfo;
@@ -95,7 +91,7 @@ struct DashboardDescription {
 };
 
 struct Dashboard {
-    using AxisConfig = opendigitizer::charts::AxisConfig;
+    using AxisConfig = charts::AxisConfig;
 
     struct UIWindow {
         std::shared_ptr<DockSpace::Window> window;
@@ -104,7 +100,7 @@ struct Dashboard {
 
     struct PropertyControlWindow {
         std::shared_ptr<DockSpace::Window> window;
-        std::string                        label; // chosen by user
+        std::string                        label;
     };
 
     std::shared_ptr<gr::PluginLoader> pluginLoader = [] {
@@ -174,7 +170,7 @@ struct Dashboard {
         return nullptr;
     }
 };
-} // namespace DigitizerUi
+} // namespace gr::od
 
 namespace grc_compat {
 

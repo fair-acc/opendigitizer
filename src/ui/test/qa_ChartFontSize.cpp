@@ -3,6 +3,8 @@
 #include "../common/LookAndFeel.hpp"
 #include <boost/ut.hpp>
 
+using namespace gr::od;
+
 using namespace boost;
 
 namespace {
@@ -18,26 +20,26 @@ struct FontSizes {
 };
 } // namespace
 
-struct TestApp : public DigitizerUi::test::ImGuiTestApp {
-    using DigitizerUi::test::ImGuiTestApp::ImGuiTestApp;
+struct TestApp : public test::ImGuiTestApp {
+    using test::ImGuiTestApp::ImGuiTestApp;
 
     void registerTests() override {
         ImGuiTest* t = IM_REGISTER_TEST(engine(), "chart_font_size", "follows host font size");
         t->SetVarsDataType<FontSizes>();
 
         t->GuiFunc = [](ImGuiTestContext* ctx) {
-            IMW::Window window("Test Window", nullptr, ImGuiWindowFlags_NoSavedSettings);
+            imw::Window window("Test Window", nullptr, ImGuiWindowFlags_NoSavedSettings);
             auto&       sizes      = ctx->GetVars<FontSizes>();
-            const auto& lnf        = DigitizerUi::LookAndFeel::instance();
+            const auto& lnf        = LookAndFeel::instance();
             const float normalSize = lnf.fontNormal()->LegacySize;
 
             auto sizeOf = [&](ImFont* face, float hostSize) {
-                IMW::FontWithSize host(nullptr, hostSize);
-                IMW::FontWithSize faceWithSize(face, lnf.relativeFontSize(face));
+                imw::FontWithSize host(nullptr, hostSize);
+                imw::FontWithSize faceWithSize(face, lnf.relativeFontSize(face));
                 return ImGui::GetFontSize();
             };
             auto legacySizeOf = [&](ImFont* face) {
-                IMW::FontWithSize faceWithSize(face, face->LegacySize);
+                imw::FontWithSize faceWithSize(face, face->LegacySize);
                 return ImGui::GetFontSize();
             };
 
@@ -49,15 +51,15 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             sizes.hostDoubleTiny  = sizeOf(lnf.fontTiny(), 2.f * normalSize);
             sizes.hostDoubleSmall = sizeOf(lnf.fontSmall(), 2.f * normalSize);
 
-            IMW::FontWithSize host(nullptr, normalSize);
-            IMW::FontWithSize face(nullptr, DigitizerUi::LookAndFeel::instance().relativeFontSize(nullptr));
+            imw::FontWithSize host(nullptr, normalSize);
+            imw::FontWithSize face(nullptr, LookAndFeel::instance().relativeFontSize(nullptr));
             sizes.hostNormalNoFonts = ImGui::GetFontSize();
         };
 
         t->TestFunc = [](ImGuiTestContext* ctx) {
             ut::test("chart faces follow the host font size") = [ctx] {
                 const auto& sizes = ctx->GetVars<FontSizes>();
-                opendigitizer::test::waitUntil(ctx, "a frame measured the sizes", [&sizes] { return sizes.hostNormalNoFonts > 0.f; });
+                test::waitUntil(ctx, "a frame measured the sizes", [&sizes] { return sizes.hostNormalNoFonts > 0.f; });
                 constexpr float kTol = 1e-3f;
 
                 ut::expect(sizes.legacyTiny > 0.f && sizes.legacySmall > sizes.legacyTiny);

@@ -14,28 +14,30 @@
 #include <numbers>
 #include <optional>
 
+using namespace gr::od;
+
 using namespace boost;
 using namespace boost::ut;
 
 namespace {
-using opendigitizer::test::TestStreamingSink;
+using test::TestStreamingSink;
 
 constexpr ImVec2 kChartPos{50.f, 50.f};
 constexpr ImVec2 kChartSize{640.f, 400.f};
 
-using Mode = opendigitizer::charts::ChartMode;
+using Mode = charts::ChartMode;
 
 struct TestState {
-    std::shared_ptr<TestStreamingSink>              voltage;
-    std::shared_ptr<TestStreamingSink>              current;
-    std::unique_ptr<opendigitizer::charts::XYChart> singleAxis;
-    std::unique_ptr<opendigitizer::charts::XYChart> twoAxes;
-    opendigitizer::charts::XYChart*                 drawn = nullptr;
-    Mode                                            mode  = Mode::View;
-    std::optional<ImVec4>                           hostBackground;
-    std::optional<DigitizerUi::ChartStyle>          fontProbeStyle;
-    ImFont*                                         probedFont     = nullptr;
-    float                                           probedFontSize = 0.f;
+    std::shared_ptr<TestStreamingSink> voltage;
+    std::shared_ptr<TestStreamingSink> current;
+    std::unique_ptr<charts::XYChart>   singleAxis;
+    std::unique_ptr<charts::XYChart>   twoAxes;
+    charts::XYChart*                   drawn = nullptr;
+    Mode                               mode  = Mode::View;
+    std::optional<ImVec4>              hostBackground;
+    std::optional<ChartStyle>          fontProbeStyle;
+    ImFont*                            probedFont     = nullptr;
+    float                              probedFontSize = 0.f;
 };
 
 std::shared_ptr<TestStreamingSink> makeSink(std::string name, std::uint32_t color, std::string quantity, std::string unit, double amplitude, double phase) {
@@ -47,12 +49,12 @@ std::shared_ptr<TestStreamingSink> makeSink(std::string name, std::uint32_t colo
         const double t = static_cast<double>(i) / 100.0;
         sink->pushSample(t, static_cast<float>(amplitude * std::sin(2.0 * std::numbers::pi * t + phase)));
     }
-    std::ignore = opendigitizer::charts::SinkRegistry::instance().registerSink(sink);
+    std::ignore = charts::SinkRegistry::instance().registerSink(sink);
     return sink;
 }
 
-std::unique_ptr<opendigitizer::charts::XYChart> makeChart(std::string name, std::vector<std::string> sinks, bool showLegend) {
-    auto chart               = std::make_unique<opendigitizer::charts::XYChart>();
+std::unique_ptr<charts::XYChart> makeChart(std::string name, std::vector<std::string> sinks, bool showLegend) {
+    auto chart               = std::make_unique<charts::XYChart>();
     chart->chart_name.value  = std::move(name);
     chart->data_sinks.value  = std::move(sinks);
     chart->show_legend.value = showLegend;
@@ -91,9 +93,9 @@ bool isWhite(Rgb c) { return c.r > 200 && c.g > 200 && c.b > 200; }
 bool isGrey(Rgb c) { return std::abs(c.r - c.g) <= 2 && std::abs(c.g - c.b) <= 2; }
 
 struct Pixels {
-    DigitizerUi::test::ImGuiTestApp::CapturedPixels _image;
+    test::ImGuiTestApp::CapturedPixels _image;
 
-    explicit Pixels(ImGuiTestContext* ctx) : _image(DigitizerUi::test::ImGuiTestApp::captureSettledPixels(*ctx, ImRect(kChartPos, kChartPos + kChartSize))) {}
+    explicit Pixels(ImGuiTestContext* ctx) : _image(test::ImGuiTestApp::captureSettledPixels(*ctx, ImRect(kChartPos, kChartPos + kChartSize))) {}
 
     [[nodiscard]] Rgb at(int x, int y) const {
         const unsigned int pixel = _image.rgba[static_cast<std::size_t>(y * _image.width + x)];
@@ -141,24 +143,24 @@ struct Pixels {
     }
 };
 
-DigitizerUi::ChartStyle chartStyle(auto configure) {
-    DigitizerUi::ChartStyle style;
+ChartStyle chartStyle(auto configure) {
+    ChartStyle style;
     configure(style);
     return style;
 }
 
-std::unique_ptr<Pixels> drawAndCapture(ImGuiTestContext* ctx, opendigitizer::charts::XYChart& chart, Mode mode, const DigitizerUi::ChartStyle& style) {
-    gState->drawn                                          = std::addressof(chart);
-    gState->mode                                           = mode;
-    DigitizerUi::LookAndFeel::mutableInstance().chartStyle = style;
-    auto pixels                                            = std::make_unique<Pixels>(ctx);
-    DigitizerUi::LookAndFeel::mutableInstance().chartStyle = {};
+std::unique_ptr<Pixels> drawAndCapture(ImGuiTestContext* ctx, charts::XYChart& chart, Mode mode, const ChartStyle& style) {
+    gState->drawn                             = std::addressof(chart);
+    gState->mode                              = mode;
+    LookAndFeel::mutableInstance().chartStyle = style;
+    auto pixels                               = std::make_unique<Pixels>(ctx);
+    LookAndFeel::mutableInstance().chartStyle = {};
     return pixels;
 }
 } // namespace
 
-struct TestApp : public DigitizerUi::test::ImGuiTestApp {
-    using DigitizerUi::test::ImGuiTestApp::ImGuiTestApp;
+struct TestApp : public test::ImGuiTestApp {
+    using test::ImGuiTestApp::ImGuiTestApp;
 
     void registerTests() override {
         ImGuiTest* t = IM_REGISTER_TEST(engine(), "chartstyle", "chart over fixed data");
@@ -169,12 +171,12 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             if (gState->hostBackground) {
                 ImGui::PushStyleColor(ImGuiCol_WindowBg, *gState->hostBackground);
             }
-            IMW::Window window("Chart", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
+            imw::Window window("Chart", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
             if (gState->hostBackground) {
                 ImGui::PopStyleColor();
             }
             if (gState->fontProbeStyle) {
-                const opendigitizer::charts::ScopedChartStyle style(*gState->fontProbeStyle);
+                const charts::ScopedChartStyle style(*gState->fontProbeStyle);
                 gState->probedFont     = ImGui::GetFont();
                 gState->probedFontSize = ImGui::GetStyle().FontSizeBase;
                 return;
@@ -182,11 +184,11 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             if (!gState->drawn) {
                 return;
             }
-            std::ignore = gState->drawn->draw(opendigitizer::charts::chartDrawConfig(gState->mode));
+            std::ignore = gState->drawn->draw(charts::chartDrawConfig(gState->mode));
         };
 
         t->TestFunc = [](ImGuiTestContext* ctx) {
-            DigitizerUi::LookAndFeel::mutableInstance().autoHideLegends = false; // the captures below need a legend that stays
+            LookAndFeel::mutableInstance().autoHideLegends = false; // the captures below need a legend that stays
             ctx->MouseMoveToPos(ImVec2(5.f, 5.f));
 
             auto& state                                           = *gState;
@@ -203,7 +205,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
 
             "an opaque plot background fills the plot area"_test = [&] {
                 const auto plain   = drawAndCapture(ctx, *state.singleAxis, Mode::View, {});
-                const auto magenta = drawAndCapture(ctx, *state.singleAxis, Mode::View, chartStyle([](DigitizerUi::ChartStyle& s) { s.plotBackground = kMagenta; }));
+                const auto magenta = drawAndCapture(ctx, *state.singleAxis, Mode::View, chartStyle([](ChartStyle& s) { s.plotBackground = kMagenta; }));
                 expect(eq(plain->count(kWholeChart, isMagenta), 0UZ));
                 expect(magenta->count(kWholeChart, isMagenta) > magenta->area(kWholeChart) / 2UZ) << "more than half of the chart is plot area";
             };
@@ -211,15 +213,15 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             "a transparent plot background shows the host's background"_test = [&] {
                 state.hostBackground   = kMagenta;
                 const auto plain       = drawAndCapture(ctx, *state.singleAxis, Mode::View, {});
-                const auto transparent = drawAndCapture(ctx, *state.singleAxis, Mode::View, chartStyle([](DigitizerUi::ChartStyle& s) { s.plotBackground = ImVec4(0.f, 0.f, 0.f, 0.f); }));
+                const auto transparent = drawAndCapture(ctx, *state.singleAxis, Mode::View, chartStyle([](ChartStyle& s) { s.plotBackground = ImVec4(0.f, 0.f, 0.f, 0.f); }));
                 state.hostBackground.reset();
                 expect(plain->count(kPlotInterior, isMagenta) < plain->area(kPlotInterior) / 10UZ) << "by default the plot covers the host";
                 expect(transparent->count(kPlotInterior, isMagenta) > transparent->area(kPlotInterior) / 2UZ);
             };
 
             "a wider line covers proportionally more pixels"_test = [&] {
-                const auto thin  = drawAndCapture(ctx, *state.singleAxis, Mode::View, chartStyle([](DigitizerUi::ChartStyle& s) { s.lineWidth = 1.f; }));
-                const auto thick = drawAndCapture(ctx, *state.singleAxis, Mode::View, chartStyle([](DigitizerUi::ChartStyle& s) { s.lineWidth = 4.f; }));
+                const auto thin  = drawAndCapture(ctx, *state.singleAxis, Mode::View, chartStyle([](ChartStyle& s) { s.lineWidth = 1.f; }));
+                const auto thick = drawAndCapture(ctx, *state.singleAxis, Mode::View, chartStyle([](ChartStyle& s) { s.lineWidth = 4.f; }));
                 const auto nThin = thin->count(kPlotInterior, isVoltageGreen);
                 expect(nThin > 500UZ) << fatal;
                 expect(thick->count(kPlotInterior, isVoltageGreen) > 5UZ * nThin / 2UZ) << std::format("4 px line: {} green pixels, 1 px line: {}", thick->count(kPlotInterior, isVoltageGreen), nThin);
@@ -229,7 +231,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 const auto thin = drawAndCapture(ctx, *state.singleAxis, Mode::View, {});
                 state.voltage->setLineWidth(4.f);
                 const auto thick         = drawAndCapture(ctx, *state.singleAxis, Mode::View, {});
-                const auto hostOverrides = drawAndCapture(ctx, *state.singleAxis, Mode::View, chartStyle([](DigitizerUi::ChartStyle& s) { s.lineWidth = 1.f; }));
+                const auto hostOverrides = drawAndCapture(ctx, *state.singleAxis, Mode::View, chartStyle([](ChartStyle& s) { s.lineWidth = 1.f; }));
                 state.voltage->setLineWidth(1.f);
                 const auto nThin = thin->count(kPlotInterior, isVoltageGreen);
                 expect(nThin > 500UZ) << fatal;
@@ -239,8 +241,8 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
 
             "grid alpha 0 removes the grid lines, alpha 1 makes them stronger"_test = [&] {
                 const auto plain  = drawAndCapture(ctx, *state.singleAxis, Mode::View, {});
-                const auto hidden = drawAndCapture(ctx, *state.singleAxis, Mode::View, chartStyle([](DigitizerUi::ChartStyle& s) { s.gridAlpha = 0.f; }));
-                const auto opaque = drawAndCapture(ctx, *state.singleAxis, Mode::View, chartStyle([](DigitizerUi::ChartStyle& s) { s.gridAlpha = 1.f; }));
+                const auto hidden = drawAndCapture(ctx, *state.singleAxis, Mode::View, chartStyle([](ChartStyle& s) { s.gridAlpha = 0.f; }));
+                const auto opaque = drawAndCapture(ctx, *state.singleAxis, Mode::View, chartStyle([](ChartStyle& s) { s.gridAlpha = 1.f; }));
                 expect(plain->greyLines(kPlotInterior) > 500UZ) << fatal << "the default grid is visible";
                 expect(eq(hidden->greyLines(kPlotInterior), 0UZ));
                 // ImPlot's grid is the axis text colour at alpha 0.25; alpha 1 stands out at least twice as far
@@ -249,14 +251,14 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
 
             "axis alpha 0 hides the tick labels and the axis label"_test = [&] {
                 const auto plain  = drawAndCapture(ctx, *state.singleAxis, Mode::View, {});
-                const auto hidden = drawAndCapture(ctx, *state.singleAxis, Mode::View, chartStyle([](DigitizerUi::ChartStyle& s) { s.axisAlpha = 0.f; }));
+                const auto hidden = drawAndCapture(ctx, *state.singleAxis, Mode::View, chartStyle([](ChartStyle& s) { s.axisAlpha = 0.f; }));
                 expect(plain->count(kLeftAxis, isWhite) > 100UZ) << fatal;
                 expect(eq(hidden->count(kLeftAxis, isWhite), 0UZ));
             };
 
             "without axis colouring the second y axis is no longer drawn in its signal's colour"_test = [&] {
                 const auto coloured = drawAndCapture(ctx, *state.twoAxes, Mode::Interaction, {});
-                const auto neutral  = drawAndCapture(ctx, *state.twoAxes, Mode::Interaction, chartStyle([](DigitizerUi::ChartStyle& s) { s.colourAxesBySignal = false; }));
+                const auto neutral  = drawAndCapture(ctx, *state.twoAxes, Mode::Interaction, chartStyle([](ChartStyle& s) { s.colourAxesBySignal = false; }));
                 expect(coloured->count(kRightAxis, isCurrentOrange) > 100UZ) << fatal;
                 expect(eq(neutral->count(kRightAxis, isCurrentOrange), 0UZ));
                 expect(neutral->count(kRightAxis, isWhite) > 100UZ) << "the labels are still drawn";
@@ -264,7 +266,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
 
             "the legend moves to the requested corner"_test = [&] {
                 const auto northWest = drawAndCapture(ctx, *state.twoAxes, Mode::Interaction, {});
-                const auto northEast = drawAndCapture(ctx, *state.twoAxes, Mode::Interaction, chartStyle([](DigitizerUi::ChartStyle& s) { s.legendLocation = ImPlotLocation_NorthEast; }));
+                const auto northEast = drawAndCapture(ctx, *state.twoAxes, Mode::Interaction, chartStyle([](ChartStyle& s) { s.legendLocation = ImPlotLocation_NorthEast; }));
                 expect(northWest->count(kTopLeft, isWhite) > 100UZ) << fatal << "the legend's white text, top left by default";
                 expect(northWest->count(kTopRight, isWhite) < 20UZ);
                 expect(northEast->count(kTopLeft, isWhite) < 20UZ);
@@ -272,11 +274,11 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             };
 
             "the legend panel is see-through at alpha 0 and opaque at alpha 1"_test = [&] {
-                const auto seeThrough = drawAndCapture(ctx, *state.twoAxes, Mode::Interaction, chartStyle([](DigitizerUi::ChartStyle& s) {
+                const auto seeThrough = drawAndCapture(ctx, *state.twoAxes, Mode::Interaction, chartStyle([](ChartStyle& s) {
                     s.plotBackground = kMagenta;
                     s.legendAlpha    = 0.f;
                 }));
-                const auto opaque     = drawAndCapture(ctx, *state.twoAxes, Mode::Interaction, chartStyle([](DigitizerUi::ChartStyle& s) {
+                const auto opaque     = drawAndCapture(ctx, *state.twoAxes, Mode::Interaction, chartStyle([](ChartStyle& s) {
                     s.plotBackground = kMagenta;
                     s.legendAlpha    = 1.f;
                 }));
@@ -285,7 +287,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             };
 
             "an auto-hiding legend fades without movement in its plot and returns when the mouse moves there"_test = [&] {
-                auto& look           = DigitizerUi::LookAndFeel::mutableInstance();
+                auto& look           = LookAndFeel::mutableInstance();
                 look.autoHideLegends = true;
                 gState->drawn        = state.twoAxes.get();
                 gState->mode         = Mode::Interaction;
@@ -307,15 +309,15 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
 
             "an axis colour draws the tick labels, axis label and ticks in that colour"_test = [&] {
                 const auto plain    = drawAndCapture(ctx, *state.singleAxis, Mode::View, {});
-                const auto coloured = drawAndCapture(ctx, *state.singleAxis, Mode::View, chartStyle([](DigitizerUi::ChartStyle& s) { s.axisColour = kMagenta; }));
+                const auto coloured = drawAndCapture(ctx, *state.singleAxis, Mode::View, chartStyle([](ChartStyle& s) { s.axisColour = kMagenta; }));
                 expect(eq(plain->count(kLeftAxis, isMagenta), 0UZ));
                 expect(coloured->count(kLeftAxis, isMagenta) > 200UZ) << std::format("{} magenta pixels left of the plot", coloured->count(kLeftAxis, isMagenta));
             };
 
             "a grid colour draws the grid lines in that colour, and the grid alpha still applies"_test = [&] {
                 const auto plain    = drawAndCapture(ctx, *state.singleAxis, Mode::View, {});
-                const auto coloured = drawAndCapture(ctx, *state.singleAxis, Mode::View, chartStyle([](DigitizerUi::ChartStyle& s) { s.gridColour = kMagenta; }));
-                const auto hidden   = drawAndCapture(ctx, *state.singleAxis, Mode::View, chartStyle([](DigitizerUi::ChartStyle& s) {
+                const auto coloured = drawAndCapture(ctx, *state.singleAxis, Mode::View, chartStyle([](ChartStyle& s) { s.gridColour = kMagenta; }));
+                const auto hidden   = drawAndCapture(ctx, *state.singleAxis, Mode::View, chartStyle([](ChartStyle& s) {
                     s.gridColour = kMagenta;
                     s.gridAlpha  = 0.f;
                 }));
@@ -327,7 +329,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             "a larger label size draws larger tick and axis labels"_test = [&] {
                 const float baseSize = ImGui::GetStyle().FontSizeBase;
                 const auto  atSize   = [&](float size) {
-                    return drawAndCapture(ctx, *state.singleAxis, Mode::View, chartStyle([size](DigitizerUi::ChartStyle& s) {
+                    return drawAndCapture(ctx, *state.singleAxis, Mode::View, chartStyle([size](ChartStyle& s) {
                         s.axisColour    = kMagenta;
                         s.labelFontSize = size;
                     }));
@@ -339,24 +341,24 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             };
 
             "the label face and size are current while a chart draws, and its own smaller text uses them"_test = [&] {
-                auto&         lnf  = DigitizerUi::LookAndFeel::mutableInstance();
+                auto&         lnf  = LookAndFeel::mutableInstance();
                 ImFont* const face = lnf.fontTiny();
                 expect(face != nullptr && face != ImGui::GetFont()) << fatal << "a face other than the default";
                 state.probedFont     = nullptr;
-                state.fontProbeStyle = chartStyle([face](DigitizerUi::ChartStyle& s) {
+                state.fontProbeStyle = chartStyle([face](ChartStyle& s) {
                     s.labelFont     = face;
                     s.labelFontSize = 23.f;
                 });
-                opendigitizer::test::waitUntil(ctx, "a frame probed the font", [&] { return state.probedFont != nullptr; });
+                test::waitUntil(ctx, "a frame probed the font", [&] { return state.probedFont != nullptr; });
                 state.fontProbeStyle.reset();
                 expect(state.probedFont == face);
                 expect(eq(state.probedFontSize, 23.f));
 
-                const auto defaultText = opendigitizer::charts::chartTextFont(lnf.fontSmall());
+                const auto defaultText = charts::chartTextFont(lnf.fontSmall());
                 expect(defaultText.first == lnf.fontSmall() && defaultText.second == lnf.relativeFontSize(lnf.fontSmall())) << "unset: the small face at its relative size";
                 lnf.chartStyle.labelFont     = face;
                 lnf.chartStyle.labelFontSize = 23.f;
-                const auto hostText          = opendigitizer::charts::chartTextFont(lnf.fontSmall());
+                const auto hostText          = charts::chartTextFont(lnf.fontSmall());
                 lnf.chartStyle               = {};
                 expect(hostText.first == face && hostText.second == 23.f) << "set: the host's face and size";
             };
@@ -365,7 +367,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
 };
 
 int main(int argc, char* argv[]) {
-    auto options             = DigitizerUi::test::TestOptions::fromArgs(argc, argv);
+    auto options             = test::TestOptions::fromArgs(argc, argv);
     options.screenshotPrefix = "chart_style";
     TestApp app(options);
     app.initImGui();
@@ -378,7 +380,7 @@ int main(int argc, char* argv[]) {
     state.twoAxes    = makeChart("two axes", {"style_voltage", "style_current"}, true);
 
     const bool result = app.runTests();
-    std::ignore       = opendigitizer::charts::SinkRegistry::instance().unregisterSink("style_voltage");
-    std::ignore       = opendigitizer::charts::SinkRegistry::instance().unregisterSink("style_current");
+    std::ignore       = charts::SinkRegistry::instance().unregisterSink("style_voltage");
+    std::ignore       = charts::SinkRegistry::instance().unregisterSink("style_current");
     return result ? 0 : 1;
 }

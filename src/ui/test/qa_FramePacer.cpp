@@ -17,6 +17,8 @@ inline int SDL_PushEvent(SDL_Event*) { return 1; }
 
 #include "../common/FramePacer.hpp"
 
+using namespace gr::od;
+
 using namespace boost::ut;
 using namespace std::chrono_literals;
 
@@ -33,25 +35,25 @@ struct ManualClock {
     static void              advance(duration step) { current += step; }
 };
 
-using Pacer = DigitizerUi::BasicFramePacer<ManualClock>;
+using Pacer = BasicFramePacer<ManualClock>;
 
 void markPendingFramesAsRendered(auto& pacer) {
-    for (std::uint32_t i = 0U; i < DigitizerUi::FramePacer::minFramesNeededToResolveWidgetChanges; ++i) {
+    for (std::uint32_t i = 0U; i < FramePacer::kMinFramesNeededToResolveWidgetChanges; ++i) {
         pacer.rendered();
     }
 }
 
-const suite<"FramePacer basics"> _1 = [] {
+const suite<"FramePacer basics"> basicTests = [] {
     "construction"_test = [] {
         "default values"_test = [] {
-            DigitizerUi::FramePacer pacer;
+            FramePacer pacer;
             expect(eq(pacer.maxPeriod(), 1s));
             expect(eq(pacer.minPeriod(), 16ms));
             expect(pacer.isDirty()) << "starts dirty to force initial render";
         };
 
         "custom periods"_test = [] {
-            DigitizerUi::FramePacer pacer{500ms, 8ms};
+            FramePacer pacer{500ms, 8ms};
             expect(eq(pacer.maxPeriod(), 500ms));
             expect(eq(pacer.minPeriod(), 8ms));
         };
@@ -59,21 +61,21 @@ const suite<"FramePacer basics"> _1 = [] {
 
     "rate configuration"_test = [] {
         "set min rate updates max period"_test = [] {
-            DigitizerUi::FramePacer pacer;
+            FramePacer pacer;
             pacer.setMinRate(2.0); // 2 Hz → 500ms period
             expect(approx(pacer.minRateHz(), 2.0, 0.01));
             expect(eq(pacer.maxPeriod(), 500ms));
         };
 
         "set max rate updates min period"_test = [] {
-            DigitizerUi::FramePacer pacer;
+            FramePacer pacer;
             pacer.setMaxRate(30.0); // 30 Hz → ~33ms period
             expect(approx(pacer.maxRateHz(), 30.0, 0.01));
             expect(le(pacer.minPeriod().count() - 33'333'333, 100'000));
         };
 
         "rate period consistency"_test = [] {
-            DigitizerUi::FramePacer pacer;
+            FramePacer pacer;
             pacer.setMaxPeriod(200ms);
             pacer.setMinPeriod(10ms);
             expect(approx(pacer.minRateHz(), 5.0, 0.01));
@@ -82,7 +84,7 @@ const suite<"FramePacer basics"> _1 = [] {
     };
 };
 
-const suite<"FramePacer render logic"> _2 = [] {
+const suite<"FramePacer render logic"> renderTests = [] {
     "should render when dirty and min period elapsed"_test = [] {
         Pacer pacer{1s, 5ms};
         pacer.rendered(); // set lastRender to now
@@ -118,12 +120,12 @@ const suite<"FramePacer render logic"> _2 = [] {
         expect(!pacer.isDirty());
 
         pacer.requestFrame();
-        expect(eq(pacer.pendingFrames(), Pacer::minFramesNeededToResolveWidgetChanges));
+        expect(eq(pacer.pendingFrames(), Pacer::kMinFramesNeededToResolveWidgetChanges));
 
         pacer.rendered();
         expect(pacer.isDirty()) << "expected more than one frame to be requested with each requestFrame()";
 
-        for (std::uint32_t i = 1U; i < Pacer::minFramesNeededToResolveWidgetChanges; ++i) {
+        for (std::uint32_t i = 1U; i < Pacer::kMinFramesNeededToResolveWidgetChanges; ++i) {
             pacer.rendered();
         }
         expect(!pacer.isDirty());
@@ -133,7 +135,7 @@ const suite<"FramePacer render logic"> _2 = [] {
     };
 };
 
-const suite<"FramePacer timeout calculation"> _3 = [] {
+const suite<"FramePacer timeout calculation"> timeoutTests = [] {
     "returns zero when should render immediately"_test = [] {
         Pacer pacer{10ms, 5ms};
         pacer.rendered();
@@ -164,7 +166,6 @@ const suite<"FramePacer timeout calculation"> _3 = [] {
     };
 
     "clamps to at least 1ms"_test = [] {
-        using DigitizerUi::FramePacer;
         using namespace std::chrono_literals;
         expect(eq(FramePacer::waitTimeoutMs(500us, 10ms), 1)) << "a remaining wait below 1 ms waits 1 ms instead of spinning";
         expect(eq(FramePacer::waitTimeoutMs(3700us, 10ms), 3));
@@ -174,7 +175,7 @@ const suite<"FramePacer timeout calculation"> _3 = [] {
     };
 };
 
-const suite<"FramePacer statistics"> _4 = [] {
+const suite<"FramePacer statistics"> statisticsTests = [] {
     "request count increments"_test = [] {
         Pacer pacer;
         pacer.resetMeasurement();
@@ -221,40 +222,40 @@ const suite<"FramePacer statistics"> _4 = [] {
     };
 };
 
-const suite<"FramePacer global instance"> _5 = [] {
+const suite<"FramePacer global instance"> globalInstanceTests = [] {
     "global pacer is singleton"_test = [] {
-        auto& pacer1 = DigitizerUi::globalFramePacer();
-        auto& pacer2 = DigitizerUi::globalFramePacer();
+        auto& pacer1 = globalFramePacer();
+        auto& pacer2 = globalFramePacer();
         expect(&pacer1 == &pacer2);
     };
 
     "global pacer has default config"_test = [] {
-        auto& pacer = DigitizerUi::globalFramePacer();
+        auto& pacer = globalFramePacer();
         expect(eq(pacer.maxPeriod(), 1s));
         expect(eq(pacer.minPeriod(), 16ms));
     };
 };
 
-const suite<"FramePacer SDL event"> _6 = [] {
+const suite<"FramePacer SDL event"> sdlEventTests = [] {
     "event type registered on first request"_test = [] {
-        DigitizerUi::FramePacer pacer;
+        FramePacer pacer;
         pacer.requestFrame();
-        expect(not eq(DigitizerUi::FramePacer::sdlEventType(), 0));
+        expect(not eq(FramePacer::sdlEventType(), 0));
     };
 
     "multiple requests while dirty do not spam events"_test = [] {
-        DigitizerUi::FramePacer pacer;
-        expect(eq(DigitizerUi::FramePacer::_sdlEventType, 1));
+        FramePacer pacer;
+        expect(eq(FramePacer::_sdlEventType, 1));
         markPendingFramesAsRendered(pacer);
 
         pacer.requestFrame(); // clean→pending: pushes event
-        expect(not eq(DigitizerUi::FramePacer::_sdlEventType, 0)) << "subsequent requests shouldn't register new events";
+        expect(not eq(FramePacer::_sdlEventType, 0)) << "subsequent requests shouldn't register new events";
         expect(pacer.isDirty());
 
         pacer.requestFrame();
-        expect(not eq(DigitizerUi::FramePacer::_sdlEventType, 0)) << "subsequent requests shouldn't register new events";
+        expect(not eq(FramePacer::_sdlEventType, 0)) << "subsequent requests shouldn't register new events";
         pacer.requestFrame();
-        expect(not eq(DigitizerUi::FramePacer::_sdlEventType, 0)) << "subsequent requests shouldn't register new events";
+        expect(not eq(FramePacer::_sdlEventType, 0)) << "subsequent requests shouldn't register new events";
         expect(pacer.isDirty());
         expect(ge(pacer.requestCount(), 3));
     };

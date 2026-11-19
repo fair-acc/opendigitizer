@@ -1,12 +1,12 @@
 #ifndef OPENDIGITIZER_UI_COMPONENTS_OVERLAY_BUTTON_HPP
 #define OPENDIGITIZER_UI_COMPONENTS_OVERLAY_BUTTON_HPP
 
-#include "../common/ImguiWrap.hpp"
+#include "../common/Imw.hpp"
 #include "../common/LookAndFeel.hpp"
 
 #include <string_view>
 
-namespace DigitizerUi::components {
+namespace gr::od::components {
 
 struct OverlayButtonState {
     bool hovered = false;
@@ -14,9 +14,8 @@ struct OverlayButtonState {
     bool clicked = false;
 };
 
-/// A button which does not affect layout. Unlike ImGui::InvisibleButton, it can be placed outside of a node, or on top of
-/// other content of a node, without changing the size of the node. This function does not draw the button, only does the
-/// behavior. Unlike ImGui::ButtonBehavior, it does declare a clipping area test engine info for addressability in tests
+/// a button that does not affect layout: unlike ImGui::InvisibleButton, it can sit outside a node or on top of a node's content without changing the node's size.
+/// It only behaves, it does not draw; unlike ImGui::ButtonBehavior, it declares a clipping area test engine info for addressability in tests.
 inline OverlayButtonState overlayButtonBehavior(const char* strId, const ImRect& rect) {
     ImGuiContext&      g  = *GImGui;
     const ImGuiID      id = ImGui::GetID(strId);
@@ -29,7 +28,7 @@ inline OverlayButtonState overlayButtonBehavior(const char* strId, const ImRect&
     return state;
 }
 
-/// Returns the area relative to @param nodeTopRight that the block menu button covers. can be used to draw and to calculate outline locations
+/// relative to `nodeTopRight`: for drawing and for outline locations
 inline ImRect nodeMenuButtonRect(ImVec2 nodeTopRight) {
     const float  sideLength = ImGui::GetTextLineHeight();
     const float  inset      = LookAndFeel::instance().flowgraph.menuButtonInset * sideLength;
@@ -37,7 +36,7 @@ inline ImRect nodeMenuButtonRect(ImVec2 nodeTopRight) {
     return ImRect{ImVec2{topRight.x - sideLength, topRight.y}, ImVec2{topRight.x, topRight.y + sideLength}};
 }
 
-/// Uses OverlayButton to draw a button with a three vertical dots icon covering @param rect
+/// an OverlayButton with a three-vertical-dots icon over `rect`
 inline OverlayButtonState drawMenuButton(const char* strId, const ImRect& rect) {
     using namespace std::string_view_literals;
     static constexpr auto kVerticalEllipsisIcon = "\u{f142}"sv;
@@ -54,9 +53,9 @@ inline OverlayButtonState drawMenuButton(const char* strId, const ImRect& rect) 
         drawList->AddRectFilled(rect.Min, rect.Max, ImGui::GetColorU32(backgroundColor), LookAndFeel::instance().flowgraph.menuButtonRounding);
     }
     const ImVec4 iconColor = palette.mainWindowButtonIcon.value_or(ImGui::GetStyleColorVec4(ImGuiCol_Text));
-    drawList->AddText(font, fontSize, rect.GetCenter() - IMW::calcGlyphBounds(font, fontSize, kVerticalEllipsisIcon).GetCenter(), ImGui::GetColorU32(iconColor), kVerticalEllipsisIcon.data(), kVerticalEllipsisIcon.data() + kVerticalEllipsisIcon.size());
+    drawList->AddText(font, fontSize, rect.GetCenter() - imw::calcGlyphBounds(font, fontSize, kVerticalEllipsisIcon).GetCenter(), ImGui::GetColorU32(iconColor), kVerticalEllipsisIcon.data(), kVerticalEllipsisIcon.data() + kVerticalEllipsisIcon.size());
     return state;
 }
-} // namespace DigitizerUi::components
+} // namespace gr::od::components
 
 #endif

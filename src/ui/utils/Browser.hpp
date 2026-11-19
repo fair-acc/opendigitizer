@@ -1,5 +1,5 @@
-#ifndef EMSCRIPTENHELPER_HPP
-#define EMSCRIPTENHELPER_HPP
+#ifndef OPENDIGITIZER_UI_UTILS_BROWSER_HPP
+#define OPENDIGITIZER_UI_UTILS_BROWSER_HPP
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
@@ -74,7 +74,7 @@ inline bool isTabVisible() {
     return true;
 }
 
-/// Update or clear `#dashboard=` in the browser URL without reloading (WASM only).
+/// updates or clears `#dashboard=` in the browser URL without reloading (WASM only)
 inline void setBrowserDashboardFragment([[maybe_unused]] std::string_view dashboardName) {
 #ifdef __EMSCRIPTEN__
     const std::string name{dashboardName};
@@ -82,7 +82,7 @@ inline void setBrowserDashboardFragment([[maybe_unused]] std::string_view dashbo
 #pragma clang diagnostic ignored "-Wdollar-in-identifier-extension"
     // clang-format off
     // MAIN_THREAD: window/history are only valid on the browser main thread (pthreads build).
-    // Use "" (not '') in JS — the C preprocessor rejects empty character literals.
+    // "" (not '') in JS: the C preprocessor rejects empty character literals
     MAIN_THREAD_EM_ASM(
         {
             const name = UTF8ToString($0);
@@ -103,4 +103,4 @@ inline void setBrowserDashboardFragment([[maybe_unused]] std::string_view dashbo
 #endif
 }
 
-#endif // EMSCRIPTENHELPER_HPP
+#endif // OPENDIGITIZER_UI_UTILS_BROWSER_HPP

@@ -1,6 +1,6 @@
-#include "StyledStandardWidgets.hpp"
+#include "StyledWidgets.hpp"
 
-#include "../common/ImguiWrap.hpp"
+#include "../common/Imw.hpp"
 #include "../common/LookAndFeel.hpp"
 
 #include <imgui_internal.h>
@@ -16,7 +16,7 @@
 // ImGui, https://github.com/ocornut/imgui Copyright (c) 2014-2026 Omar Cornut
 // Adobe's imgui-spectrum theme fork https://github.com/adobe/imgui
 
-namespace DigitizerUi {
+namespace gr::od {
 
 namespace {
 
@@ -46,10 +46,10 @@ ImVec4 spectrumSelectedColor(bool hovered, bool held) { return colorDependingOnI
 bool spectrumTreeNodeEx(const char* label, ImGuiTreeNodeFlags flags) {
     const bool      isFramed    = (flags & ImGuiTreeNodeFlags_Framed) != 0;
     const float     headerAlpha = isFramed ? 1.f : kSpectrumTreeNodeHighlightAlpha;
-    IMW::StyleColor header(ImGuiCol_Header, spectrumTone(&SpectrumSchemeKeywordColors::blue400, headerAlpha));
-    IMW::StyleColor headerHovered(ImGuiCol_HeaderHovered, spectrumTone(&SpectrumSchemeKeywordColors::blue500, headerAlpha));
-    IMW::StyleColor headerActive(ImGuiCol_HeaderActive, spectrumTone(&SpectrumSchemeKeywordColors::blue600, headerAlpha));
-    IMW::StyleColor text(ImGuiCol_Text, isFramed ? spectrumTone(&SpectrumSchemeKeywordColors::gray50) : ImGui::GetStyleColorVec4(ImGuiCol_Text));
+    imw::StyleColor header(ImGuiCol_Header, spectrumTone(&SpectrumSchemeKeywordColors::blue400, headerAlpha));
+    imw::StyleColor headerHovered(ImGuiCol_HeaderHovered, spectrumTone(&SpectrumSchemeKeywordColors::blue500, headerAlpha));
+    imw::StyleColor headerActive(ImGuiCol_HeaderActive, spectrumTone(&SpectrumSchemeKeywordColors::blue600, headerAlpha));
+    imw::StyleColor text(ImGuiCol_Text, isFramed ? spectrumTone(&SpectrumSchemeKeywordColors::gray50) : ImGui::GetStyleColorVec4(ImGuiCol_Text));
     return ImGui::TreeNodeEx(label, flags);
 }
 
@@ -75,7 +75,7 @@ template<ImGuiNumber T>
     }(dataType, min, max, static_cast<ImGuiNumberTypes*>(nullptr));
 }
 
-/// Draw a slider for editing a numeric value. Only draws the slider and not the text input.
+/// the slider only, without the text input
 bool sliderImpl([[maybe_unused]] const char* label, ImGuiID id, float width, ImGuiDataType dataType, void* data, const void* min, const void* max, const char* format, ImGuiSliderFlags flags) {
     const ImGuiStyle&  style       = ImGui::GetStyle();
     const LookAndFeel& lookAndFeel = LookAndFeel::instance();
@@ -89,7 +89,7 @@ bool sliderImpl([[maybe_unused]] const char* label, ImGuiID id, float width, ImG
     const float floatSliderDragHandleWidth = ImGui::GetFrameHeight() * lookAndFeel.sliderKnobRadiusFrameHeightRatio;
     ImRect      imguiDragRect{}; // where imgui would draw the rectangular drag handle
     const bool  changed = [&] {
-        IMW::StyleFloatVar         grabSize(ImGuiStyleVar_GrabMinSize, floatSliderDragHandleWidth * 2.f);
+        imw::StyleFloatVar         grabSize(ImGuiStyleVar_GrabMinSize, floatSliderDragHandleWidth * 2.f);
         const float                validDragAreaLength   = frame.GetWidth() - (floatSliderDragHandleWidth * 2.f);
         const std::optional<float> stepCount             = getStepCountIfIntegerType(dataType, min, max);
         const float                grabHandleWidth       = stepCount ? ImMax(validDragAreaLength / *stepCount, floatSliderDragHandleWidth * 2.f) : floatSliderDragHandleWidth * 2.f;
@@ -107,7 +107,6 @@ bool sliderImpl([[maybe_unused]] const char* label, ImGuiID id, float width, ImG
     const ImU32  filledColor                        = ImGui::GetColorU32(ImGuiCol_Button);
     ImDrawList*  drawList                           = ImGui::GetWindowDrawList();
 
-    // draw track lines on either side of drag handle
     if (knobCenter.x - floatSliderDragHandleWidth > frame.Min.x) {
         drawList->AddRectFilled(ImVec2(frame.Min.x, knobCenter.y - halfThickness), ImVec2(knobCenter.x - floatSliderDragHandleWidth, knobCenter.y + halfThickness), filledColor, halfThickness);
     }
@@ -123,9 +122,8 @@ bool sliderImpl([[maybe_unused]] const char* label, ImGuiID id, float width, ImG
     return changed;
 }
 
-/// Draw the value of a slider as text, which turns into a text input when right-clicked, Ctrl+clicked, or activated
-/// with keyboard navigation. @param requestTextInput turns the text into a text input on the next frame.
-/// @return whether the value was changed by typing into the text input
+/// the value as text, which becomes a text input when right-clicked, Ctrl+clicked or activated by keyboard navigation, and with `requestTextInput` on the next frame;
+/// true when typing into the text input changed the value
 bool sliderNumberLabelOrTextInput(const char* valueLabel, const SliderScalarParameters& parameters, bool allowTextInput, bool requestTextInput) {
     const auto [dataType, data, min, max, format, flags, numberLabelWidth] = parameters;
     ImGuiContext&     g                                                    = *GImGui;
@@ -176,7 +174,7 @@ float comboChevronWidth() { return LookAndFeel::instance().comboChevronWidthEms 
 
 float sliderNumberLabelMaxWidth() { return LookAndFeel::instance().sliderNumberLabelMaxWidthEms * ImGui::GetFontSize(); }
 
-SliderAction SliderScalar(const char* label, const SliderScalarParameters& parameters) {
+SliderAction sliderScalar(const char* label, const SliderScalarParameters& parameters) {
     ImGuiWindow* window = ImGui::GetCurrentWindow();
     if (window->SkipItems) {
         return SliderAction::NotEdited;
@@ -192,14 +190,14 @@ SliderAction SliderScalar(const char* label, const SliderScalarParameters& param
     const float       totalWidth = ImGui::CalcItemWidth();
     const char*       labelEnd   = ImGui::FindRenderedTextEnd(label);
 
-    IMW::Group   group;
+    imw::Group   group;
     SliderAction action       = sliderImpl(label, id, ImMax(0.f, totalWidth - numberLabelWidth - style.ItemInnerSpacing.x), dataType, data, min, max, format, flags) ? SliderAction::DraggedSlider : SliderAction::NotEdited;
     const bool   rightClicked = ImGui::IsItemClicked(ImGuiMouseButton_Right);
     const bool   allowTyping  = (flags & ImGuiSliderFlags_NoInput) == 0;
 
     ImGui::SameLine(0.f, style.ItemInnerSpacing.x);
     {
-        IMW::OverrideId scope(id);
+        imw::OverrideId scope(id);
         if (sliderNumberLabelOrTextInput("##value", resolved, allowTyping, rightClicked)) {
             action = SliderAction::TypedInTextField;
         }
@@ -212,7 +210,7 @@ SliderAction SliderScalar(const char* label, const SliderScalarParameters& param
     return action;
 }
 
-bool Checkbox(const char* label, bool* value) {
+bool checkbox(const char* label, bool* value) {
     const LookAndFeel&       lookAndFeel            = LookAndFeel::instance();
     const ImVec4             knobColor              = lookAndFeel.palette().toggleKnob;
     const ImVec4             toggleSwitchOffBgColor = lookAndFeel.palette().widgetTrackInactive;
@@ -255,7 +253,7 @@ float comboWidthForText(float textWidth) {
     return ImMin(textWidth, LookAndFeel::instance().comboTextMaxWidthEms * ImGui::GetFontSize()) + comboChevronWidth() + style.ItemInnerSpacing.x + 2.f * style.FramePadding.x;
 }
 
-bool BeginCombo(const char* label, const char* previewValue, ImGuiComboFlags flags) {
+bool beginCombo(const char* label, const char* previewValue, ImGuiComboFlags flags) {
     ImGuiWindow* window = ImGui::GetCurrentWindow();
     if (window->SkipItems || (flags & ImGuiComboFlags_NoPreview) != 0) {
         return ImGui::BeginCombo(label, previewValue, flags);
@@ -271,12 +269,12 @@ bool BeginCombo(const char* label, const char* previewValue, ImGuiComboFlags fla
 
     // Dear ImGui handles the item, the popup and the label; it draws neither frame, arrow button nor value
     const bool open = [&] {
-        IMW::StyleColor    frameBackground(ImGuiCol_FrameBg, ImVec4{});
-        IMW::StyleColor    frameBackgroundHovered(ImGuiCol_FrameBgHovered, ImVec4{});
-        IMW::StyleColor    popupBorder(ImGuiCol_Border, lookAndFeel.palette().widgetTrackInactive);
-        IMW::StyleFloatVar frameBorder(ImGuiStyleVar_FrameBorderSize, 0.f);
-        IMW::StyleFloatVar popupBorderSize(ImGuiStyleVar_PopupBorderSize, lookAndFeel.comboOutlineThickness);
-        IMW::StyleFloatVar popupRounding(ImGuiStyleVar_PopupRounding, rounding);
+        imw::StyleColor    frameBackground(ImGuiCol_FrameBg, ImVec4{});
+        imw::StyleColor    frameBackgroundHovered(ImGuiCol_FrameBgHovered, ImVec4{});
+        imw::StyleColor    popupBorder(ImGuiCol_Border, lookAndFeel.palette().widgetTrackInactive);
+        imw::StyleFloatVar frameBorder(ImGuiStyleVar_FrameBorderSize, 0.f);
+        imw::StyleFloatVar popupBorderSize(ImGuiStyleVar_PopupBorderSize, lookAndFeel.comboOutlineThickness);
+        imw::StyleFloatVar popupRounding(ImGuiStyleVar_PopupRounding, rounding);
         return ImGui::BeginCombo(label, nullptr, (flags & ~ImGuiComboFlags_WidthFitPreview) | ImGuiComboFlags_NoArrowButton);
     }();
     if (!open && !ImGui::IsItemVisible()) {
@@ -299,7 +297,7 @@ bool BeginCombo(const char* label, const char* previewValue, ImGuiComboFlags fla
     return open;
 }
 
-bool TreeNodeEx(const char* label, ImGuiTreeNodeFlags flags) {
+bool treeNodeEx(const char* label, ImGuiTreeNodeFlags flags) {
     switch (LookAndFeel::instance().theme) {
     case LookAndFeel::Theme::Classic: return ImGui::TreeNodeEx(label, flags);
     case LookAndFeel::Theme::Advanced: return spectrumTreeNodeEx(label, flags);
@@ -307,44 +305,44 @@ bool TreeNodeEx(const char* label, ImGuiTreeNodeFlags flags) {
     std::unreachable();
 }
 
-ImVec4 ButtonContentsColor() { return LookAndFeel::instance().palette().buttonContents.value_or(ImGui::GetStyleColorVec4(ImGuiCol_Text)); }
+ImVec4 buttonContentsColor() { return LookAndFeel::instance().palette().buttonContents.value_or(ImGui::GetStyleColorVec4(ImGuiCol_Text)); }
 
-bool Button(const char* label, const ImVec2& size) {
-    IMW::StyleColor text(ImGuiCol_Text, ButtonContentsColor());
+bool button(const char* label, const ImVec2& size) {
+    imw::StyleColor text(ImGuiCol_Text, buttonContentsColor());
     return ImGui::Button(label, size);
 }
 
-bool SmallButton(const char* label) {
-    IMW::StyleColor text(ImGuiCol_Text, ButtonContentsColor());
+bool smallButton(const char* label) {
+    imw::StyleColor text(ImGuiCol_Text, buttonContentsColor());
     return ImGui::SmallButton(label);
 }
 
-bool TextButton(const char* label, const ImVec2& size) {
-    IMW::StyleVar   framePadding(ImGuiStyleVar_FramePadding, buttonFramePadding());
-    IMW::StyleColor text(ImGuiCol_Text, ButtonContentsColor());
+bool textButton(const char* label, const ImVec2& size) {
+    imw::StyleVar   framePadding(ImGuiStyleVar_FramePadding, buttonFramePadding());
+    imw::StyleColor text(ImGuiCol_Text, buttonContentsColor());
     return ImGui::Button(label, size);
 }
 
-ImVec2 CalcButtonSize(const char* label) {
-    IMW::StyleVar framePadding(ImGuiStyleVar_FramePadding, buttonFramePadding());
-    return IMW::CalcButtonSize(label);
+ImVec2 calcTextButtonSize(const char* label) {
+    imw::StyleVar framePadding(ImGuiStyleVar_FramePadding, buttonFramePadding());
+    return imw::calcButtonSize(label);
 }
 
-ImVec4 SelectableBackgroundColor(bool selected, bool hovered, bool held) {
+ImVec4 selectableBackgroundColor(bool selected, bool hovered, bool held) {
     if (selected && LookAndFeel::instance().theme == LookAndFeel::Theme::Advanced) {
         return spectrumSelectedColor(hovered, held);
     }
     return ImGui::GetStyleColorVec4((held && hovered) ? ImGuiCol_HeaderActive : hovered ? ImGuiCol_HeaderHovered : ImGuiCol_Header);
 }
 
-ImVec4 SelectableTextColor(bool selected) { return selected ? ButtonContentsColor() : ImGui::GetStyleColorVec4(ImGuiCol_Text); }
+ImVec4 selectableTextColor(bool selected) { return selected ? buttonContentsColor() : ImGui::GetStyleColorVec4(ImGuiCol_Text); }
 
-bool Selectable(const char* label, bool selected, ImGuiSelectableFlags flags, const ImVec2& size) {
-    IMW::StyleColor idle(ImGuiCol_Header, SelectableBackgroundColor(selected, false, false));
-    IMW::StyleColor hovered(ImGuiCol_HeaderHovered, SelectableBackgroundColor(selected, true, false));
-    IMW::StyleColor held(ImGuiCol_HeaderActive, SelectableBackgroundColor(selected, true, true));
-    IMW::StyleColor text(ImGuiCol_Text, SelectableTextColor(selected));
+bool selectable(const char* label, bool selected, ImGuiSelectableFlags flags, const ImVec2& size) {
+    imw::StyleColor idle(ImGuiCol_Header, selectableBackgroundColor(selected, false, false));
+    imw::StyleColor hovered(ImGuiCol_HeaderHovered, selectableBackgroundColor(selected, true, false));
+    imw::StyleColor held(ImGuiCol_HeaderActive, selectableBackgroundColor(selected, true, true));
+    imw::StyleColor text(ImGuiCol_Text, selectableTextColor(selected));
     return ImGui::Selectable(label, selected, flags, size);
 }
 
-} // namespace DigitizerUi
+} // namespace gr::od

@@ -1,6 +1,6 @@
 #include "LookAndFeel.hpp"
 
-#include "ImguiWrap.hpp"
+#include "Imw.hpp"
 
 #include <cmrc/cmrc.hpp>
 
@@ -13,11 +13,11 @@ enum FontSizeIndex { FontSizeTiny = 0, FontSizeSmall, FontSizeNormal, FontSizeBi
 
 constexpr std::array<float, FontSizeCount> kFontSizes{12, 17, 20, 24, 28, 46};
 
-namespace DigitizerUi {
+namespace gr::od {
 
 LookAndFeel& LookAndFeel::mutableInstance() {
-    static LookAndFeel s_instance;
-    return s_instance;
+    static LookAndFeel lookAndFeel;
+    return lookAndFeel;
 }
 
 const LookAndFeel& LookAndFeel::instance() { return mutableInstance(); }
@@ -188,10 +188,7 @@ Palette spectrumPalette(LookAndFeel::Style style) {
     return Palette{
         .gridLines = rgba(c.gray400),
 
-        // it would be nice to use white with a bright highlight color, but there are some limitations
-        // such as the imgui date picker which cannot use this component of our custom style, causing
-        // illegible buttons or clashing in that popup
-        // .buttonContents = white,
+        // white with a bright highlight would be nicer, but the ImGui date picker cannot use this part of the style, which leaves its buttons illegible
         .buttonContents = std::nullopt,
 
         .mainWindowButtonIcon       = dark ? std::make_optional(rgba(c.gray700)) : std::nullopt,
@@ -439,11 +436,6 @@ void LookAndFeel::updateFormFactor(ImVec2 viewportSize) {
 [[nodiscard]] float LookAndFeel::mainWindowIconButtonSize() const noexcept { return kFontSizes[FontSizeBig] * 1.7f; }
 
 void LookAndFeel::loadFonts() {
-    // static const ImWchar fullRange[] = {
-    //     0x0020, 0XFFFF, 0, 0 // '0', '0' are the end marker
-    //     // N.B. a bit unsafe but in imgui_draw.cpp::ImFontAtlasBuildWithStbTruetype break condition is:
-    //     // 'for (const ImWchar* src_range = src_tmp.SrcRanges; src_range[0] && src_range[1]; src_range += 2)'
-    // };
     static const std::vector<ImWchar> rangeLatin             = {0x0020, 0x0080, // Basic Latin
                     0, 0};
     static const std::vector<ImWchar> rangeLatinExtended     = {0x80, 0xFFFF, 0}; // Latin-1 Supplement
@@ -468,7 +460,7 @@ void LookAndFeel::loadFonts() {
         0, 0};
 
     static ImFontConfig config;
-    // Originally oversampling of 4 was used to ensure good looking text for all zoom levels, but this led to huge texture atlas sizes, which did not work on mobile
+    // oversampling 2, not 4: 4 looks good at every zoom level, but its texture atlases are too large for mobile
     config.OversampleH          = 2;
     config.OversampleV          = 2;
     config.PixelSnapH           = true;
@@ -504,7 +496,7 @@ void LookAndFeel::loadFonts() {
 
     auto loadIconsFont = [](auto name, float iconFontSize) {
         auto file = cmrc::ui_assets::get_filesystem().open(name);
-        return ImGui::GetIO().Fonts->AddFontFromMemoryTTF(const_cast<char*>(file.begin()), static_cast<int>(file.size()), iconFontSize, &config, glyphRanges); // alt: fullRange
+        return ImGui::GetIO().Fonts->AddFontFromMemoryTTF(const_cast<char*>(file.begin()), static_cast<int>(file.size()), iconFontSize, &config, glyphRanges);
     };
 
     auto& lookAndFeel               = LookAndFeel::mutableInstance();
@@ -514,4 +506,4 @@ void LookAndFeel::loadFonts() {
     lookAndFeel.fontIconsSolidBig   = loadIconsFont("assets/fontawesome/fa-solid-900.otf", kFontSizes[FontSizeSmall]);
     lookAndFeel.fontIconsSolidLarge = loadIconsFont("assets/fontawesome/fa-solid-900.otf", kFontSizes[FontSizeBig]);
 }
-} // namespace DigitizerUi
+} // namespace gr::od

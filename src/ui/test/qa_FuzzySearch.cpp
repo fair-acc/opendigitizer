@@ -6,10 +6,12 @@
 #include <array>
 #include <string_view>
 
+using namespace gr::od;
+
 using namespace boost::ut;
 using namespace std::string_view_literals;
-using DigitizerUi::components::filterTypename;
-using DigitizerUi::components::wordDistance;
+using components::filterTypename;
+using components::wordDistance;
 
 namespace {
 
@@ -62,10 +64,10 @@ const static boost::ut::suite<"Levenshtein word distance"> wordDistanceTests = [
 
 const static boost::ut::suite<"fuzzy search scoring"> fuzzySearchTests = [] {
     "progressively worse matches sort in expected order"_test = [] {
-        constexpr std::string_view                filter = "Multiply";
-        constexpr std::array<std::string_view, 4> items  = {"Multiply", "Multipl", "Multaaa", "Zzzzzzz"};
+        constexpr std::string_view                kFilter = "Multiply";
+        constexpr std::array<std::string_view, 4> kItems  = {"Multiply", "Multipl", "Multaaa", "Zzzzzzz"};
 
-        const auto sorted = sortByScore(items, filter);
+        const auto sorted = sortByScore(kItems, kFilter);
         expect(eq(sorted[0], "Multiply"sv));
         expect(eq(sorted[1], "Multipl"sv));
         expect(eq(sorted[2], "Multaaa"sv));
@@ -73,33 +75,33 @@ const static boost::ut::suite<"fuzzy search scoring"> fuzzySearchTests = [] {
     };
 
     "exact substring match outranks close edit distance"_test = [] {
-        constexpr std::string_view filter = "Sink";
+        constexpr std::string_view kFilter = "Sink";
 
-        constexpr std::string_view exactMatch = "gr::basic::DataSink";
-        constexpr std::string_view closeA     = "Sank";
-        constexpr std::string_view closeB     = "Silk";
-        constexpr std::string_view closeC     = "Sint";
+        constexpr std::string_view kExactMatch = "gr::basic::DataSink";
+        constexpr std::string_view kCloseA     = "Sank";
+        constexpr std::string_view kCloseB     = "Silk";
+        constexpr std::string_view kCloseC     = "Sint";
 
-        const auto exactScore = scoreOf(exactMatch, filter);
-        expect(gt(exactScore, scoreOf(closeA, filter)));
-        expect(gt(exactScore, scoreOf(closeB, filter)));
-        expect(gt(exactScore, scoreOf(closeC, filter)));
+        const auto exactScore = scoreOf(kExactMatch, kFilter);
+        expect(gt(exactScore, scoreOf(kCloseA, kFilter)));
+        expect(gt(exactScore, scoreOf(kCloseB, kFilter)));
+        expect(gt(exactScore, scoreOf(kCloseC, kFilter)));
     };
 
     "best component of a namespaced identifier wins"_test = [] {
-        constexpr std::string_view filter = "Selector";
+        constexpr std::string_view kFilter = "Selector";
 
-        constexpr std::string_view goodComponent = "zz::xx::Selector";
-        constexpr std::string_view mediocre      = "Selecbar::Selectom::sekector";
+        constexpr std::string_view kGoodComponent = "zz::xx::Selector";
+        constexpr std::string_view kMediocre      = "Selecbar::Selectom::sekector";
 
-        expect(gt(scoreOf(goodComponent, filter), scoreOf(mediocre, filter)));
+        expect(gt(scoreOf(kGoodComponent, kFilter), scoreOf(kMediocre, kFilter)));
     };
 
     "search is case insensitive"_test = [] {
-        constexpr std::string_view filter = "sink";
+        constexpr std::string_view kFilter = "sink";
 
-        const auto lower = scoreOf("DataSink", filter);
-        const auto upper = scoreOf("DATASINK", filter);
+        const auto lower = scoreOf("DataSink", kFilter);
+        const auto upper = scoreOf("DATASINK", kFilter);
         expect(eq(lower, upper));
     };
 
@@ -108,12 +110,12 @@ const static boost::ut::suite<"fuzzy search scoring"> fuzzySearchTests = [] {
     };
 
     "search happens sections, split by namespace delimiters"_test = [] {
-        constexpr std::string_view filter = "basic::Selector";
+        constexpr std::string_view kFilter = "basic::Selector";
 
-        constexpr std::string_view perfect  = "gr::basic::Selector";
-        constexpr std::string_view halfGood = "gr::other::Selector";
+        constexpr std::string_view kPerfect  = "gr::basic::Selector";
+        constexpr std::string_view kHalfGood = "gr::other::Selector";
 
-        expect(gt(scoreOf(perfect, filter), scoreOf(halfGood, filter)));
+        expect(gt(scoreOf(kPerfect, kFilter), scoreOf(kHalfGood, kFilter)));
     };
 };
 

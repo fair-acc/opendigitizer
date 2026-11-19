@@ -9,11 +9,11 @@
 #include <cstdint>
 #include <vector>
 
-namespace opendigitizer {
+namespace gr::od {
 
 /// 0xRRGGBB colours assigned to signals by slot; a colour in use is not handed out again until released.
 struct SignalColours {
-    using Style = DigitizerUi::LookAndFeel::Style;
+    using Style = LookAndFeel::Style;
 
     Style                                     style = Style::Light;
     std::array<std::vector<std::uint32_t>, 2> palettes{{
@@ -106,6 +106,6 @@ struct ManagedColour {
     [[nodiscard]] std::uint32_t colour() const { return SignalColours::instance().colour(_localSlot); }
 };
 
-} // namespace opendigitizer
+} // namespace gr::od
 
 #endif

@@ -17,7 +17,7 @@
 #include <imgui.h>
 #include <implot.h>
 
-namespace opendigitizer::charts {
+namespace gr::od::charts {
 
 struct SpectrumDensity : gr::Block<SpectrumDensity, gr::Drawable<gr::UICategory::Content, "ImGui">>, Chart {
     using Description = gr::Doc<"2D persistence display showing spectrum amplitude density over time.">;
@@ -25,19 +25,19 @@ struct SpectrumDensity : gr::Block<SpectrumDensity, gr::Drawable<gr::UICategory:
     template<typename T, gr::meta::fixed_string description = "", typename... Arguments>
     using A = gr::Annotated<T, description, Arguments...>;
 
-    // identity
+    static constexpr std::string_view kChartTypeName    = "SpectrumDensity";
+    static constexpr SignalKind       kSupportedSignals = SignalKind::Dataset1D;
+
     A<std::string, "chart name", gr::Visible>              chart_name;
     A<std::string, "chart title">                          chart_title;
     A<std::vector<std::string>, "data sinks", gr::Visible> data_sinks  = {};
     A<bool, "show legend", gr::Visible>                    show_legend = false;
     A<bool, "show grid", gr::Visible>                      show_grid   = true;
 
-    // density histogram
     A<gr::Size_t, "amplitude bins", gr::Visible, gr::Limits<4U, 1024U>>                       amplitude_bins             = 256U;
     A<ImPlotColormap_, "colormap", gr::Visible>                                               colormap                   = ImPlotColormap_Viridis;
     A<gr::Size_t, "histogram decay tau", gr::Doc<"histogram decay in frames (0 = infinite)">> histogram_decay_tau_frames = 100U;
 
-    // trace overlays
     A<bool, "show current overlay", gr::Visible>                                                                        show_current_overlay   = true;
     A<bool, "show max hold", gr::Visible>                                                                               show_max_hold          = false;
     A<bool, "show min hold", gr::Visible>                                                                               show_min_hold          = false;
@@ -48,7 +48,6 @@ struct SpectrumDensity : gr::Block<SpectrumDensity, gr::Drawable<gr::UICategory:
     A<bool, "GPU acceleration", gr::Doc<"use GPU shaders for histogram (falls back to CPU if unavailable)">> gpu_acceleration = true;
     A<bool, "adaptive Y range", gr::Visible, gr::Doc<"rebin histogram to visible Y-axis range on zoom">>     adaptive_y_range = true;
 
-    // axis limits
     A<bool, "X auto-scale"> x_auto_scale = true;
     A<bool, "Y auto-scale"> y_auto_scale = false;
     A<double, "X-axis min"> x_min        = std::numeric_limits<double>::lowest();
@@ -72,8 +71,6 @@ struct SpectrumDensity : gr::Block<SpectrumDensity, gr::Drawable<gr::UICategory:
     RangeLabelsSetting     show_range_labels = true;
     F0LabelsSetting        show_f0_labels    = true;
 
-    static constexpr SignalKind supportedSignals = SignalKind::Dataset1D;
-
     GR_MAKE_REFLECTABLE(SpectrumDensity, chart_name, chart_title, data_sinks, show_legend, show_grid, amplitude_bins, colormap, histogram_decay_tau_frames, gpu_acceleration, adaptive_y_range, show_current_overlay, show_max_hold, show_min_hold, show_average, trace_color, trace_decay_tau_frames, x_auto_scale, y_auto_scale, x_min, x_max, y_min, y_max, range_style, range_min, range_max, range_min_width, range_color, range_min_targets, range_max_targets, f0_style, f0, f0_color, f0_targets, follow_inputs, snap_to_bins, show_range_labels, show_f0_labels);
 
     DensityHistogram             _density;
@@ -81,11 +78,11 @@ struct SpectrumDensity : gr::Block<SpectrumDensity, gr::Drawable<gr::UICategory:
     std::size_t                  _lastSampleCount = std::numeric_limits<std::size_t>::max();
     std::array<std::string, 6UZ> _unitStore{};
 
-    static constexpr std::string_view kChartTypeName = "SpectrumDensity";
+    void reset() { requestRenderReset(); }
 
     gr::work::Result work(std::size_t = std::numeric_limits<std::size_t>::max(), gr::device::DeviceContext& = gr::device::hostBackend()) noexcept { return {0UZ, 0UZ, gr::work::Status::OK}; }
 
-    void settingsChanged(const gr::property_map& /*oldSettings*/, const gr::property_map& newSettings) { handleSettingsChanged(newSettings); }
+    void settingsChanged(const gr::property_map& /*oldSettings*/, const gr::property_map& newSettings) { applyChartSettings(newSettings); }
 
     gr::work::Status draw(const gr::property_map& config = {}) {
         [[maybe_unused]] auto [plotFlags, plotSize, showLegend, chartMode, showGrid, chartStyle] = prepareDrawPrologue(config);
@@ -97,7 +94,7 @@ struct SpectrumDensity : gr::Block<SpectrumDensity, gr::Drawable<gr::UICategory:
 
         ImPlot::PushStyleColor(ImPlotCol_AxisGrid, contrastingGridColor(colormap.value));
 
-        if (!DigitizerUi::TouchHandler<>::BeginZoomablePlot(chart_name.value, plotSize, plotFlags)) {
+        if (!TouchHandler<>::beginZoomablePlot(chart_name.value, plotSize, plotFlags)) {
             ImPlot::PopStyleColor();
             return gr::work::Status::OK;
         }
@@ -105,8 +102,6 @@ struct SpectrumDensity : gr::Block<SpectrumDensity, gr::Drawable<gr::UICategory:
         setupAxes(plotSize, showGrid);
         setupFinish();
 
-        // detect user zoom on Y-axis: if auto-fit is active and the actual plot limits
-        // differ from what we programmatically set, the user zoomed → disable auto-fit
         if (y_auto_scale.value && !_limitsForceAppliedY[0]) {
             auto         plotLimits = ImPlot::GetPlotLimits();
             const double range      = std::abs(_prevYMax[0] - _prevYMin[0]);
@@ -125,14 +120,12 @@ struct SpectrumDensity : gr::Block<SpectrumDensity, gr::Drawable<gr::UICategory:
         drawDensitySignals();
         drawFrequencyMarkers(0UZ);
         tooltip::showPlotMouseTooltip();
-        handleCommonInteractions(chartMode);
-        DigitizerUi::TouchHandler<>::EndZoomablePlot();
+        updateInteractions(chartMode);
+        TouchHandler<>::endZoomablePlot();
         ImPlot::PopStyleColor();
 
         return gr::work::Status::OK;
     }
-
-    void reset() { requestRenderReset(); }
 
     void resetRenderState() {
         _density.reset();
@@ -148,11 +141,10 @@ struct SpectrumDensity : gr::Block<SpectrumDensity, gr::Drawable<gr::UICategory:
         Chart::enableAxisAutoFit(axis, axisIndex);
     }
 
-    // effective Y-range considering dashboard config override (always finite, needed for histogram binning)
+    // always finite: the histogram bins over it
     [[nodiscard]] std::array<double, 2> effectiveYRange() const { return axisLimits(false, y_min.value, y_max.value, parseAxisConfig(this->ui_constraints.value, false), ConstrainedWhen::always); }
 
     void setupAxes(const ImVec2& plotSize, bool showGrid) {
-        // x-axis: frequency
         {
             const auto      dashCfg = parseAxisConfig(this->ui_constraints.value, true);
             const AxisScale scale   = dashCfg ? dashCfg->scale.value_or(AxisScale::Linear) : AxisScale::Linear;
@@ -165,9 +157,8 @@ struct SpectrumDensity : gr::Block<SpectrumDensity, gr::Drawable<gr::UICategory:
             axis::setupAxis(ImAxis_X1, xCat, format, axisLabelWidthOrDefault(dashCfg, defaultAxisLabelWidthFor(ImAxis_X1, plotSize)), minLimit, maxLimit, 1UZ, scale, _unitStore, showGrid, /*foreground=*/true);
         }
 
-        // y-axis: amplitude — always use finite limits because the heatmap provides no
-        // plottable data for ImPlot's AutoFit. Force-apply only when the desired range
-        // changes; otherwise use ImPlotCond_Once so user zoom/pan is preserved.
+        // always finite limits: the heatmap gives ImPlot's AutoFit no plottable data.
+        // Forced only when the desired range changes, else ImPlotCond_Once keeps the user's zoom and pan.
         {
             const auto      dashCfg = parseAxisConfig(this->ui_constraints.value, false);
             const AxisScale scale   = dashCfg ? dashCfg->scale.value_or(AxisScale::Linear) : AxisScale::Linear;
@@ -210,6 +201,6 @@ struct SpectrumDensity : gr::Block<SpectrumDensity, gr::Drawable<gr::UICategory:
     }
 };
 
-} // namespace opendigitizer::charts
+} // namespace gr::od::charts
 
 #endif // OPENDIGITIZER_CHARTS_SPECTRUMDENSITY_HPP

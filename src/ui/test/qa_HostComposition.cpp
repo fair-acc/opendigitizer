@@ -24,6 +24,8 @@
 #include <string>
 #include <vector>
 
+using namespace gr::od;
+
 CMRC_DECLARE(ui_test_assets);
 
 using namespace boost;
@@ -32,7 +34,7 @@ using gr::lifecycle::State;
 
 namespace {
 struct HostGraph {
-    DigitizerUi::GraphSession session;
+    GraphSession session;
 
     HostGraph() {
         const auto grc   = cmrc::ui_test_assets::get_filesystem().open("examples/qa_host_composition.grc");
@@ -43,12 +45,12 @@ struct HostGraph {
 };
 
 struct HostTestState {
-    std::unique_ptr<HostGraph>                  host;
-    DigitizerUi::ToolbarView                    toolbar;
-    std::unique_ptr<DigitizerUi::StatusBarView> statusBar;
-    std::unique_ptr<DigitizerUi::FlowgraphPage> editor;
-    std::optional<ImVec4>                       hostBackground;
-    ImRect                                      editorRect;
+    std::unique_ptr<HostGraph>     host;
+    ToolbarView                    toolbar;
+    std::unique_ptr<StatusBarView> statusBar;
+    std::unique_ptr<FlowgraphPage> editor;
+    std::optional<ImVec4>          hostBackground;
+    ImRect                         editorRect;
 };
 
 bool isMagenta(unsigned int rgba) { return (rgba & 0xFFFFFFU) == 0xFF00FFU; } // exact: a faint grid line still changes a pixel
@@ -62,8 +64,8 @@ struct CanvasPixels {
 HostTestState* gState = nullptr;
 } // namespace
 
-struct TestApp : public DigitizerUi::test::ImGuiTestApp {
-    using DigitizerUi::test::ImGuiTestApp::ImGuiTestApp;
+struct TestApp : public test::ImGuiTestApp {
+    using test::ImGuiTestApp::ImGuiTestApp;
 
     void registerTests() override {
         ImGuiTest* t = IM_REGISTER_TEST(engine(), "hostcomposition", "toolbar, status bar and editor without a dashboard");
@@ -78,11 +80,11 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 ImGui::PushStyleColor(ImGuiCol_ChildBg, *state.hostBackground);
             }
             gr::on_scope_exit popHostColours = [nHostColours] { ImGui::PopStyleColor(nHostColours); };
-            IMW::Window       window("Host", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
-            state.host->session.handleMessages();
+            imw::Window       window("Host", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
+            state.host->session.receiveMessages();
             state.toolbar.draw(state.host->session, true);
             {
-                IMW::Child editorArea("##editor", ImVec2(0.f, -DigitizerUi::StatusBarView::height()), false, ImGuiWindowFlags_NoScrollbar);
+                imw::Child editorArea("##editor", ImVec2(0.f, -StatusBarView::height()), false, ImGuiWindowFlags_NoScrollbar);
                 state.editorRect = ImRect(ImGui::GetWindowPos(), ImGui::GetWindowPos() + ImGui::GetWindowSize());
                 state.editor->draw();
             }
@@ -92,7 +94,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
         t->TestFunc = [](ImGuiTestContext* ctx) {
             auto&      state = *gState;
             const auto reach = [&](State target) {
-                opendigitizer::test::waitUntil(ctx, std::format("the scheduler is {}", gr::meta::enumName(target).value_or("?")), [&] { return state.host->session.state() == target; });
+                test::waitUntil(ctx, std::format("the scheduler is {}", gr::meta::enumName(target).value_or("?")), [&] { return state.host->session.state() == target; });
                 ctx->Yield(); // drawn once in that state
                 return state.host->session.state() == target;
             };
@@ -113,7 +115,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             "the status bar draws the graph's status-bar block"_test = [&] {
                 const auto label = [&] { return std::string(ctx->ItemInfo("**/###schedulerState").DebugLabel); };
                 // the indicator shows its block's state, which follows the scheduler's restart by a few frames
-                opendigitizer::test::waitUntil(ctx, "the indicator shows RUNNING", [&] { return label() == "RUNNING###schedulerState"; });
+                test::waitUntil(ctx, "the indicator shows RUNNING", [&] { return label() == "RUNNING###schedulerState"; });
                 expect(label() == "RUNNING###schedulerState") << label();
             };
 
@@ -127,10 +129,10 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                     const auto value = block->blockSettings.find_value(std::string("amplitude"), std::pmr::get_default_resource());
                     return value ? value->value_or(0.f) : 0.f;
                 };
-                opendigitizer::test::waitUntil(ctx, "the meta information is known", [&] { return generator() != nullptr && !generator()->blockSettingsMetaInformation.empty(); });
+                test::waitUntil(ctx, "the meta information is known", [&] { return generator() != nullptr && !generator()->blockSettingsMetaInformation.empty(); });
                 expect(generator() != nullptr && generator()->blockSettingsMetaInformation.contains("amplitude")) << fatal << "meta information known before the change";
                 ctx->ItemClick("**/Amplify");
-                opendigitizer::test::waitUntil(ctx, "the new value reached the graph model", [&] { return amplitude() == 7.f; });
+                test::waitUntil(ctx, "the new value reached the graph model", [&] { return amplitude() == 7.f; });
                 expect(eq(amplitude(), 7.f)) << "the new value reached the graph model";
                 expect(generator()->blockSettingsMetaInformation.contains("amplitude")) << "the meta information is still there";
             };
@@ -148,7 +150,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             };
 
             "the flowgraph editor edits the host's graph model"_test = [&] {
-                opendigitizer::test::waitUntil(ctx, "an editor opens", [&] { return state.editor->editorCount() > 0UZ; });
+                test::waitUntil(ctx, "an editor opens", [&] { return state.editor->editorCount() > 0UZ; });
                 expect(eq(state.editor->editorCount(), 1UZ)) << "an editor opens once the graph model knows the graph";
                 expect(static_cast<bool>(state.host->session.graphModel.recursiveFindBlockByName("host_indicator"))) << "and it holds the host's blocks";
             };
@@ -161,7 +163,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 };
                 state.hostBackground     = ImVec4(1.f, 0.f, 1.f, 1.f);
                 const auto captureCanvas = [&](Layers layers) {
-                    auto& flowgraph            = DigitizerUi::LookAndFeel::mutableInstance().flowgraph;
+                    auto& flowgraph            = LookAndFeel::mutableInstance().flowgraph;
                     flowgraph.canvasBackground = layers.background;
                     flowgraph.canvasGrid       = layers.grid;
                     flowgraph.canvasBorder     = layers.border;
@@ -187,7 +189,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 const CanvasPixels gridOnly   = captureCanvas(Layers{.background = false, .grid = true, .border = false});
                 const CanvasPixels borderOnly = captureCanvas(Layers{.background = false, .grid = false, .border = true});
                 const Layers       defaults;
-                auto&              flowgraph = DigitizerUi::LookAndFeel::mutableInstance().flowgraph;
+                auto&              flowgraph = LookAndFeel::mutableInstance().flowgraph;
                 flowgraph.canvasBackground   = defaults.background;
                 flowgraph.canvasGrid         = defaults.grid;
                 flowgraph.canvasBorder       = defaults.border;
@@ -204,7 +206,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
 };
 
 int main(int argc, char* argv[]) {
-    auto options             = DigitizerUi::test::TestOptions::fromArgs(argc, argv);
+    auto options             = test::TestOptions::fromArgs(argc, argv);
     options.screenshotPrefix = "host_composition";
     TestApp app(options);
     app.initImGui();
@@ -212,11 +214,11 @@ int main(int argc, char* argv[]) {
     gState         = std::addressof(state);
     auto& registry = gr::globalBlockRegistry();
     gr::blocklib::initGrBasicBlocks(registry);
-    std::ignore = gr::registerBlock<opendigitizer::test::TestPropertySetterButton>(registry);
+    registerWithIdPrefix<test::TestPropertySetterButton>(registry, kOpendigitizerIdPrefix);
 
     state.host      = std::make_unique<HostGraph>();
-    state.statusBar = std::make_unique<DigitizerUi::StatusBarView>();
-    state.editor    = std::make_unique<DigitizerUi::FlowgraphPage>();
+    state.statusBar = std::make_unique<StatusBarView>();
+    state.editor    = std::make_unique<FlowgraphPage>();
     state.editor->setGraphModel(std::addressof(state.host->session.graphModel));
 
     const bool result = app.runTests();

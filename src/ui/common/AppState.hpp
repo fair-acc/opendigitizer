@@ -5,7 +5,7 @@
 
 enum class WindowMode { FULLSCREEN, MAXIMISED, MINIMISED, RESTORED };
 
-namespace DigitizerUi {
+namespace gr::od {
 
 /// the application's state that widgets read; LookAndFeel holds only the look
 struct AppState {
@@ -18,6 +18,6 @@ struct AppState {
 
 inline AppState gAppState;
 
-} // namespace DigitizerUi
+} // namespace gr::od
 
 #endif // OPENDIGITIZER_UI_APPSTATE_HPP

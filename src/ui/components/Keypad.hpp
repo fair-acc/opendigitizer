@@ -7,39 +7,39 @@
 #include <string_view>
 #include <vector>
 
-namespace DigitizerUi::components {
+namespace gr::od::components {
 
 enum class TType {
-    tt_none,
+    None,
 
-    tt_plus,
-    tt_minus,
-    tt_mul,
-    tt_div,
-    tt_power,
+    Plus,
+    Minus,
+    Mul,
+    Div,
+    Power,
 
-    tt_uminus,
-    tt_sin,
-    tt_cos,
-    tt_tan,
-    tt_sinh,
-    tt_cosh,
-    tt_tanh,
+    UMinus,
+    Sin,
+    Cos,
+    Tan,
+    Sinh,
+    Cosh,
+    Tanh,
 
-    tt_expr,
-    tt_popen,
-    tt_pclose,
-    tt_const,
-    tt_end
+    Expr,
+    POpen,
+    PClose,
+    Const,
+    End
 };
 
 struct Token {
-    TType            type = TType::tt_none;
+    TType            type = TType::None;
     std::string_view range; // binary operators include their surrounding spaces, e.g. " + "
 
-    [[nodiscard]] constexpr bool isOperator() const noexcept { return type >= TType::tt_plus && type < TType::tt_expr; }
-    [[nodiscard]] constexpr bool isValid() const noexcept { return type != TType::tt_none && type != TType::tt_end; }
-    [[nodiscard]] constexpr bool isPOpen() const noexcept { return type == TType::tt_popen || (type >= TType::tt_sin && type <= TType::tt_tanh); }
+    [[nodiscard]] constexpr bool isOperator() const noexcept { return type >= TType::Plus && type < TType::Expr; }
+    [[nodiscard]] constexpr bool isValid() const noexcept { return type != TType::None && type != TType::End; }
+    [[nodiscard]] constexpr bool isPOpen() const noexcept { return type == TType::POpen || (type >= TType::Sin && type <= TType::Tanh); }
 };
 
 [[nodiscard]] std::vector<Token>   tokenize(std::string_view text);
@@ -65,6 +65,6 @@ struct InputKeypad {
     [[nodiscard]] static bool isVisible() noexcept;
 };
 
-} // namespace DigitizerUi::components
+} // namespace gr::od::components
 
 #endif

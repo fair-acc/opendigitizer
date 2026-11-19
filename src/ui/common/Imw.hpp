@@ -1,5 +1,5 @@
-#ifndef OPENDIGITIZER_IMGUI_WRAPPER_HPP
-#define OPENDIGITIZER_IMGUI_WRAPPER_HPP
+#ifndef OPENDIGITIZER_UI_COMMON_IMW_HPP_
+#define OPENDIGITIZER_UI_COMMON_IMW_HPP_
 
 #include <imgui.h>
 #include <imgui_internal.h>
@@ -9,12 +9,11 @@
 #include <algorithm>
 #include <string_view>
 
-namespace DigitizerUi::IMW {
+namespace gr::od::imw {
 
 namespace detail {
-// We are returning a bool telling c_resource if EndDisabled needs
-// to be called
-inline bool ImGuiBeginDisabled(bool disabled) {
+// true when EndDisabled is due
+inline bool beginDisabled(bool disabled) {
     if (disabled) {
         ImGui::BeginDisabled();
     }
@@ -31,7 +30,7 @@ void setItemTooltip(auto&&... args) {
     }
 }
 
-inline auto ImGuiBeginChild(const char* str_id, const ImVec2& size = ImVec2(0, 0), ImGuiChildFlags child_flags = 0, ImGuiWindowFlags window_flags = 0) { return ImGui::BeginChild(str_id, size, child_flags, window_flags); }
+inline auto beginChild(const char* strId, const ImVec2& size = ImVec2(0, 0), ImGuiChildFlags childFlags = 0, ImGuiWindowFlags windowFlags = 0) { return ImGui::BeginChild(strId, size, childFlags, windowFlags); }
 
 template<auto* Fn>
 constexpr inline auto singlePop() {
@@ -40,9 +39,9 @@ constexpr inline auto singlePop() {
 } // namespace detail
 
 using Window = stdex::c_resource<bool, ImGui::Begin, ImGui::End, true>;
-using Child  = stdex::c_resource<bool, detail::ImGuiBeginChild, ImGui::EndChild, true>;
+using Child  = stdex::c_resource<bool, detail::beginChild, ImGui::EndChild, true>;
 
-using Disabled   = stdex::c_resource<bool, detail::ImGuiBeginDisabled, ImGui::EndDisabled>;
+using Disabled   = stdex::c_resource<bool, detail::beginDisabled, ImGui::EndDisabled>;
 using TabBar     = stdex::c_resource<bool, ImGui::BeginTabBar, ImGui::EndTabBar>;
 using TabItem    = stdex::c_resource<bool, ImGui::BeginTabItem, ImGui::EndTabItem>;
 using Group      = stdex::c_resource<void, ImGui::BeginGroup, ImGui::EndGroup, true>;
@@ -73,14 +72,9 @@ struct PushCursorPosition {
     ~PushCursorPosition() { ImGui::SetCursorScreenPos(saved); }
 };
 
-/// In places such as the edit pane, we want to wrap widgets to a newline when
-/// there is not enough space. But ImGui generally has no concept of min size.
-/// Checkboxes, for example, are a constant size. Meanwhile TextInputs will
-/// take up 65% of the window by default but can shrink to 1px regardless of
-/// their text contents. So, to have a rule when to wrap, we make these min
-/// and preferred sizes ourselves.
-/// Generally, min(strlen(label), 4) characters is considered the min width for
-/// widgets with a label.
+/// minimum and preferred widget sizes, which ImGui lacks, decide when the edit pane wraps a widget to a new line:
+/// checkboxes have a constant size, text inputs take 65 % of the window by default but shrink to 1 px;
+/// a labelled widget needs at least min(strlen(label), 4) characters
 struct WidgetSize {
     ImVec2 min;
     ImVec2 preferred;
@@ -96,35 +90,30 @@ struct WidgetSize {
     }
 };
 
-/// Calculate the width and height a button will take up with the current style
-/// and a given label. Buttons have a fixed size.
-ImVec2 CalcButtonSize(const char* label);
+ImVec2 calcButtonSize(const char* label);
 
-/// Calculate the area covered by the drawn pixels of the single UTF-8 encoded @param glyph, relative to the position
-/// passed to AddText(). Unlike ImGui::CalcTextSize(), this excludes the advance and the font's ascent and descent
+/// the area covered by the drawn pixels of the UTF-8 `glyph`, relative to the position passed to AddText();
+/// unlike ImGui::CalcTextSize(), without the advance and the font's ascent and descent
 ImRect calcGlyphBounds(ImFont* font, float fontSize, std::string_view glyph);
 
-/// Calculates how big a series of buttons will be if they are all drawn on the
-/// same line, calcButtonSize gives the size of one of them
 template<std::size_t N>
 requires(N > 0)
-inline ImVec2 CalcAdjacentButtonSizes(const std::array<const char*, N>& labels, ImVec2 (*calcButtonSize)(const char*) = CalcButtonSize) {
+inline ImVec2 calcAdjacentButtonSizes(const std::array<const char*, N>& labels, ImVec2 (*calcSize)(const char*) = calcButtonSize) {
     ImVec2     total{};
     const auto spacing = ImGui::GetStyle().ItemSpacing.x;
     for (std::size_t i = 0; i < N; ++i) {
-        auto size = calcButtonSize(labels[i]);
+        auto size = calcSize(labels[i]);
         total.x += size.x + (i > 0 ? spacing : 0.f);
         total.y = std::max(total.y, size.y);
     }
     return total;
 }
 
-WidgetSize CalcCheckboxSize(const char* label);
+WidgetSize calcCheckboxSize(const char* label);
 /// charsNeeded should be something like floating point precision, plus unit/suffix strlen
-WidgetSize CalcDragSize(const char* label, std::size_t charsNeeded);
-/// Minimum size of a folded ImGui::BeginCombo() (label + arrow + small preview
-/// area). previewValue is only used if ImGuiComboFlags_WidthFitPreview is set
-WidgetSize CalcComboSize(const char* label, const char* previewValue, ImGuiComboFlags flags);
+WidgetSize calcDragSize(const char* label, std::size_t charsNeeded);
+/// a folded BeginCombo(): label, arrow and a small preview; `previewValue` counts only with ImGuiComboFlags_WidthFitPreview
+WidgetSize calcComboSize(const char* label, const char* previewValue, ImGuiComboFlags flags);
 
-} // namespace DigitizerUi::IMW
+} // namespace gr::od::imw
 #endif

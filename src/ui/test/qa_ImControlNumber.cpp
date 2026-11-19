@@ -28,11 +28,13 @@
 #include <string>
 #include <vector>
 
+using namespace gr::od;
+
 CMRC_DECLARE(ui_test_assets);
 
 using namespace boost;
 using namespace boost::ut;
-using namespace opendigitizer::test;
+using namespace test;
 
 namespace {
 constexpr ImVec2 kHostPos{40.f, 80.f};
@@ -42,25 +44,25 @@ constexpr ImVec2 kStandalonePos{40.f, 240.f};
 constexpr std::uint64_t kValueBeforeExceedingDoublePrecision   = 1ULL << std::numeric_limits<double>::digits;
 constexpr std::uint64_t kUint64ValueThatExceedsDoublePrecision = kValueBeforeExceedingDoublePrecision + 1ULL;
 
-struct TestState : opendigitizer::test::TestDashboardRunner {
-    DigitizerUi::ToolbarView                                         view;
-    std::unique_ptr<StandaloneControl<DigitizerUi::ImControlNumber>> steps;
-    std::unique_ptr<StandaloneControl<DigitizerUi::ImControlNumber>> ratio;
-    std::unique_ptr<StandaloneControl<DigitizerUi::ImControlNumber>> byte;
-    std::unique_ptr<StandaloneControl<DigitizerUi::ImControlNumber>> fraction;
-    std::unique_ptr<StandaloneControl<DigitizerUi::ImControlNumber>> coarseControl;
-    std::unique_ptr<StandaloneControl<DigitizerUi::ImControlNumber>> rateControl;
-    std::unique_ptr<StandaloneControl<DigitizerUi::ImControlNumber>> toggleMinAndMaxControl;
-    std::unique_ptr<StandaloneControl<DigitizerUi::ImControlNumber>> doubleConversionTestControl;
-    bool                                                             isMinMaxEnabledForToggleMinMaxControl = false;
-    float                                                            hostWidth                             = kHostSize.x;
+struct TestState : test::TestDashboardRunner {
+    ToolbarView                                         view;
+    std::unique_ptr<StandaloneControl<ImControlNumber>> steps;
+    std::unique_ptr<StandaloneControl<ImControlNumber>> ratio;
+    std::unique_ptr<StandaloneControl<ImControlNumber>> byte;
+    std::unique_ptr<StandaloneControl<ImControlNumber>> fraction;
+    std::unique_ptr<StandaloneControl<ImControlNumber>> coarseControl;
+    std::unique_ptr<StandaloneControl<ImControlNumber>> rateControl;
+    std::unique_ptr<StandaloneControl<ImControlNumber>> toggleMinAndMaxControl;
+    std::unique_ptr<StandaloneControl<ImControlNumber>> doubleConversionTestControl;
+    bool                                                isMinMaxEnabledForToggleMinMaxControl = false;
+    float                                               hostWidth                             = kHostSize.x;
 };
 
 TestState* gState = nullptr;
 
 template<typename T>
 gr::property_map configWithMinMaxHints(T value, std::optional<double> min = std::nullopt, std::optional<double> max = std::nullopt) {
-    return DigitizerUi::DrawableBlockConfig{.firstControlledProperty = {.value = value, .hints = {.min = min, .max = max}}, .aggregateControlledPropertyHints = {.min = min, .max = max}}.toMap().value_or(gr::property_map{});
+    return DrawableBlockConfig{.firstControlledProperty = {.value = value, .hints = {.min = min, .max = max}}, .aggregateControlledPropertyHints = {.min = min, .max = max}}.toMap().value_or(gr::property_map{});
 }
 
 template<typename T>
@@ -76,8 +78,8 @@ bool sentExactly(const std::vector<gr::Message>& messages, std::string_view targ
 }
 } // namespace
 
-struct TestApp : public DigitizerUi::test::ImGuiTestApp {
-    using DigitizerUi::test::ImGuiTestApp::ImGuiTestApp;
+struct TestApp : public test::ImGuiTestApp {
+    using test::ImGuiTestApp::ImGuiTestApp;
 
     void registerTests() override {
         ImGuiTest* t = IM_REGISTER_TEST(engine(), "imcontrolnumber", "number controls in the toolbar");
@@ -85,14 +87,14 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
         t->GuiFunc = [](ImGuiTestContext*) { // NOSONAR test lambda length
             ImGui::SetNextWindowPos(kHostPos);
             ImGui::SetNextWindowSize(ImVec2(gState->hostWidth, kHostSize.y));
-            IMW::Window window("Host", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
-            gState->dashboard->session.handleMessages();
+            imw::Window window("Host", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
+            gState->dashboard->session.receiveMessages();
             if (gState->dashboard->isInitialised) {
                 gState->view.draw(gState->dashboard->session, false);
             }
             ImGui::SetNextWindowPos(kStandalonePos);
             ImGui::SetNextWindowSize(kHostSize);
-            IMW::Window standalone("Standalone", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
+            imw::Window standalone("Standalone", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
             std::ignore = gState->steps->block.draw(configWithMinMaxHints<std::int16_t>(0, -10., 10.));
             ImGui::SameLine();
             std::ignore = gState->ratio->block.draw(configWithMinMaxHints<double>(0.));
@@ -194,7 +196,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
 
             "the toolbar fits its host: natural row, shrunk row, two rows, then without labels"_test = [&] {
                 const ImGuiStyle&                  style      = ImGui::GetStyle();
-                const DigitizerUi::DashboardStyle& toolbar    = DigitizerUi::LookAndFeel::instance().dashboardStyle;
+                const DashboardStyle&              toolbar    = LookAndFeel::instance().dashboardStyle;
                 const auto                         labelWidth = [&](const char* label) { return ImGui::CalcTextSize(label).x + style.ItemInnerSpacing.x; };
                 const std::array<const char*, 4UZ> labels{"Amplitude", "Frequency", "Level", "Gain"};
                 const float                        spinner   = 2.f * (ImGui::GetFrameHeight() + style.ItemInnerSpacing.x);
@@ -371,7 +373,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
 };
 
 int main(int argc, char* argv[]) {
-    auto options             = DigitizerUi::test::TestOptions::fromArgs(argc, argv);
+    auto options             = test::TestOptions::fromArgs(argc, argv);
     options.screenshotPrefix = "imcontrolnumber";
     TestApp app(options);
 
@@ -382,7 +384,7 @@ int main(int argc, char* argv[]) {
     auto& registry = gr::globalBlockRegistry();
     gr::blocklib::initGrBasicBlocks(registry);
     gr::blocklib::initGrTestingBlocks(registry);
-    using Standalone                  = StandaloneControl<DigitizerUi::ImControlNumber>;
+    using Standalone                  = StandaloneControl<ImControlNumber>;
     state.steps                       = std::make_unique<Standalone>(gr::property_map{{"name", "standalone_steps"}, {"label", "Steps"}, {"style", "slider"}, {"target_map", "TargetA,TargetB:received"}});
     state.ratio                       = std::make_unique<Standalone>(gr::property_map{{"name", "standalone_ratio"}, {"label", "Ratio"}, {"style", "field"}, {"target_map", "TargetA:ratio"}});
     state.fraction                    = std::make_unique<Standalone>(gr::property_map{{"name", "standalone_fraction"}, {"label", "Fraction"}, {"style", "slider"}, {"value", 0.}, {"target_map", "TargetA:fraction"}});

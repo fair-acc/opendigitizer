@@ -8,24 +8,26 @@
 #include <memory>
 #include <string>
 
+using namespace gr::od;
+
 using namespace boost;
 
-DigitizerUi::components::BlockControlsPanelContext gContext;
+components::BlockControlsPanelContext gContext;
 
-struct TestApp : public DigitizerUi::test::ImGuiTestApp {
-    using DigitizerUi::test::ImGuiTestApp::ImGuiTestApp;
+struct TestApp : public test::ImGuiTestApp {
+    using test::ImGuiTestApp::ImGuiTestApp;
 
     void registerTests() override {
         ImGuiTest* t = IM_REGISTER_TEST(engine(), "blockneighbourspreview", "basic");
 
         t->GuiFunc = [](ImGuiTestContext*) {
-            // black edges on black background isn't readable, use some other color:
-            DigitizerUi::IMW::StyleColor style(ImGuiCol_WindowBg, ImVec4(0.9f, 0.9f, 0.9f, 1.0f));
+            // black edges on a black background are not readable
+            imw::StyleColor style(ImGuiCol_WindowBg, ImVec4(0.9f, 0.9f, 0.9f, 1.0f));
 
             ImGui::Begin("Test Window", NULL, ImGuiWindowFlags_NoSavedSettings);
             ImGui::SetWindowSize(ImVec2(500, 400));
 
-            DigitizerUi::components::BlockNeighboursPreview(gContext, ImGui::GetContentRegionAvail());
+            components::blockNeighboursPreview(gContext, ImGui::GetContentRegionAvail());
 
             ImGui::End();
         };
@@ -40,23 +42,23 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
 };
 
 int main(int argc, char* argv[]) {
-    auto options             = DigitizerUi::test::TestOptions::fromArgs(argc, argv);
+    auto options             = test::TestOptions::fromArgs(argc, argv);
     options.screenshotPrefix = "blockneighbourspreview";
 
-    DigitizerUi::UiGraphModel graphModel;
+    UiGraphModel graphModel;
 
-    // So styling can be accessed:
+    // for the styling
     ax::NodeEditor::Config config;
     config.SettingsFile = nullptr;
     ax::NodeEditor::SetCurrentEditor(ax::NodeEditor::CreateEditor(&config));
 
-    auto block       = std::make_unique<DigitizerUi::UiGraphBlock>(&graphModel, nullptr);
+    auto block       = std::make_unique<UiGraphBlock>(&graphModel, nullptr);
     block->blockName = "Test Block";
 
-    auto sourceBlock       = std::make_unique<DigitizerUi::UiGraphBlock>(&graphModel, nullptr);
+    auto sourceBlock       = std::make_unique<UiGraphBlock>(&graphModel, nullptr);
     sourceBlock->blockName = "Source";
 
-    auto destBlock       = std::make_unique<DigitizerUi::UiGraphBlock>(&graphModel, nullptr);
+    auto destBlock       = std::make_unique<UiGraphBlock>(&graphModel, nullptr);
     destBlock->blockName = "Destination";
 
     auto& blocks = graphModel.rootBlock.childBlocks;
@@ -68,35 +70,33 @@ int main(int argc, char* argv[]) {
     gContext.graphModel            = &graphModel;
     gContext.showNeighboursPreview = true;
 
-    // Get pointers to blocks from the vector since we moved our local pointers
     auto* mainBlock = graphModel.rootBlock.childBlocks[0].get();
     auto* srcBlock  = graphModel.rootBlock.childBlocks[1].get();
     auto* dstBlock  = graphModel.rootBlock.childBlocks[2].get();
 
-    DigitizerUi::UiGraphPort input(mainBlock);
+    UiGraphPort input(mainBlock);
     input.portName      = "Input";
     input.portDirection = gr::PortDirection::INPUT;
     mainBlock->_inputPorts.push_back(input);
-    DigitizerUi::UiGraphPort output(mainBlock);
+    UiGraphPort output(mainBlock);
     output.portName      = "Output";
     output.portDirection = gr::PortDirection::OUTPUT;
     mainBlock->_outputPorts.push_back(output);
 
-    DigitizerUi::UiGraphPort sourceOut(srcBlock);
+    UiGraphPort sourceOut(srcBlock);
     sourceOut.portName      = "sourceOut";
     sourceOut.portDirection = gr::PortDirection::OUTPUT;
     srcBlock->_outputPorts.push_back(sourceOut);
-    DigitizerUi::UiGraphPort sinkIn(dstBlock);
+    UiGraphPort sinkIn(dstBlock);
     sinkIn.portName      = "sinkIn";
     sinkIn.portDirection = gr::PortDirection::INPUT;
     dstBlock->_inputPorts.push_back(sinkIn);
 
-    // Edges:
-    DigitizerUi::UiGraphEdge inEdge;
+    UiGraphEdge inEdge;
     inEdge.edgeSourcePort      = &srcBlock->_outputPorts.back();
     inEdge.edgeDestinationPort = &mainBlock->_inputPorts.back();
     graphModel.rootBlock.childEdges.push_back(inEdge);
-    DigitizerUi::UiGraphEdge outEdge;
+    UiGraphEdge outEdge;
     outEdge.edgeSourcePort      = &mainBlock->_outputPorts.back();
     outEdge.edgeDestinationPort = &dstBlock->_inputPorts.back();
     graphModel.rootBlock.childEdges.push_back(outEdge);

@@ -6,7 +6,7 @@
 
 int main() {
     using namespace boost::ut;
-    using namespace opendigitizer;
+    using namespace gr::od;
     using Style = SignalColours::Style;
 
     "slots are handed out in palette order and reused after release"_test = [] {

@@ -1,4 +1,4 @@
-#include "Setup.hpp"
+#include "DashboardBlocks.hpp"
 
 #include <opendigitizer/localisation/DataSetToTensor.hpp>
 #include <opendigitizer/localisation/DelayLocator.hpp>
@@ -17,7 +17,7 @@
 #include <gnuradio-4.0/trigger/ValueTrigger.hpp>
 #endif
 
-namespace DigitizerUi {
+namespace gr::od {
 
 void registerLocalisationBlocks(gr::BlockRegistry& registry) {
     std::ignore = gr::registerBlock<opendigitizer::localisation::DelayLocator>(registry);
@@ -36,4 +36,4 @@ void registerLocalisationBlocks(gr::BlockRegistry& registry) {
 #endif
 }
 
-} // namespace DigitizerUi
+} // namespace gr::od

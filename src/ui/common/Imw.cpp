@@ -1,9 +1,9 @@
-#include "ImguiWrap.hpp"
+#include "Imw.hpp"
 
 #include <array>
 #include <string>
 
-namespace DigitizerUi::IMW {
+namespace gr::od::imw {
 static ImVec2 framePad() { return ImGui::GetStyle().FramePadding * 2.f; }
 static ImVec2 framePadHeight() { return {0.f, ImGui::GetStyle().FramePadding.y * 2.f}; }
 
@@ -24,7 +24,7 @@ static WidgetSize calculateLabelMinAndPreferredSize(const std::string& label) {
     return WidgetSize{.min = ImVec2{minlabelWidth, labelSize.y}, .preferred = labelSize}.normalized();
 }
 
-static WidgetSize CalcFramedLabelSize(const std::string& label) {
+static WidgetSize calcFramedLabelSize(const std::string& label) {
     const auto [labelMinSize, labelSize, _] = calculateLabelMinAndPreferredSize(label);
     return WidgetSize{
         .min       = labelPlusSpacing(labelMinSize) + framePad(),
@@ -33,7 +33,7 @@ static WidgetSize CalcFramedLabelSize(const std::string& label) {
         .normalized();
 }
 
-ImVec2 CalcButtonSize(const char* label) { return ImGui::CalcTextSize(label) + framePad(); }
+ImVec2 calcButtonSize(const char* label) { return ImGui::CalcTextSize(label) + framePad(); }
 
 ImRect calcGlyphBounds(ImFont* font, float fontSize, std::string_view glyph) {
     unsigned int codepoint = 0;
@@ -44,7 +44,7 @@ ImRect calcGlyphBounds(ImFont* font, float fontSize, std::string_view glyph) {
     return ImRect{ImVec2{fontGlyph->X0, fontGlyph->Y0} * scale, ImVec2{fontGlyph->X1, fontGlyph->Y1} * scale};
 }
 
-WidgetSize CalcCheckboxSize(const char* label) {
+WidgetSize calcCheckboxSize(const char* label) {
     const auto [labelMinSize, labelSize, _] = calculateLabelMinAndPreferredSize(label);
     const float boxSize                     = ImGui::GetFrameHeight();
     const auto  addSizeToConstantSize       = [boxSize](ImVec2 size) { //
@@ -58,8 +58,8 @@ WidgetSize CalcCheckboxSize(const char* label) {
         .normalized();
 }
 
-static WidgetSize CalcSliderOrDragSize(const char* label, std::size_t charsNeeded) {
-    auto size                      = CalcFramedLabelSize(label);
+static WidgetSize calcSliderOrDragSize(const char* label, std::size_t charsNeeded) {
+    auto size                      = calcFramedLabelSize(label);
     auto dragLabelWidth            = ImGui::CalcTextSize("W").x * static_cast<float>(std::max(charsNeeded, std::size_t{1}));
     size.labelPreferredWidth       = size.preferred.x;
     const auto dragAdditionalWidth = dragLabelWidth + ImGui::GetStyle().ItemInnerSpacing.x + ImGui::GetStyle().FramePadding.x * 2.f;
@@ -68,16 +68,14 @@ static WidgetSize CalcSliderOrDragSize(const char* label, std::size_t charsNeede
     return size.normalized();
 }
 
-WidgetSize CalcDragSize(const char* label, std::size_t charsNeeded) { return CalcSliderOrDragSize(label, charsNeeded); }
+WidgetSize calcDragSize(const char* label, std::size_t charsNeeded) { return calcSliderOrDragSize(label, charsNeeded); }
 
-WidgetSize CalcComboSize(const char* label, const char* previewValue, ImGuiComboFlags flags) {
+WidgetSize calcComboSize(const char* label, const char* previewValue, ImGuiComboFlags flags) {
     WidgetSize previewSize{};
     if (!(flags & ImGuiComboFlags_NoPreview) && previewValue) {
-        // preview is just a framed label
-        previewSize = CalcFramedLabelSize(previewValue);
+        previewSize = calcFramedLabelSize(previewValue);
     }
 
-    // combo size is arrow plus preview box plus label
     const float arrowSize                   = (flags & ImGuiComboFlags_NoArrowButton) ? 0.f : ImGui::GetFrameHeight();
     const auto [labelMinSize, labelSize, _] = calculateLabelMinAndPreferredSize(label);
     return WidgetSize{
@@ -88,4 +86,4 @@ WidgetSize CalcComboSize(const char* label, const char* previewValue, ImGuiCombo
         .normalized();
 }
 
-} // namespace DigitizerUi::IMW
+} // namespace gr::od::imw

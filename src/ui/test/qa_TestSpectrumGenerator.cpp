@@ -7,7 +7,7 @@
 #include <algorithm>
 #include <cmath>
 
-using namespace opendigitizer;
+using namespace gr::od;
 
 const boost::ut::suite<"TestSpectrumGenerator"> tests = [] {
     using namespace boost::ut;

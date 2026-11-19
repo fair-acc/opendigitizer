@@ -18,17 +18,17 @@
 #include <imgui_internal.h>
 #include <misc/cpp/imgui_stdlib.h>
 
-#include "blocks/StatusBarBlock.hpp"
-#include "common/ImguiWrap.hpp"
+#include "blocks/SchedulerStateIndicator.hpp"
+#include "common/Imw.hpp"
 #include "common/LookAndFeel.hpp"
 #include "components/ImGuiNotify.hpp"
-#include "components/StyledStandardWidgets.hpp"
+#include "components/StyledWidgets.hpp"
 
 #include "tolower.hpp"
 
 using namespace std::string_literals;
 
-namespace DigitizerUi {
+namespace gr::od {
 
 namespace {
 using gr::log::Level;
@@ -96,7 +96,7 @@ Records filterRecords(const Records& records, std::optional<Level> levelFilter, 
 float StatusBarView::height() noexcept { return ImGui::GetFrameHeightWithSpacing(); }
 
 void StatusBarView::draw(GraphSession* session) {
-    IMW::Child     bar("##StatusBar", ImVec2(ImGui::GetContentRegionAvail().x, ImGui::GetFrameHeight()), false, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+    imw::Child     bar("##StatusBar", ImVec2(ImGui::GetContentRegionAvail().x, ImGui::GetFrameHeight()), false, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
     const ImVec2   pos       = ImGui::GetWindowPos();
     const uint32_t lineColor = ImGui::ColorConvertFloat4ToU32(LookAndFeel::instance().palette().toolbarLineColor);
     ImGui::GetWindowDrawList()->AddLine(pos, ImVec2(pos.x + ImGui::GetWindowWidth(), pos.y), lineColor);
@@ -109,9 +109,9 @@ void StatusBarView::draw(GraphSession* session) {
     if (session != nullptr && !_blocks.of(*session).empty()) {
         ImGui::SameLine();
         {
-            IMW::Group blocks;
+            imw::Group blocks;
             for (const auto& block : _blocks.of(*session)) {
-                IMW::ChangeStrId id(std::string(block->uniqueName()).c_str());
+                imw::ChangeStrId id(std::string(block->uniqueName()).c_str());
                 std::ignore = block->draw();
                 ImGui::SameLine();
             }
@@ -160,8 +160,8 @@ void StatusBarView::drawLogLine(float width) {
     const std::string renderedText = latest ? singleLineText(textOf(*latest)) : std::string{};
     const std::string label        = std::format("{}###statusLine", renderedText);
     {
-        IMW::StyleColor colour(ImGuiCol_Text, latest ? colourOf(latest->level) : ImGui::GetStyleColorVec4(ImGuiCol_Text));
-        if (DigitizerUi::Selectable(label.c_str(), false, ImGuiSelectableFlags_None, ImVec2(std::max(1.f, width - (ImGui::GetCursorPosX() - startX)), 0.f))) {
+        imw::StyleColor colour(ImGuiCol_Text, latest ? colourOf(latest->level) : ImGui::GetStyleColorVec4(ImGuiCol_Text));
+        if (selectable(label.c_str(), false, ImGuiSelectableFlags_None, ImVec2(std::max(1.f, width - (ImGui::GetCursorPosX() - startX)), 0.f))) {
             ImGui::OpenPopup(kLogPopup);
         }
     }
@@ -189,7 +189,7 @@ void StatusBarView::openSavePopup(std::string text) {
         .writerPath                 = std::string(filename), //
         .writer                     = {}};
 
-    // There's no save popup to close on __EMSCRIPTEN__
+    // no save popup to close on __EMSCRIPTEN__
     std::ignore = startSavePendingTextToFile();
 
 #else
@@ -238,7 +238,7 @@ void StatusBarView::pollSaveResult() {
 void StatusBarView::drawSavePopup() {
 #ifndef __EMSCRIPTEN__
     ImGui::SetNextWindowSize({700.f, ImGui::GetFrameHeight() * 4.f}, ImGuiCond_Once);
-    if (auto popup = IMW::ModalPopup(kSaveLogPopup, nullptr, 0)) {
+    if (auto popup = imw::ModalPopup(kSaveLogPopup, nullptr, 0)) {
         ImGui::AlignTextToFramePadding();
         ImGui::Text("Path:");
         ImGui::SameLine();
@@ -250,7 +250,7 @@ void StatusBarView::drawSavePopup() {
 
         ImGui::Separator();
         {
-            IMW::Disabled disabled(!saveEnabled || saveBusy);
+            imw::Disabled disabled(!saveEnabled || saveBusy);
             if ((ImGui::Button("Save###saveLogConfirm") || (saveEnabled && ImGui::IsKeyPressed(ImGuiKey_Enter))) && saveEnabled && !saveBusy) {
                 std::error_code error;
                 const bool      exists = std::filesystem::exists(_saving->path, error);
@@ -270,7 +270,7 @@ void StatusBarView::drawSavePopup() {
         }
 
         ImGui::SetNextWindowSize(ImGui::GetWindowSize(), ImGuiCond_Always);
-        if (auto overwritePopup = IMW::ModalPopup(kSaveLogOverwritePopup, nullptr, 0)) {
+        if (auto overwritePopup = imw::ModalPopup(kSaveLogOverwritePopup, nullptr, 0)) {
             bool closeOverwritePopup = false;
             ImGui::TextWrapped("'%s' already exists. Overwrite it?", _saving->path.c_str());
             const bool acceptOverwrite = ImGui::Button("Overwrite###saveLogOverwrite") || (!ImGui::IsWindowAppearing() && ImGui::IsKeyPressed(ImGuiKey_Enter));
@@ -298,7 +298,10 @@ void StatusBarView::drawLogPopup() {
     pollSaveResult();
 
     struct ButtonText {
-        constexpr explicit ButtonText(const char* _data) : data(_data) {
+        const char* data;
+        std::string textOnly;
+
+        constexpr explicit ButtonText(const char* data_) : data(data_) {
             assert(data != nullptr);
             std::string_view view(data);
             const auto       pos = view.find("###");
@@ -307,10 +310,7 @@ void StatusBarView::drawLogPopup() {
         }
 
         operator const char*() const { return data; }
-
-        const char* data;
-        std::string textOnly;
-        auto        width() const { return DigitizerUi::CalcButtonSize(textOnly.c_str()).x; }
+        auto width() const { return calcTextButtonSize(textOnly.c_str()).x; }
     };
 
     static const ButtonText clearLogsText("Clear logs###clearLogs");
@@ -324,7 +324,7 @@ void StatusBarView::drawLogPopup() {
     const float  barWidth   = ImGui::GetWindowWidth();
     ImGui::SetNextWindowPos(barTopLeft, ImGuiCond_Always, ImVec2(0.f, 1.f));
     ImGui::SetNextWindowSizeConstraints(ImVec2(barWidth, 0.f), ImVec2(barWidth, ImGui::GetMainViewport()->Size.y * .6f));
-    IMW::Popup popup(kLogPopup, 0);
+    imw::Popup popup(kLogPopup, 0);
     if (!popup) {
         return;
     }
@@ -372,9 +372,9 @@ void StatusBarView::drawLogPopup() {
     }
 
     {
-        IMW::Disabled disabledButtons(visibleRecords.size() == 0);
+        imw::Disabled disabledButtons(visibleRecords.size() == 0);
         ImGui::SameLine();
-        if (DigitizerUi::TextButton(clearLogsText)) {
+        if (textButton(clearLogsText)) {
             logHistory().clear();
             _selectedRecords.Clear();
             triggerNewSelectionID();
@@ -382,19 +382,19 @@ void StatusBarView::drawLogPopup() {
         }
 
         ImGui::SameLine();
-        if (DigitizerUi::TextButton(hasVisibleSelection ? copySelectedText : copyAllText) || ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_C)) {
+        if (textButton(hasVisibleSelection ? copySelectedText : copyAllText) || ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_C)) {
             ImGui::SetClipboardText(selectedOrAllAsText(visibleRecords, hasVisibleSelection).c_str());
         }
         ImGui::SameLine();
         {
-            IMW::Disabled _(visibleRecords.size() != 0 && (_saving && _saving->writer.has_value()));
-            if (DigitizerUi::TextButton(hasVisibleSelection ? saveSelectedText : saveAllText)) {
+            imw::Disabled _(visibleRecords.size() != 0 && (_saving && _saving->writer.has_value()));
+            if (textButton(hasVisibleSelection ? saveSelectedText : saveAllText)) {
                 openSavePopup(selectedOrAllAsText(visibleRecords, hasVisibleSelection));
             }
         }
     }
     ImGui::SameLine();
-    if (DigitizerUi::TextButton(closeText)) {
+    if (textButton(closeText)) {
         ImGui::CloseCurrentPopup();
     }
 
@@ -406,7 +406,7 @@ void StatusBarView::drawLogPopup() {
         ImGui::TextDisabled("(%llu records not kept: logged while the history was read)", static_cast<unsigned long long>(dropped));
     }
 
-    IMW::Table table("##statusBarRecords", 4, ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_ScrollY, ImVec2(0.f, ImGui::GetMainViewport()->Size.y * .5f), 0.f);
+    imw::Table table("##statusBarRecords", 4, ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_ScrollY, ImVec2(0.f, ImGui::GetMainViewport()->Size.y * .5f), 0.f);
     if (!table) {
         return;
     }
@@ -416,8 +416,8 @@ void StatusBarView::drawLogPopup() {
     ImGui::TableSetupColumn("source");
     ImGui::TableHeadersRow();
 
-    // Forces ImGUI to forget the previous selection
-    IMW::ChangeId _(_selectionId);
+    // ImGui forgets the previous selection
+    imw::ChangeId _(_selectionId);
     auto*         multiSelect = ImGui::BeginMultiSelect(ImGuiMultiSelectFlags_BoxSelect1d | ImGuiMultiSelectFlags_ClearOnClickVoid, _selectedRecords.Size, static_cast<int>(visibleRecords.size()));
     _selectedRecords.ApplyRequests(multiSelect);
     for (std::size_t index = 0UZ; index < visibleRecords.size(); ++index) {
@@ -428,7 +428,7 @@ void StatusBarView::drawLogPopup() {
         ImGui::TableNextRow(0, rowMinHeight);
         ImGui::TableNextColumn();
         ImGui::SetNextItemSelectionUserData(static_cast<ImGuiSelectionUserData>(index));
-        DigitizerUi::Selectable(std::format("{}###record{}", timeOfDay(record.timestampNanos), index).c_str(), _selectedRecords.Contains(selectionIdOf(record)), ImGuiSelectableFlags_SpanAllColumns, ImVec2(0.f, rowMinHeight));
+        selectable(std::format("{}###record{}", timeOfDay(record.timestampNanos), index).c_str(), _selectedRecords.Contains(selectionIdOf(record)), ImGuiSelectableFlags_SpanAllColumns, ImVec2(0.f, rowMinHeight));
         ImGui::TableNextColumn();
         ImGui::TextColored(colourOf(record.level), "%.*s", static_cast<int>(logLevelName(record.level).size()), logLevelName(record.level).data());
         ImGui::TableNextColumn();
@@ -441,4 +441,4 @@ void StatusBarView::drawLogPopup() {
     _selectedRecords.ApplyRequests(ImGui::EndMultiSelect());
 }
 
-} // namespace DigitizerUi
+} // namespace gr::od

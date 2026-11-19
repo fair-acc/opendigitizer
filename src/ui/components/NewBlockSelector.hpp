@@ -9,7 +9,7 @@
 #include <set>
 #include <string>
 
-namespace DigitizerUi {
+namespace gr::od {
 
 struct FilteredListState {
     std::optional<std::string> selected;
@@ -17,33 +17,31 @@ struct FilteredListState {
     bool                       filterInputReclaimFocus = false;
 };
 
-class NewBlockSelector {
-private:
-    std::string m_windowName = "New Block";
+struct NewBlockSelector {
+    std::map<std::string, std::set<std::string>> data;
 
-    bool        m_wasOpenLastFrame = false;
-    std::string m_blockFilter;
-    std::string m_currentlySelectedType;
-    std::string m_previouslySelectedType;
-    std::string m_selectedTypeParametrizationListName;
+    std::string _windowName = "New Block";
 
-    std::map<std::string, FilteredListState, std::less<>> m_parametrizationLists;
+    bool        _wasOpenLastFrame = false;
+    std::string _blockFilter;
+    std::string _currentlySelectedType;
+    std::string _previouslySelectedType;
+    std::string _selectedTypeParametrizationListName;
 
-    std::function<void(std::string)> m_onTypeSelected;
+    std::map<std::string, FilteredListState, std::less<>> _parametrizationLists;
+
+    std::function<void(std::string)> _onTypeSelected;
 
     void drawNamespaceTree(const ImVec2& size);
 
-public:
-    std::map<std::string, std::set<std::string>> data;
-
     /// onTypeSelected is invoked with the chosen type when the user confirms with OK
     void open(std::function<void(std::string)> onTypeSelected) {
-        m_onTypeSelected = std::move(onTypeSelected);
-        assert(m_onTypeSelected);
-        ImGui::OpenPopup(m_windowName.c_str());
+        _onTypeSelected = std::move(onTypeSelected);
+        assert(_onTypeSelected);
+        ImGui::OpenPopup(_windowName.c_str());
     }
     void draw();
 };
-} // namespace DigitizerUi
+} // namespace gr::od
 
 #endif

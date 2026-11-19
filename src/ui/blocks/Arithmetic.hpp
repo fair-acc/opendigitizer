@@ -11,7 +11,7 @@
 #include <string_view>
 #include <utility>
 
-namespace opendigitizer {
+namespace gr::od {
 
 template<typename T>
 requires std::is_arithmetic_v<T>
@@ -58,6 +58,6 @@ struct Arithmetic : gr::Block<Arithmetic<T>> {
     }
 };
 
-} // namespace opendigitizer
+} // namespace gr::od
 
 #endif

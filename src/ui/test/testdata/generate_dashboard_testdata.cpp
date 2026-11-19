@@ -1,6 +1,5 @@
-// Generates a nested tree of random .ddd dashboard files for manual testing
-// Usage: generate_testdata <outputDir>
-// Should usually be run via the `run_generate_testdata` cmake target
+// generates a nested tree of random .ddd dashboard files for manual testing
+// usage: generate_testdata <outputDir>, usually via the `run_generate_testdata` cmake target
 
 #include <algorithm>
 #include <array>
@@ -49,7 +48,7 @@ constexpr std::array<std::string_view, 5> kChartTypes{
     "opendigitizer::charts::SpectrumView",  //
 };
 
-constexpr std::array<std::uint32_t, 8> colorPalette{0x00C800, 0xC800C8, 0xC80000, 0x0000C8, 0xFF8C00, 0x1E90FF, 0x2E8B57, 0x8A2BE2};
+constexpr std::array<std::uint32_t, 8> kColorPalette{0x00C800, 0xC800C8, 0xC80000, 0x0000C8, 0xFF8C00, 0x1E90FF, 0x2E8B57, 0x8A2BE2};
 
 constexpr std::array<std::string_view, 8> kHeaderTagPool{
     "commissioning", "nightshift", "experimental", "reference", //
@@ -127,13 +126,13 @@ struct BlockSpec {
     gr::property_map parameters;
 };
 
-enum class SourceKind { sine, spectrum, remote, MAX };
+enum class SourceKind { sine, spectrum, remote, count };
 
 std::vector<BlockSpec> makeSources() {
     std::vector<BlockSpec> sources;
     const int              nSources = randomRangeInt(1, 4);
     for (int i = 0; i < nSources; ++i) {
-        const SourceKind kind = static_cast<SourceKind>(randomRangeInt(0, static_cast<int>(SourceKind::MAX) - 1));
+        const SourceKind kind = static_cast<SourceKind>(randomRangeInt(0, static_cast<int>(SourceKind::count) - 1));
         BlockSpec        source;
         switch (kind) {
         case SourceKind::sine:
@@ -153,7 +152,7 @@ std::vector<BlockSpec> makeSources() {
             source.parameters["signal_name"] = std::string(signal);
             break;
         }
-        case SourceKind::MAX: std::unreachable();
+        case SourceKind::count: std::unreachable();
         }
         source.parameters["name"] = source.name;
         sources.push_back(std::move(source));
@@ -168,7 +167,7 @@ std::vector<BlockSpec> makeSinks() {
         BlockSpec sink{.id = "opendigitizer::ImPlotSink<float32>", .name = std::format("plotSink{}", i + 1), .parameters = {}};
         sink.parameters["name"] = sink.name;
         if (percentChanceIsTrue(0.15)) {
-            sink.parameters["color"] = chooseOneFrom(colorPalette);
+            sink.parameters["color"] = chooseOneFrom(kColorPalette);
         }
         sinks.push_back(std::move(sink));
     }
@@ -301,13 +300,13 @@ void writeDddFile(const std::filesystem::path& path) {
     std::ofstream stream(path, std::ios::binary | std::ios::trunc);
     const auto    writeU32 = [&stream](std::uint32_t value) { stream.write(reinterpret_cast<const char*>(&value), 4); };
 
-    constexpr std::uint32_t headerStart = 32;
-    const std::uint32_t     headerSize  = static_cast<std::uint32_t>(headerYaml.size());
-    writeU32(headerStart);
+    constexpr std::uint32_t kHeaderStart = 32;
+    const std::uint32_t     headerSize   = static_cast<std::uint32_t>(headerYaml.size());
+    writeU32(kHeaderStart);
     writeU32(headerSize);
     writeU32(0);
     writeU32(0);
-    writeU32(headerStart + headerSize);
+    writeU32(kHeaderStart + headerSize);
     writeU32(static_cast<std::uint32_t>(flowgraphYaml.size()));
     writeU32(0);
     writeU32(0);

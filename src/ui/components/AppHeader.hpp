@@ -1,6 +1,5 @@
 #ifndef OPENDIGITIZER_UI_COMPONENTS_APP_HEADER_HPP_
 #define OPENDIGITIZER_UI_COMPONENTS_APP_HEADER_HPP_
-// #define STB_IMAGE_IMPLEMENTATION
 
 #include <chrono>
 #include <string_view>
@@ -8,10 +7,10 @@
 #include <cmrc/cmrc.hpp>
 #include <format>
 
-#include "../common/AppDefinitions.hpp"
-#include "../common/ImguiWrap.hpp"
+#include "../common/Imw.hpp"
 #include "../common/LookAndFeel.hpp"
 #include "../common/TouchHandler.hpp"
+#include "../common/ViewMode.hpp"
 #include "../components/ImGuiNotify.hpp"
 
 #include <SDL3/SDL_opengl.h>
@@ -25,17 +24,17 @@
 
 CMRC_DECLARE(ui_assets);
 
-namespace DigitizerUi::components {
+namespace gr::od::components {
 namespace detail {
 
-inline void TextCentered(const std::string_view text) {
+inline void textCentered(const std::string_view text) {
     auto windowWidth = ImGui::GetWindowSize().x;
     auto textWidth   = ImGui::CalcTextSize(text.data(), text.data() + text.size()).x;
     ImGui::SetCursorPosX((windowWidth - textWidth) * 0.5f);
     ImGui::Text("%s", text.data());
 }
 
-inline void TextRight(const std::string_view text, float rightInset) {
+inline void textRight(const std::string_view text, float rightInset) {
     auto windowWidth = ImGui::GetWindowSize().x;
     auto textWidth   = ImGui::CalcTextSize(text.data(), text.data() + text.size()).x;
     ImGui::SetCursorPosX(windowWidth - textWidth - rightInset);
@@ -49,60 +48,55 @@ inline void textFitted(std::string_view text, ImFont* font, float minSize, float
     }
     float size = font->LegacySize;
     {
-        IMW::Font   measured(font);
+        imw::Font   measured(font);
         const float width = ImGui::CalcTextSize(text.data(), text.data() + text.size()).x;
         if (width > available) {
             size = std::max(minSize, size * available / width);
         }
     }
-    IMW::FontWithSize sized(font, size);
+    imw::FontWithSize sized(font, size);
     const ImVec2      textSize = ImGui::CalcTextSize(text.data(), text.data() + text.size());
     const ImVec2      min      = ImGui::GetWindowPos() + ImVec2{left + std::max(0.f, 0.5f * (available - textSize.x)), topForHeight(textSize.y)};
     const ImVec2      max{ImGui::GetWindowPos().x + right, min.y + textSize.y};
     ImGui::RenderTextEllipsis(ImGui::GetWindowDrawList(), min, max, max.x, text.data(), text.data() + text.size(), &textSize);
 }
 
-inline bool LoadTextureFromFile(const char* filename, GLuint* out_texture, ImVec2& textureSize) {
-    // Load from file
-    int image_width  = 0;
-    int image_height = 0;
+inline bool loadTextureFromFile(const char* filename, GLuint* outTexture, ImVec2& textureSize) {
+    int imageWidth  = 0;
+    int imageHeight = 0;
 
     auto fs   = cmrc::ui_assets::get_filesystem();
     auto file = fs.open(filename);
 
-    unsigned char* image_data = stbi_load_from_memory(reinterpret_cast<const unsigned char*>(file.begin()), static_cast<int>(file.size()), &image_width, &image_height, nullptr, 4);
-    if (image_data == NULL) {
+    unsigned char* imageData = stbi_load_from_memory(reinterpret_cast<const unsigned char*>(file.begin()), static_cast<int>(file.size()), &imageWidth, &imageHeight, nullptr, 4);
+    if (imageData == NULL) {
         return false;
     }
 
-    // Create a OpenGL texture identifier
-    GLuint image_texture;
-    glGenTextures(1, &image_texture);
-    glBindTexture(GL_TEXTURE_2D, image_texture);
+    GLuint imageTexture;
+    glGenTextures(1, &imageTexture);
+    glBindTexture(GL_TEXTURE_2D, imageTexture);
 
-    // Setup filtering parameters for display
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE); // This is required on WebGL for non power-of-two textures
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE); // Same
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE); // WebGL requires clamping for non-power-of-two textures
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
-    // Upload pixels into texture
 #if defined(GL_UNPACK_ROW_LENGTH) && !defined(__EMSCRIPTEN__)
     glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
 #endif
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, image_width, image_height, 0, GL_RGBA, GL_UNSIGNED_BYTE, image_data);
-    stbi_image_free(image_data);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, imageWidth, imageHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, imageData);
+    stbi_image_free(imageData);
 
-    *out_texture  = image_texture;
-    textureSize.x = static_cast<float>(image_width);
-    textureSize.y = static_cast<float>(image_height);
+    *outTexture   = imageTexture;
+    textureSize.x = static_cast<float>(imageWidth);
+    textureSize.y = static_cast<float>(imageHeight);
 
     return true;
 }
 } // namespace detail
 
-class AppHeader {
-public:
+struct AppHeader {
     std::function<void()>                   requestApplicationStop;
     std::function<void(ViewMode)>           requestApplicationSwitchMode;
     std::function<void(LookAndFeel::Style)> requestApplicationSwitchStyle;
@@ -117,14 +111,14 @@ public:
     GLuint imgFairLogoDark = 0;
 
     void loadAssets() {
-        [[maybe_unused]] bool ret = detail::LoadTextureFromFile("assets/fair-logo/FAIR_Logo_rgb_72dpi.png", &imgFairLogo, logoSize);
+        [[maybe_unused]] bool ret = detail::loadTextureFromFile("assets/fair-logo/FAIR_Logo_rgb_72dpi.png", &imgFairLogo, logoSize);
         IM_ASSERT(ret);
 
-        ret = detail::LoadTextureFromFile("assets/fair-logo/FAIR_Logo_rgb_72dpi_dark.png", &imgFairLogoDark, logoSize);
+        ret = detail::loadTextureFromFile("assets/fair-logo/FAIR_Logo_rgb_72dpi_dark.png", &imgFairLogoDark, logoSize);
         IM_ASSERT(ret);
     }
 
-    void draw(std::string_view title, ImFont* title_font, LookAndFeel::Style style_) {
+    void draw(std::string_view title, ImFont* titleFont, LookAndFeel::Style style) {
         using namespace detail;
 
         const auto  now           = std::chrono::round<std::chrono::seconds>(std::chrono::system_clock::now());
@@ -135,22 +129,22 @@ public:
         std::string utcClock      = std::format("{:02}:{:02}:{:02} (UTC)", utcTm.tm_hour, utcTm.tm_min, utcTm.tm_sec);
         const auto  utcStringSize = ImGui::CalcTextSize(utcClock.c_str());
 
-        const auto& palette = DigitizerUi::LookAndFeel::instance().palette();
+        const auto& palette = LookAndFeel::instance().palette();
 
         const auto  topLeft            = ImGui::GetCursorPos();
-        const float headerHeight       = 2.f * ImGui::GetTextLineHeight() + ImGui::GetStyle().ItemSpacing.y; // hardcodes that the largest item in the header is date/time text display
+        const float headerHeight       = 2.f * ImGui::GetTextLineHeight() + ImGui::GetStyle().ItemSpacing.y; // the clock's two text lines are the tallest item
         const auto  verticallyCentredY = [&](float itemHeight) { return topLeft.y + .5f * (headerHeight - itemHeight); };
 
         ImFont*     headerIconFont = LookAndFeel::instance().fontIconsSolidLarge;
         const float iconButtonSize = VerticalPopupMenu<1>::calcAddButtonIconButtonSize(headerIconFont);
 
         const auto headerIconButton = [&](const char* label, ImVec4 iconColor) {
-            IMW::StyleColor    buttonStyle(ImGuiCol_Button, palette.mainWindowButtonBgInactive);
-            IMW::StyleColor    textStyle(ImGuiCol_Text, iconColor);
-            IMW::StyleColor    buttonActiveStyle(ImGuiCol_ButtonActive, palette.mainWindowButtonBgActive);
-            IMW::StyleColor    buttonHoveredStyle(ImGuiCol_ButtonHovered, palette.mainWindowButtonBgHovered);
-            IMW::StyleFloatVar rounding(ImGuiStyleVar_FrameRounding, LookAndFeel::instance().popupMenuButtonRounding);
-            IMW::Font          font(headerIconFont);
+            imw::StyleColor    buttonStyle(ImGuiCol_Button, palette.mainWindowButtonBgInactive);
+            imw::StyleColor    textStyle(ImGuiCol_Text, iconColor);
+            imw::StyleColor    buttonActiveStyle(ImGuiCol_ButtonActive, palette.mainWindowButtonBgActive);
+            imw::StyleColor    buttonHoveredStyle(ImGuiCol_ButtonHovered, palette.mainWindowButtonBgHovered);
+            imw::StyleFloatVar rounding(ImGuiStyleVar_FrameRounding, LookAndFeel::instance().popupMenuButtonRounding);
+            imw::Font          font(headerIconFont);
             return ImGui::Button(label, ImVec2{iconButtonSize, iconButtonSize});
         };
 
@@ -161,37 +155,34 @@ public:
         const bool            showDevMenuButton = devMenuHidden < 1.f;
         const float           clockRightInset   = showDevMenuButton ? ImGui::GetWindowSize().x - devMenuButtonX + ImGui::GetStyle().ItemSpacing.x : ImGui::GetStyle().ItemSpacing.x;
 
-        // draw title
         const ImVec2 localLogoSize = logoSize * (headerHeight / logoSize.y);
         ImVec2       posBeneathClock;
         if (gAppState.compact) {
             const float spacing    = ImGui::GetStyle().ItemSpacing.x;
             const float titleLeft  = topLeft.x + (editable ? iconButtonSize + LookAndFeel::instance().appHeaderMenuToLogoGap : 0.f) + localLogoSize.x + spacing;
             const float titleRight = ImGui::GetWindowSize().x - clockRightInset - utcStringSize.x - spacing;
-            textFitted(title, title_font, LookAndFeel::instance().fontNormal()->LegacySize, titleLeft, titleRight, verticallyCentredY);
+            textFitted(title, titleFont, LookAndFeel::instance().fontNormal()->LegacySize, titleLeft, titleRight, verticallyCentredY);
             ImGui::SetCursorPos(ImVec2{topLeft.x, verticallyCentredY(ImGui::GetTextLineHeight())});
-            TextRight(utcClock, clockRightInset);
+            textRight(utcClock, clockRightInset);
             posBeneathClock = ImVec2{topLeft.x, topLeft.y + headerHeight + ImGui::GetStyle().ItemSpacing.y};
         } else {
             {
-                IMW::Font  font(title_font);
+                imw::Font  font(titleFont);
                 const auto titleSize = ImGui::CalcTextSize(title.data());
-                // suppress title if it doesn't fit or is likely to overlap
                 if (0.5f * ImGui::GetIO().DisplaySize.x > (0.5f * titleSize.x + utcStringSize.x)) {
-                    TextCentered(title);
+                    textCentered(title);
                 }
             }
 
             ImGui::SameLine();
             auto pos = ImGui::GetCursorPos();
-            TextRight(localClock, clockRightInset);
+            textRight(localClock, clockRightInset);
             pos.y += ImGui::GetTextLineHeightWithSpacing();
             ImGui::SetCursorPos(pos);
-            TextRight(utcClock, clockRightInset);
+            textRight(utcClock, clockRightInset);
             posBeneathClock = ImGui::GetCursorPos();
         }
 
-        // left menu
         VerticalPopupMenu<1> leftMenu;
         const ImVec2         menuHome{topLeft.x, verticallyCentredY(iconButtonSize)};
         const float          menuHidden = !editable ? 0.f : menuAutoHide.update(ImRect(ImGui::GetWindowPos() + menuHome, ImGui::GetWindowPos() + menuHome + ImVec2{iconButtonSize, iconButtonSize}));
@@ -200,7 +191,6 @@ public:
         const auto menuButtonPushed = editable && headerIconButton(gAppState.prototypeMode ? "" : "", palette.mainWindowButtonIcon.value_or(ImGui::GetStyleColorVec4(ImGuiCol_Text)));
 
         if ((menuButtonPushed || ImGui::IsItemHovered()) && editable) {
-            using DigitizerUi::MenuButton;
             const bool wasAlreadyOpen = leftMenu.isOpen();
 
             leftMenu.addButton("\uF201", [this]() { requestApplicationSwitchMode(ViewMode::INTERACTION); }, headerIconFont, "switch to chart view", palette.headerMenuButton, palette.popupMenuButtonIcon);
@@ -213,21 +203,17 @@ public:
             }
         }
 
-        // draw fair logo
         const float logoX = !editable ? topLeft.x : topLeft.x + (1.f - menuHidden) * (iconButtonSize + LookAndFeel::instance().appHeaderMenuToLogoGap);
         ImGui::SetCursorPos(ImVec2{logoX, verticallyCentredY(localLogoSize.y)});
         {
-            IMW::StyleColor normalStyle(ImGuiCol_Button, palette.appHeaderFAIRLogoButton);
-            IMW::StyleColor hoveredStyle(ImGuiCol_ButtonHovered, palette.appHeaderFAIRLogoButtonHovered);
-            IMW::StyleColor activeStyle(ImGuiCol_ButtonActive, palette.appHeaderFAIRLogoButtonActive);
-            IMW::StyleVar   noPadding(ImGuiStyleVar_FramePadding, ImVec2{});
-            const auto      imgLogo = static_cast<ImTextureID>(style_ == LookAndFeel::Style::Light ? imgFairLogo : imgFairLogoDark);
-            if (ImGui::ImageButton("logo", imgLogo, localLogoSize)) {
-                // call url to project site
-            }
+            imw::StyleColor normalStyle(ImGuiCol_Button, palette.appHeaderFAIRLogoButton);
+            imw::StyleColor hoveredStyle(ImGuiCol_ButtonHovered, palette.appHeaderFAIRLogoButtonHovered);
+            imw::StyleColor activeStyle(ImGuiCol_ButtonActive, palette.appHeaderFAIRLogoButtonActive);
+            imw::StyleVar   noPadding(ImGuiStyleVar_FramePadding, ImVec2{});
+            const auto      imgLogo = static_cast<ImTextureID>(style == LookAndFeel::Style::Light ? imgFairLogo : imgFairLogoDark);
+            ImGui::ImageButton("logo", imgLogo, localLogoSize);
         }
 
-        // right menu
         const float           rightMenuStartAngle = LookAndFeel::instance().appHeaderRightMenuStartDegrees;
         const float           rightMenuStopAngle  = LookAndFeel::instance().appHeaderRightMenuStopDegrees;
         RadialCircularMenu<2> rightMenu(localLogoSize, rightMenuStartAngle, rightMenuStopAngle);
@@ -284,7 +270,7 @@ public:
                     LookAndFeel::instance().fontIconsSolidBig, "switch between prototype and production mode", palette.devMenuButton, palette.popupMenuButtonIcon);
             }
 
-            if (LookAndFeel::instance().isDesktop) {
+            if (LookAndFeel::instance().kIsDesktop) {
                 rightMenu.addButton("", []() { gAppState.windowMode = MINIMISED; }, LookAndFeel::instance().fontIconsSolidBig, "minimise window", palette.devMenuButton, palette.popupMenuButtonIcon);
                 rightMenu.addButton(
                     gAppState.windowMode == RESTORED ? "" : "",
@@ -299,11 +285,11 @@ public:
 
             {
 #ifdef __EMSCRIPTEN__
-                constexpr bool newLine = false;
+                constexpr bool kNewLine = false;
 #else
-                constexpr bool newLine = true;
+                constexpr bool kNewLine = true;
 #endif
-                rightMenu.addButton<false, newLine>(
+                rightMenu.addButton<false, kNewLine>(
                     "",
                     [](MenuButton& button) {
                         TouchHandler<>::diagnostics = !TouchHandler<>::diagnostics;
@@ -313,7 +299,7 @@ public:
                     TouchHandler<>::diagnostics ? LookAndFeel::instance().fontIconsBig : LookAndFeel::instance().fontIconsSolidBig, TouchHandler<>::diagnostics ? "disable extra touch diagnostics" : "enable extra touch diagnostics", palette.devMenuButton, palette.popupMenuButtonIcon);
             }
 
-            if (LookAndFeel::instance().isDesktop) {
+            if (LookAndFeel::instance().kIsDesktop) {
                 rightMenu.addButton(
                     "",
                     [this, &rightMenu]() {
@@ -326,10 +312,10 @@ public:
         }
 
         posBeneathClock.x = 0.f;
-        ImGui::SetCursorPos(posBeneathClock); // set to end of image
+        ImGui::SetCursorPos(posBeneathClock);
     }
 };
 
-} // namespace DigitizerUi::components
+} // namespace gr::od::components
 
 #endif

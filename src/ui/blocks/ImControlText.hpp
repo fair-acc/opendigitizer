@@ -10,7 +10,7 @@
 #include <string>
 #include <utility>
 
-namespace DigitizerUi {
+namespace gr::od {
 
 struct ImControlText : ImControl<ImControlText> {
     using Description = gr::Doc<"UI control that edits a string and sets it on the block settings determined by target_map">;
@@ -38,6 +38,6 @@ struct ImControlText : ImControl<ImControlText> {
     }
 };
 
-} // namespace DigitizerUi
+} // namespace gr::od
 
 #endif

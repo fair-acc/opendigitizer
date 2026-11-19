@@ -14,9 +14,7 @@
 #include <string>
 #include <vector>
 
-/// Place for Docking related components generic and agnostic to Opendigitizer code
-
-namespace DigitizerUi {
+namespace gr::od {
 
 enum class DockingLayoutType { Row, Column, Grid, Free };
 
@@ -31,8 +29,10 @@ struct LayoutRect { // fractions of the layout area, in [0, 1]
 
 [[nodiscard]] std::vector<LayoutRect> freeLayoutRects(std::span<const std::array<std::int64_t, 4>> cells); // negative extents count as 0
 
-/// Hosts a group of dock windows
-class DockSpace {
+struct DockSpace {
+    struct Window;
+    using Windows = std::vector<std::shared_ptr<Window>>;
+
     mutable gr::property_map _lastFreeLayout;
     std::vector<std::string> _lastWindowNames;
     ImGuiID                  _lastDockspaceID        = 0;
@@ -41,27 +41,20 @@ class DockSpace {
     bool                     _lastIsEditable         = false;
     bool                     _exactFreeLayoutApplied = false;
 
-public:
-    struct Window;
-    using Windows = std::vector<std::shared_ptr<Window>>;
-
     DockingLayoutType layoutType() const;
     bool              isFreeLayout() const;
     bool              isBoxLayout() const;
 
     void setLayoutType(DockingLayoutType);
 
-    /// Renders the specified windows in an area of size paneSize
     void render(const Windows& windows, ImVec2 paneSize, bool isEditable);
 
-    // save and load the free layout (including any floating windows)
     const gr::property_map& saveFreeLayout() const;
     void                    loadFreeLayout(const gr::property_map& layout) {
         _lastFreeLayout         = layout;
         _exactFreeLayoutApplied = true;
     }
 
-private:
     static ImGuiID dockspaceID();
 
     void captureFreeLayout() const;
@@ -69,11 +62,10 @@ private:
     void renderWindows(const Windows& windows, bool isEditable, ImVec2 paneSize);
     void drawEditableWindowDragArea();
 
-    // positions all windows according to the current layout type
     // this function does not restore the location of floating windows, renderWindows() will do that
     void relayout(const Windows& windows, bool isEditable, bool exactFreeLayoutRequested);
 
-    // perform a box layout (aka row or column layout)
+    // a row or a column
     void layoutInBox(const Windows& windows, ImGuiDir, bool isEditable);
 
     void layoutInGrid(const Windows& windows, bool isEditable);
@@ -85,19 +77,10 @@ private:
     // triggers a relayout for the next frame
     void setNeedsRelayout(bool);
 
-    // returns the flags the node should use for the current layout type
-    // these can be tweaked against UX requirements
     int nodeFlags(bool isEditable) const;
 };
 
-// make it a sub-class
 struct DockSpace::Window {
-    explicit Window(const std::string& n) : name(n) {}
-
-    std::string           name;
-    std::function<void()> renderFunc;
-    std::function<void()> renderDockingContextMenuFunc;
-
     struct FreeGeometry {
         std::size_t x      = 0UL;
         std::size_t y      = 0UL;
@@ -105,14 +88,19 @@ struct DockSpace::Window {
         std::size_t height = 0UL;
     };
 
-    /// If set, this is applied on call to render(). Requires that windows with this set collectively cover all of paneSize
-    /// Min point of the pane is (0, 0).
-    /// This is only used at startup, loaded from "rect" field of plots in dashboard yaml
+    std::string           name;
+    std::function<void()> renderFunc;
+    std::function<void()> renderDockingContextMenuFunc;
+
+    /// applied by render() when set; the windows with it set must together cover paneSize, whose min point is (0, 0);
+    /// only at startup, from the "rect" field of the dashboard yaml's plots
     std::optional<FreeGeometry> freeLayoutPosition;
 
     bool wantsHorizontalScrollbar = false;
+
+    explicit Window(const std::string& n) : name(n) {}
 };
 
-} // namespace DigitizerUi
+} // namespace gr::od
 
 #endif

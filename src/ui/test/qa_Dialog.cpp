@@ -3,11 +3,13 @@
 #include "components/Dialog.hpp"
 #include <boost/ut.hpp>
 
-using namespace boost;
-using namespace DigitizerUi::components;
+using namespace gr::od;
 
-struct TestApp : public DigitizerUi::test::ImGuiTestApp {
-    using DigitizerUi::test::ImGuiTestApp::ImGuiTestApp;
+using namespace boost;
+using namespace components;
+
+struct TestApp : public test::ImGuiTestApp {
+    using test::ImGuiTestApp::ImGuiTestApp;
 
     void registerTests() override {
         struct TestState {
@@ -19,11 +21,11 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
         t->SetVarsDataType<TestState>();
 
         t->GuiFunc = [](ImGuiTestContext* ctx) {
-            IMW::Window window("Test Window", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoSavedSettings);
+            imw::Window window("Test Window", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoSavedSettings);
             ImGui::SetWindowSize(ImVec2(300, 300));
 
             auto&        vars   = ctx->GetVars<TestState>();
-            DialogButton button = DialogButtons(vars.okEnabled);
+            DialogButton button = dialogButtons(vars.okEnabled);
 
             if (button != DialogButton::None) {
                 vars.pressedButton = button;
@@ -35,7 +37,6 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 auto& vars = ctx->GetVars<TestState>();
                 ctx->SetRef("Test Window");
 
-                // OK button should be visually enabled
                 captureScreenshot(*ctx);
 
                 ut::expect(vars.pressedButton == DialogButton::None);
@@ -47,18 +48,14 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 ut::expect(vars.pressedButton == DialogButton::Ok);
                 vars.okEnabled = false;
 
-                // OK button should be visually disabled
                 captureScreenshot(*ctx);
 
-                // Clicking the disabled item shouldn't have any effect
                 vars.pressedButton = DialogButton::None;
                 ctx->ItemClick("Ok");
                 ut::expect(vars.pressedButton == DialogButton::None);
 
-                // Still disabled
                 captureScreenshot(*ctx);
 
-                // Test keyboard Enter/Esc
                 vars.okEnabled = true;
                 ctx->KeyPress(ImGuiKey_Enter);
                 ut::expect(vars.pressedButton == DialogButton::Ok);
@@ -70,7 +67,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
 };
 
 int main(int argc, char* argv[]) {
-    auto options             = DigitizerUi::test::TestOptions::fromArgs(argc, argv);
+    auto options             = test::TestOptions::fromArgs(argc, argv);
     options.screenshotPrefix = "dialog";
 
     TestApp app(options);

@@ -27,6 +27,8 @@
 #include <string>
 #include <vector>
 
+using namespace gr::od;
+
 CMRC_DECLARE(ui_test_assets);
 
 using namespace boost;
@@ -35,8 +37,7 @@ using namespace boost::ut;
 // expected values recorded from the pre-refactoring implementation (test/baselines/dashboard_layout.txt)
 
 namespace {
-using Mode = DigitizerUi::DashboardPage::Mode;
-using DigitizerUi::DockingLayoutType;
+using Mode = DashboardPage::Mode;
 
 constexpr ImVec2 kHostSize{1024.f, 768.f};
 constexpr float  kTolerancePixels = 1.f;
@@ -52,10 +53,10 @@ constexpr std::array kScenarios{Scenario{DockingLayoutType::Free, Mode::View}, S
     Scenario{DockingLayoutType::Column, Mode::View}, Scenario{DockingLayoutType::Column, Mode::Interaction},                         //
     Scenario{DockingLayoutType::Grid, Mode::View}, Scenario{DockingLayoutType::Grid, Mode::Interaction}};
 
-struct TestState : opendigitizer::test::TestDashboardRunner {
-    std::unique_ptr<DigitizerUi::DashboardPage> page;
-    Scenario                                    scenario      = kScenarios.front();
-    bool                                        layoutChanged = true;
+struct TestState : test::TestDashboardRunner {
+    std::unique_ptr<DashboardPage> page;
+    Scenario                       scenario      = kScenarios.front();
+    bool                           layoutChanged = true;
 };
 
 TestState* gState = nullptr;
@@ -107,24 +108,24 @@ bool sameWithinTolerance(const std::string& expected, const std::string& actual)
 }
 } // namespace
 
-struct TestApp : public DigitizerUi::test::ImGuiTestApp {
-    using DigitizerUi::test::ImGuiTestApp::ImGuiTestApp;
+struct TestApp : public test::ImGuiTestApp {
+    using test::ImGuiTestApp::ImGuiTestApp;
 
     void registerTests() override {
         ImGuiTest* t = IM_REGISTER_TEST(engine(), "dashboardbaseline", "chart rectangles per layout and mode");
 
         t->GuiFunc = [](ImGuiTestContext*) {
-            IMW::Window window("Test Window", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoSavedSettings);
+            imw::Window window("Test Window", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoSavedSettings);
             ImGui::SetWindowPos({0, 0});
             ImGui::SetWindowSize(kHostSize);
 
             auto& state = *gState;
-            state.dashboard->session.handleMessages();
+            state.dashboard->session.receiveMessages();
             if (std::exchange(state.layoutChanged, false)) {
                 state.dashboard->layoutType = state.scenario.layout;
             }
             if (!state.page && state.dashboard->isInitialised) {
-                state.page = std::make_unique<DigitizerUi::DashboardPage>();
+                state.page = std::make_unique<DashboardPage>();
                 state.page->setDashboard(*state.dashboard);
             }
             if (!state.page) {
@@ -175,16 +176,16 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
 
             "a destroyed dashboard page leaves no chart request handler behind"_test = [] {
                 auto& state = *gState;
-                expect(opendigitizer::charts::g_chartRequests != nullptr) << fatal << "the drawing page receives chart requests";
+                expect(charts::gChartRequests != nullptr) << fatal << "the drawing page receives chart requests";
                 state.page.reset();
-                expect(opendigitizer::charts::g_chartRequests == nullptr) << "no handler pointing into a destroyed page";
+                expect(charts::gChartRequests == nullptr) << "no handler pointing into a destroyed page";
             };
         };
     }
 };
 
 int main(int argc, char* argv[]) {
-    auto options             = DigitizerUi::test::TestOptions::fromArgs(argc, argv);
+    auto options             = test::TestOptions::fromArgs(argc, argv);
     options.screenshotPrefix = "dashboard_baseline";
     TestApp app(options);
 

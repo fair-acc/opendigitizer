@@ -21,6 +21,8 @@
 #include <gnuradio-4.0/testing/NullSources.hpp>
 #include <gnuradio-4.0/thread/thread_pool.hpp>
 
+using namespace gr::od;
+
 using namespace boost::ut;
 using gr::lifecycle::State;
 
@@ -56,7 +58,7 @@ void expectReturns(std::string_view what, TFunction&& function) {
 
 constexpr std::size_t kRepetitions = 50UZ;
 
-[[nodiscard]] bool hasState(const DigitizerUi::GraphSession& session, State state) { return session.state() == state; }
+[[nodiscard]] bool hasState(const GraphSession& session, State state) { return session.state() == state; }
 
 [[nodiscard]] gr::Graph makeRunningGraph() {
     gr::Graph graph;
@@ -71,10 +73,10 @@ struct HoldingSink : gr::Block<HoldingSink> {
 
     gr::PortIn<float> in;
 
-    GR_MAKE_REFLECTABLE(HoldingSink, in);
-
     inline static std::atomic_bool hold{false};
     inline static std::atomic_bool holding{false};
+
+    GR_MAKE_REFLECTABLE(HoldingSink, in);
 
     void processOne(float) noexcept {
         while (hold) {
@@ -116,7 +118,7 @@ connections:
 )";
 
 struct UiSide {
-    DigitizerUi::GraphSession session;
+    GraphSession session;
 
     UiSide() { session.emplaceGraph(makeRunningGraph()); }
 
@@ -132,7 +134,7 @@ struct UiSide {
     [[nodiscard]] bool pumpUntil(auto predicate, std::chrono::seconds limit = std::chrono::seconds(30)) {
         return waitFor(
             [&] {
-                session.handleMessages();
+                session.receiveMessages();
                 return predicate();
             },
             limit);
@@ -169,10 +171,10 @@ struct UiSide {
     }
 };
 
-const suite<"GraphSession lifecycle"> _lifecycle = [] {
+const suite<"GraphSession lifecycle"> lifecycleTests = [] {
     "destroying a running scheduler returns"_test = [] {
         for (std::size_t i = 0; i < kRepetitions; ++i) {
-            auto session = std::make_unique<DigitizerUi::GraphSession>();
+            auto session = std::make_unique<GraphSession>();
             session->emplaceGraph(makeRunningGraph());
             expect(waitFor([&] { return hasState(*session, State::RUNNING); }));
             expectReturns("destroying a running scheduler", [&] { session.reset(); });
@@ -181,7 +183,7 @@ const suite<"GraphSession lifecycle"> _lifecycle = [] {
 
     "a second start while the first is pending does not block"_test = [] {
         for (std::size_t i = 0; i < kRepetitions; ++i) {
-            DigitizerUi::GraphSession session;
+            GraphSession session;
             session.emplaceGraph(makeRunningGraph());
             expect(waitFor([&] { return hasState(session, State::RUNNING); }));
             session.stop();
@@ -197,7 +199,7 @@ const suite<"GraphSession lifecycle"> _lifecycle = [] {
     "a host asking to start on every frame while the stopped run still leaves gets one start job"_test = [] {
         const auto pool = gr::thread_pool::Manager::defaultIoPool();
         expect(waitFor([&] { return pool->numTasksRunning() == 0UZ; })) << fatal << "watchdogs of earlier tests have left the pool";
-        DigitizerUi::GraphSession session;
+        GraphSession session;
         session.emplaceGraph(makeHoldingGraph());
         expect(waitFor([&] { return hasState(session, State::RUNNING); })) << fatal;
         HoldingSink::hold = true;
@@ -219,7 +221,7 @@ const suite<"GraphSession lifecycle"> _lifecycle = [] {
 
     "a stopped scheduler holds no IO pool thread"_test = [] {
         expect(waitFor([] { return gr::thread_pool::Manager::defaultIoPool()->numTasksRunning() == 0UZ; })) << fatal << "watchdogs of earlier tests have left the pool";
-        DigitizerUi::GraphSession session;
+        GraphSession session;
         session.emplaceGraph(makeRunningGraph());
         expect(waitFor([&] { return hasState(session, State::RUNNING); }));
         session.stop();
@@ -228,7 +230,7 @@ const suite<"GraphSession lifecycle"> _lifecycle = [] {
     };
 
     "destroying a stopped scheduler returns"_test = [] {
-        auto session = std::make_unique<DigitizerUi::GraphSession>();
+        auto session = std::make_unique<GraphSession>();
         session->emplaceGraph(makeRunningGraph());
         expect(waitFor([&] { return hasState(*session, State::RUNNING); }));
         session->stop();
@@ -237,7 +239,7 @@ const suite<"GraphSession lifecycle"> _lifecycle = [] {
     };
 
     "destroying a paused scheduler returns"_test = [] {
-        auto session = std::make_unique<DigitizerUi::GraphSession>();
+        auto session = std::make_unique<GraphSession>();
         session->emplaceGraph(makeRunningGraph());
         expect(waitFor([&] { return hasState(*session, State::RUNNING); }));
         session->pause();
@@ -247,7 +249,7 @@ const suite<"GraphSession lifecycle"> _lifecycle = [] {
 
     "destroying a scheduler whose start has not run yet returns"_test = [] {
         for (std::size_t i = 0; i < kRepetitions; ++i) {
-            auto session = std::make_unique<DigitizerUi::GraphSession>();
+            auto session = std::make_unique<GraphSession>();
             session->emplaceGraph(makeRunningGraph());
             expectReturns("destroying a starting scheduler", [&] { session.reset(); });
         }
@@ -255,7 +257,7 @@ const suite<"GraphSession lifecycle"> _lifecycle = [] {
 
     "a second stop while the first is pending ends stopped, and a stopped session stays stopped"_test = [] {
         for (std::size_t i = 0; i < kRepetitions; ++i) {
-            DigitizerUi::GraphSession session;
+            GraphSession session;
             session.emplaceGraph(makeRunningGraph());
             expect(waitFor([&] { return hasState(session, State::RUNNING); })) << fatal;
             session.stop();
@@ -267,25 +269,25 @@ const suite<"GraphSession lifecycle"> _lifecycle = [] {
     };
 
     "a graph emplaced over a running one runs and its progress requests frames"_test = [] {
-        DigitizerUi::GraphSession session;
+        GraphSession session;
         for (std::size_t i = 0; i < kRepetitions; ++i) {
             session.emplaceGraph(makeRunningGraph());
             expect(hasState(session, State::RUNNING)) << fatal << std::format("graph {} runs", i);
-            const std::uint64_t requestsBefore = DigitizerUi::globalFramePacer().requestCount();
-            expect(waitFor([&] { return DigitizerUi::globalFramePacer().requestCount() > requestsBefore; })) << fatal << std::format("graph {} paces frames", i);
+            const std::uint64_t requestsBefore = globalFramePacer().requestCount();
+            expect(waitFor([&] { return globalFramePacer().requestCount() > requestsBefore; })) << fatal << std::format("graph {} paces frames", i);
         }
     };
 
     "the first start runs on the caller's thread, without waiting for a pool thread"_test = [] {
         for (std::size_t i = 0; i < kRepetitions; ++i) {
-            DigitizerUi::GraphSession session;
+            GraphSession session;
             session.emplaceGraph(makeRunningGraph());
             expect(hasState(session, State::RUNNING)) << "running when emplaceGraph() returns";
         }
     };
 
     "the scheduler runs its graph on GR4's pool, not on the thread that started it"_test = [] {
-        DigitizerUi::GraphSession session;
+        GraphSession session;
         expectReturns("emplacing a graph", [&] { session.emplaceGraph(makeRunningGraph()); });
         expect(waitFor([&] { return hasState(session, State::RUNNING); })) << "running while this thread is free";
     };
@@ -329,7 +331,7 @@ const suite<"GraphSession lifecycle"> _lifecycle = [] {
     };
 };
 
-const suite<"GraphSession settings subscription"> _subscription = [] {
+const suite<"GraphSession settings subscription"> subscriptionTests = [] {
     "subscription to all blocks' settings includes blocks emplaced after the request was made"_test = [] {
         constexpr std::string_view kLateSinkType = "gr::testing::NullSink<float32>";
         constexpr std::string_view kLateSinkName = "lateSink";

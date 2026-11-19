@@ -3,12 +3,14 @@
 #include <boost/ut.hpp>
 
 #include <common/LookAndFeel.hpp>
-#include <components/StyledStandardWidgets.hpp>
+#include <components/StyledWidgets.hpp>
 
 #include <array>
 #include <cmath>
 #include <format>
 #include <utility>
+
+using namespace gr::od;
 
 using namespace boost;
 using namespace boost::ut;
@@ -29,16 +31,16 @@ struct TestState {
 
 TestState* gState = nullptr;
 
-/// This isn't exact because the actual slider has some padding
+/// not exact: the slider has some padding
 [[nodiscard]] float whereToClickToGetValue(const ImRect& sliderRegion, float value) { //
     return sliderRegion.Min.x + (sliderRegion.GetWidth() * (value - kSliderMin) / (kSliderMax - kSliderMin));
 }
 
-void captureWindow(ImGuiTestContext* ctx) { DigitizerUi::test::ImGuiTestApp::captureScreenshot(*ctx, ImRect(kWindowPos, kWindowPos + kWindowSize)); }
+void captureWindow(ImGuiTestContext* ctx) { test::ImGuiTestApp::captureScreenshot(*ctx, ImRect(kWindowPos, kWindowPos + kWindowSize)); }
 } // namespace
 
-struct TestApp : public DigitizerUi::test::ImGuiTestApp {
-    using DigitizerUi::test::ImGuiTestApp::ImGuiTestApp;
+struct TestApp : public test::ImGuiTestApp {
+    using test::ImGuiTestApp::ImGuiTestApp;
 
     void registerTests() override {
         ImGuiTest* t = IM_REGISTER_TEST(engine(), "styledwidgets", "slider");
@@ -46,9 +48,9 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
         t->GuiFunc = [](ImGuiTestContext*) {
             ImGui::SetNextWindowPos(kWindowPos);
             ImGui::SetNextWindowSize(kWindowSize);
-            IMW::Window window("Widgets", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
+            imw::Window window("Widgets", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
             ImGui::SetNextItemWidth(kSliderWidth);
-            std::ignore = DigitizerUi::SliderScalar("##slider", {.dataType = ImGuiDataType_Float, .data = &gState->sliderValue, .min = &kSliderMin, .max = &kSliderMax, .format = "%.2f"});
+            std::ignore = sliderScalar("##slider", {.dataType = ImGuiDataType_Float, .data = &gState->sliderValue, .min = &kSliderMin, .max = &kSliderMax, .format = "%.2f"});
         };
 
         t->TestFunc = [](ImGuiTestContext* ctx) {
@@ -77,9 +79,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 const float clickedValue = 3.f;
                 ctx->MouseMoveToPos(ImVec2(whereToClickToGetValue(sliderRegion, clickedValue), sliderRegion.GetCenter().y));
                 ctx->MouseClick();
-                // this somewhat depends on internals, we know that the drag handle is about FrameHeight in size, and this is what
-                // informs the padding and min and max positions of the drag handle. So we can just accept error equal to the
-                // amount of change that can happen by moving by FrameHeight
+                // the drag handle is about FrameHeight in size, which sets its padding and its min and max positions: the error may equal the change of moving by FrameHeight
                 const float tolerance = (kSliderMax - kSliderMin) * ImGui::GetFrameHeight() / sliderRegion.GetWidth();
                 expect(std::abs(gState->sliderValue - clickedValue) < tolerance) << gState->sliderValue;
                 captureWindow(ctx);
@@ -126,11 +126,11 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
         comboTest->GuiFunc = [](ImGuiTestContext*) {
             ImGui::SetNextWindowPos(kWindowPos);
             ImGui::SetNextWindowSize(kWindowSize);
-            IMW::Window window("Widgets", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
-            ImGui::SetNextItemWidth(DigitizerUi::comboWidthForText(ImGui::CalcTextSize(kComboChoices[1]).x));
-            if (auto combo = DigitizerUi::ComboBox("##combo", kComboChoices[gState->comboChoice], 0)) {
+            imw::Window window("Widgets", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
+            ImGui::SetNextItemWidth(comboWidthForText(ImGui::CalcTextSize(kComboChoices[1]).x));
+            if (auto combo = ComboBox("##combo", kComboChoices[gState->comboChoice], 0)) {
                 for (std::size_t i = 0UZ; i < kComboChoices.size(); ++i) {
-                    if (DigitizerUi::Selectable(kComboChoices[i], i == gState->comboChoice)) {
+                    if (selectable(kComboChoices[i], i == gState->comboChoice)) {
                         gState->comboChoice = i;
                     }
                 }
@@ -142,7 +142,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
 
             "combo is wide enough for its value and its chevron"_test = [&] {
                 const float valueWidth = ImGui::CalcTextSize(kComboChoices[1]).x;
-                expect(gt(ctx->ItemInfo("##combo").RectFull.GetWidth(), valueWidth + ImGui::GetFontSize() * DigitizerUi::LookAndFeel::instance().comboChevronWidthEms));
+                expect(gt(ctx->ItemInfo("##combo").RectFull.GetWidth(), valueWidth + ImGui::GetFontSize() * LookAndFeel::instance().comboChevronWidthEms));
                 captureWindow(ctx);
             };
 
@@ -157,16 +157,16 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             };
 
             "combo width stops growing at the cap, beyond which the value is drawn with an ellipsis"_test = [&] {
-                const float cap = ImGui::GetFontSize() * DigitizerUi::LookAndFeel::instance().comboTextMaxWidthEms;
-                expect(lt(DigitizerUi::comboWidthForText(cap / 2.f), DigitizerUi::comboWidthForText(cap)));
-                expect(eq(DigitizerUi::comboWidthForText(cap), DigitizerUi::comboWidthForText(2.f * cap)));
+                const float cap = ImGui::GetFontSize() * LookAndFeel::instance().comboTextMaxWidthEms;
+                expect(lt(comboWidthForText(cap / 2.f), comboWidthForText(cap)));
+                expect(eq(comboWidthForText(cap), comboWidthForText(2.f * cap)));
             };
         };
     }
 };
 
 int main(int argc, char* argv[]) {
-    auto options             = DigitizerUi::test::TestOptions::fromArgs(argc, argv);
+    auto options             = test::TestOptions::fromArgs(argc, argv);
     options.screenshotPrefix = "styledwidgets";
 
     TestApp   app(options);

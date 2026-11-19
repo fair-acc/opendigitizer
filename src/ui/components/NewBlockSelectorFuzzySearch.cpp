@@ -11,7 +11,7 @@ namespace {
 bool compareChars(char a, char b) { return Digitizer::utils::safe_tolower(a) == Digitizer::utils::safe_tolower(b); }
 } // namespace
 
-namespace DigitizerUi::components {
+namespace gr::od::components {
 std::size_t wordDistance(std::string_view a, std::string_view b) {
     if (a.size() == 0) {
         return b.size();
@@ -91,4 +91,4 @@ FilterResult filterTypename(std::string_view typenameString, std::string_view fi
     return result;
 }
 
-} // namespace DigitizerUi::components
+} // namespace gr::od::components

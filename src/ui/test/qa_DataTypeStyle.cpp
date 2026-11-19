@@ -11,6 +11,8 @@
 #include <string>
 #include <string_view>
 
+using namespace gr::od;
+
 namespace {
 [[nodiscard]] double relativeLuminance(std::uint32_t argb) {
     const auto linear = [](std::uint32_t channel) {
@@ -31,16 +33,15 @@ constexpr std::array kTypedPorts{"float32", "float64", "complex<float32>", "comp
 
 const boost::ut::suite<"DataTypeStyle"> dataTypeStyleTests = [] {
     using namespace boost::ut;
-    using DigitizerUi::styleForDataType;
 
     "every event-related type is drawn as the purple event diamond"_test = [] {
         const std::string eventPortType(gr::meta::type_name<gr::property_map_view>());
         for (const std::string_view type : {std::string_view(eventPortType), std::string_view("event"), std::string_view("gr::Message")}) {
-            expect(DigitizerUi::isEventDataType(type)) << type;
+            expect(isEventDataType(type)) << type;
             expect(eq(styleForDataType(type).colorARGB, 0xffAD55EEU)) << type;
-            expect(styleForDataType(type).drawShape == &DigitizerUi::drawDiamond) << type;
+            expect(styleForDataType(type).drawShape == &drawDiamond) << type;
         }
-        expect(!DigitizerUi::isEventDataType("float32"));
+        expect(!isEventDataType("float32"));
     };
 
     "unknown and untyped ports share an opaque colour that no data type uses"_test = [] {

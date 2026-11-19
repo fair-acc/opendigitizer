@@ -18,7 +18,7 @@
 #include <utility>
 #include <vector>
 
-namespace opendigitizer {
+namespace gr::od {
 
 template<typename T>
 struct TagSink : gr::Block<TagSink<T>> {
@@ -109,6 +109,6 @@ Only the newest `n_tag_history` tags are kept.)"">;
     }
 };
 
-} // namespace opendigitizer
+} // namespace gr::od
 
 #endif // OPENDIGITIZER_TAGSINK_HPP

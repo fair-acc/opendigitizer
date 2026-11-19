@@ -28,6 +28,8 @@
 #include <thread>
 #include <utility>
 
+using namespace gr::od;
+
 CMRC_DECLARE(ui_test_assets);
 
 using namespace boost;
@@ -65,9 +67,9 @@ namespace {
 constexpr ImVec2 kHostPos{100.f, 80.f};
 constexpr ImVec2 kHostSize{900.f, 500.f};
 
-struct TestState : opendigitizer::test::TestDashboardRunner {
-    DigitizerUi::StatusBarView view;
-    bool                       viewModeLocked = false;
+struct TestState : test::TestDashboardRunner {
+    StatusBarView view;
+    bool          viewModeLocked = false;
 };
 
 TestState* gState = nullptr;
@@ -79,7 +81,7 @@ std::string testClipboard;
 
 std::uint64_t nowNanos() { return static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count()); }
 
-std::uint64_t countOf(gr::log::Level level) { return DigitizerUi::logHistory().counts()[static_cast<std::size_t>(level)]; }
+std::uint64_t countOf(gr::log::Level level) { return logHistory().counts()[static_cast<std::size_t>(level)]; }
 
 std::string readFile(const std::filesystem::path& path) {
     std::ifstream stream(path, std::ios::in | std::ios::binary);
@@ -94,8 +96,8 @@ std::string readFile(const std::filesystem::path& path) {
 
 } // namespace
 
-struct TestApp : public DigitizerUi::test::ImGuiTestApp {
-    using DigitizerUi::test::ImGuiTestApp::ImGuiTestApp;
+struct TestApp : public test::ImGuiTestApp {
+    using test::ImGuiTestApp::ImGuiTestApp;
 
     void registerTests() override {
         ImGuiTest* t = IM_REGISTER_TEST(engine(), "statusbarview", "log, notifications and status-bar blocks");
@@ -105,27 +107,27 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             ImGui::SetNextWindowPos(kHostPos);
             ImGui::SetNextWindowSize(kHostSize);
             {
-                IMW::Window window("Host", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
-                state.dashboard->session.handleMessages();
-                ImGui::Dummy(ImVec2(0.f, ImGui::GetContentRegionAvail().y - DigitizerUi::StatusBarView::height()));
+                imw::Window window("Host", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
+                state.dashboard->session.receiveMessages();
+                ImGui::Dummy(ImVec2(0.f, ImGui::GetContentRegionAvail().y - StatusBarView::height()));
                 const bool withGraph = state.dashboard->isInitialised;
                 state.view.draw(withGraph ? &state.dashboard->session : nullptr);
             }
             if (state.viewModeLocked) {
-                std::ignore = DigitizerUi::components::drawViewModeBlocker(ImRect(kHostPos, kHostPos + kHostSize - ImVec2(0.f, DigitizerUi::StatusBarView::height())));
+                std::ignore = components::drawViewModeBlocker(ImRect(kHostPos, kHostPos + kHostSize - ImVec2(0.f, StatusBarView::height())));
             }
         };
 
         t->TestFunc = [](ImGuiTestContext* ctx) {
             auto&      state       = *gState;
             const auto graphLoaded = [&] {
-                const auto* scheduler = std::get_if<DigitizerUi::UiGraphBlock::SchedulerBlockInfo>(&state.dashboard->session.graphModel.rootBlock.blockCategoryInfo);
+                const auto* scheduler = std::get_if<UiGraphBlock::SchedulerBlockInfo>(&state.dashboard->session.graphModel.rootBlock.blockCategoryInfo);
                 return state.dashboard->isInitialised && scheduler && scheduler->childrenLoaded;
             };
             state.waitUntil(ctx, "the graph is loaded and its status-bar blocks are drawn", [&] { return graphLoaded() && ctx->ItemExists("**/status_a_text"); });
 
             "loading a valid dashboard logs no warning or error, except for the Qt block it cannot show"_test = [&] {
-                for (const gr::log::LogRecord& record : DigitizerUi::logHistory().snapshot()) {
+                for (const gr::log::LogRecord& record : logHistory().snapshot()) {
                     const std::string_view text(record.text, record.textLength);
                     expect(record.level > gr::log::Level::warning || text.contains("ForeignStatusBlock")) << std::format("{}: {}", gr::meta::enumName(record.level).value_or("?"), text);
                 }
@@ -133,24 +135,24 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
 
             "the info dot is lit for five seconds after the latest info or debug record"_test = [] {
                 constexpr std::uint64_t kT0 = 1'000'000'000'000UZ;
-                expect(DigitizerUi::StatusBarView::isInfoDotLit(kT0, kT0) && DigitizerUi::StatusBarView::isInfoDotLit(kT0, kT0 + 4'999'999'999UZ));
-                expect(!DigitizerUi::StatusBarView::isInfoDotLit(kT0, kT0 + 5'000'000'000UZ));
-                expect(!DigitizerUi::StatusBarView::isInfoDotLit(0U, kT0)) << "nothing logged";
+                expect(StatusBarView::isInfoDotLit(kT0, kT0) && StatusBarView::isInfoDotLit(kT0, kT0 + 4'999'999'999UZ));
+                expect(!StatusBarView::isInfoDotLit(kT0, kT0 + 5'000'000'000UZ));
+                expect(!StatusBarView::isInfoDotLit(0U, kT0)) << "nothing logged";
             };
 
             "the history keeps the time of the latest info or debug record until cleared"_test = [] {
-                DigitizerUi::logHistory().clear();
+                logHistory().clear();
                 gr::log::warning("not info");
-                expect(eq(DigitizerUi::logHistory().latestInfoOrDebugNanos(), 0UZ));
+                expect(eq(logHistory().latestInfoOrDebugNanos(), 0UZ));
                 const std::uint64_t before = nowNanos();
-                std::ignore                = DigitizerUi::logHistory().publish(gr::log::LogRecord{.level = gr::log::Level::info, .timestampNanos = nowNanos()});
-                expect(ge(DigitizerUi::logHistory().latestInfoOrDebugNanos(), before));
-                DigitizerUi::logHistory().clear();
-                expect(eq(DigitizerUi::logHistory().latestInfoOrDebugNanos(), 0UZ));
+                std::ignore                = logHistory().publish(gr::log::LogRecord{.level = gr::log::Level::info, .timestampNanos = nowNanos()});
+                expect(ge(logHistory().latestInfoOrDebugNanos(), before));
+                logHistory().clear();
+                expect(eq(logHistory().latestInfoOrDebugNanos(), 0UZ));
             };
 
             "a warning logged from a worker thread shows in the bar with its count"_test = [&] {
-                DigitizerUi::logHistory().clear();
+                logHistory().clear();
                 std::thread([] { gr::log::warning("pump overheated"); }).join();
                 state.waitUntil(ctx, "the bar shows the warning", [ctx] { return barLabel(ctx).contains("pump overheated"); });
                 const std::string label = barLabel(ctx);
@@ -160,7 +162,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             };
 
             "a multi-line log message stays on one status-bar line"_test = [&] {
-                DigitizerUi::logHistory().clear();
+                logHistory().clear();
                 gr::log::warning("first line\nsecond line");
                 state.waitUntil(ctx, "the bar shows the record", [ctx] { return barLabel(ctx).contains("first line"); });
                 const ImGuiTestItemInfo line = ctx->ItemInfo("**/###statusLine");
@@ -171,9 +173,9 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             };
 
             "a notification shows in the bar and as a toast"_test = [&] {
-                DigitizerUi::logHistory().clear();
+                logHistory().clear();
                 const auto toastsBefore = ImGui::notifications.size();
-                DigitizerUi::components::Notification::error("bad yaml");
+                components::Notification::error("bad yaml");
                 state.waitUntil(ctx, "the bar shows the notification", [ctx] { return barLabel(ctx).contains("bad yaml"); });
                 expect(barLabel(ctx).contains("bad yaml") && eq(countOf(gr::log::Level::error), 1UZ)) << barLabel(ctx);
                 expect(eq(ImGui::notifications.size(), toastsBefore + 1UZ)) << "a toast is queued too";
@@ -181,7 +183,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
 
             "in locked View mode the bar opens the log, and clear empties it"_test = [&] {
                 state.viewModeLocked = true;
-                DigitizerUi::logHistory().clear();
+                logHistory().clear();
                 gr::log::warning("first");
                 gr::log::error("second");
                 state.waitUntil(ctx, "the bar shows the error", [ctx] { return barLabel(ctx).contains("second"); });
@@ -192,8 +194,8 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 const ImGuiWindow* barWindow = ctx->ItemInfo("**/###statusLine").Window;
                 expect(std::abs(logWindow->Size.x - barWindow->Size.x) < 1.f && std::abs(logWindow->Pos.x - barWindow->Pos.x) < 1.f) << std::format("the log spans the bar: {} px at {}, bar {} px at {}", logWindow->Size.x, logWindow->Pos.x, barWindow->Size.x, barWindow->Pos.x);
                 ctx->ItemClick("**/clearLogs", ImGuiMouseButton_Left, ImGuiTestOpFlags_NoFocusWindow);
-                state.waitUntil(ctx, "the history is cleared", [] { return DigitizerUi::logHistory().snapshot().empty(); });
-                expect(DigitizerUi::logHistory().snapshot().empty()) << "history cleared";
+                state.waitUntil(ctx, "the history is cleared", [] { return logHistory().snapshot().empty(); });
+                expect(logHistory().snapshot().empty()) << "history cleared";
                 expect(eq(countOf(gr::log::Level::error) + countOf(gr::log::Level::warning), 0UZ));
                 ctx->PopupCloseAll();
                 state.viewModeLocked = false;
@@ -204,7 +206,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 const auto       desktopGetter = std::exchange(platform.Platform_GetClipboardTextFn, [](ImGuiContext*) -> const char* { return testClipboard.c_str(); });
                 const auto       desktopSetter = std::exchange(platform.Platform_SetClipboardTextFn, [](ImGuiContext*, const char* text) { testClipboard = text; });
                 state.viewModeLocked           = true;
-                DigitizerUi::logHistory().clear();
+                logHistory().clear();
                 gr::log::warning("alpha");
                 gr::log::warning("beta");
                 gr::log::warning("gamma");
@@ -250,7 +252,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 std::filesystem::create_directory(blockedParent);
                 std::filesystem::permissions(blockedParent, std::filesystem::perms::none);
 
-                DigitizerUi::logHistory().clear();
+                logHistory().clear();
                 gr::log::warning("alpha");
                 gr::log::warning("beta");
                 gr::log::warning("gamma");
@@ -325,7 +327,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
 };
 
 int main(int argc, char* argv[]) {
-    auto options             = DigitizerUi::test::TestOptions::fromArgs(argc, argv);
+    auto options             = test::TestOptions::fromArgs(argc, argv);
     options.screenshotPrefix = "status_bar_view";
     TestApp app(options);
 

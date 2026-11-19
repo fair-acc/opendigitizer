@@ -1,8 +1,8 @@
 #include "Keypad.hpp"
 
-#include "../common/ImguiWrap.hpp"
+#include "../common/Imw.hpp"
 #include "../common/LookAndFeel.hpp"
-#include "StyledStandardWidgets.hpp"
+#include "StyledWidgets.hpp"
 
 #include <misc/cpp/imgui_stdlib.h>
 
@@ -17,10 +17,10 @@
 #include <format>
 #include <unordered_map>
 
-namespace DigitizerUi::components {
+namespace gr::od::components {
 
 std::vector<Token> tokenize(std::string_view text) {
-    constexpr std::array<std::pair<std::string_view, TType>, 6UZ> kFunctions{{{"sinh(", TType::tt_sinh}, {"cosh(", TType::tt_cosh}, {"tanh(", TType::tt_tanh}, {"sin(", TType::tt_sin}, {"cos(", TType::tt_cos}, {"tan(", TType::tt_tan}}};
+    constexpr std::array<std::pair<std::string_view, TType>, 6UZ> kFunctions{{{"sinh(", TType::Sinh}, {"cosh(", TType::Cosh}, {"tanh(", TType::Tanh}, {"sin(", TType::Sin}, {"cos(", TType::Cos}, {"tan(", TType::Tan}}};
     const auto                                                    isNumberChar = [](char c) { return std::isdigit(static_cast<unsigned char>(c)) || c == '.' || c == '-' || c == '+' || c == 'e'; };
 
     std::vector<Token> tokens;
@@ -39,34 +39,34 @@ std::vector<Token> tokenize(std::string_view text) {
         const char c = text[pos];
         switch (c) {
         case ' ': ++pos; continue;
-        case '+': emitBinary(TType::tt_plus); continue;
-        case '*': emitBinary(TType::tt_mul); continue;
-        case '/': emitBinary(TType::tt_div); continue;
-        case '^': emitBinary(TType::tt_power); continue;
+        case '+': emitBinary(TType::Plus); continue;
+        case '*': emitBinary(TType::Mul); continue;
+        case '/': emitBinary(TType::Div); continue;
+        case '^': emitBinary(TType::Power); continue;
         case '-':
             if (pos + 1UZ == text.size() || text[pos + 1UZ] == ' ') {
-                emitBinary(TType::tt_minus);
+                emitBinary(TType::Minus);
             } else {
-                emit(TType::tt_uminus, pos, pos + 1UZ);
+                emit(TType::UMinus, pos, pos + 1UZ);
             }
             continue;
-        case '(': emit(TType::tt_popen, pos, pos + 1UZ); continue;
-        case ')': emit(TType::tt_pclose, pos, pos + 1UZ); continue;
+        case '(': emit(TType::POpen, pos, pos + 1UZ); continue;
+        case ')': emit(TType::PClose, pos, pos + 1UZ); continue;
         default: break;
         }
 
         if (std::isdigit(static_cast<unsigned char>(c)) || c == '.') {
             const auto end = std::ranges::find_if_not(text.substr(pos), isNumberChar);
-            emit(TType::tt_const, pos, pos + static_cast<std::size_t>(end - text.substr(pos).begin()));
+            emit(TType::Const, pos, pos + static_cast<std::size_t>(end - text.substr(pos).begin()));
             continue;
         }
         if (const auto function = std::ranges::find_if(kFunctions, [rest = text.substr(pos)](const auto& entry) { return rest.starts_with(entry.first); }); function != kFunctions.end()) {
             emit(function->second, pos, pos + function->first.size());
             continue;
         }
-        emit(TType::tt_none, pos, pos + 1UZ);
+        emit(TType::None, pos, pos + 1UZ);
     }
-    tokens.push_back({TType::tt_end, text.substr(text.size())});
+    tokens.push_back({TType::End, text.substr(text.size())});
     return tokens;
 }
 
@@ -77,8 +77,8 @@ Token lastToken(std::string_view text) {
 
 bool onlyToken(std::string_view text) {
     const std::vector<Token> tokens    = tokenize(text);
-    const std::size_t        signShift = !tokens.empty() && tokens.front().type == TType::tt_uminus ? 1UZ : 0UZ;
-    return tokens.size() == 2UZ + signShift && tokens[signShift].type == TType::tt_const;
+    const std::size_t        signShift = !tokens.empty() && tokens.front().type == TType::UMinus ? 1UZ : 0UZ;
+    return tokens.size() == 2UZ + signShift && tokens[signShift].type == TType::Const;
 }
 
 std::optional<float> parseNumber(std::string_view number) {
@@ -92,7 +92,7 @@ std::optional<float> parseNumber(std::string_view number) {
 namespace {
 
 struct ASTNode {
-    TType type  = TType::tt_end;
+    TType type  = TType::End;
     float value = 0.0f;
 };
 
@@ -118,35 +118,35 @@ enum class Action : std::uint8_t {
     };
     const auto tableIndex = [](TType entry) {
         switch (entry) {
-        case TType::tt_power: return 0;
-        case TType::tt_uminus: return 1;
-        case TType::tt_mul:
-        case TType::tt_div: return 2;
-        case TType::tt_plus:
-        case TType::tt_minus: return 3;
-        case TType::tt_pclose: return 5;
-        case TType::tt_end: return 6;
+        case TType::Power: return 0;
+        case TType::UMinus: return 1;
+        case TType::Mul:
+        case TType::Div: return 2;
+        case TType::Plus:
+        case TType::Minus: return 3;
+        case TType::PClose: return 5;
+        case TType::End: return 6;
         default: return Token{entry, {}}.isPOpen() ? 4 : -1;
         }
     };
 
     const int row = tableIndex(stack);
-    const int col = incoming == TType::tt_const ? 6 : incoming == TType::tt_end ? 7 : tableIndex(incoming);
+    const int col = incoming == TType::Const ? 6 : incoming == TType::End ? 7 : tableIndex(incoming);
     return row < 0 || col < 0 ? X : kPrecedence[row][col];
 }
 
 [[nodiscard]] bool reduce(std::vector<ASTNode>& context, std::size_t op) {
     const std::size_t size     = context.size();
-    const auto        isExprAt = [&context](std::size_t index) { return context[index].type == TType::tt_expr; };
+    const auto        isExprAt = [&context](std::size_t index) { return context[index].type == TType::Expr; };
     switch (context[op].type) {
-    case TType::tt_uminus:
+    case TType::UMinus:
         if (op + 2UZ != size || !isExprAt(op + 1UZ)) {
             return false;
         }
-        context[op] = {TType::tt_expr, -context.back().value};
+        context[op] = {TType::Expr, -context.back().value};
         context.pop_back();
         return true;
-    case TType::tt_pclose: {
+    case TType::PClose: {
         if (op + 1UZ != size || size < 4UZ || !isExprAt(size - 2UZ)) {
             return false;
         }
@@ -154,19 +154,19 @@ enum class Action : std::uint8_t {
         const std::size_t open  = size - 3UZ;
         float&            value = context.back().value;
         switch (context[open].type) {
-        case TType::tt_popen:
+        case TType::POpen:
             context.erase(context.begin() + static_cast<std::ptrdiff_t>(open));
-            if (context[open - 1UZ].type == TType::tt_uminus) {
+            if (context[open - 1UZ].type == TType::UMinus) {
                 context.back().value = -context.back().value;
                 context.erase(context.begin() + static_cast<std::ptrdiff_t>(open - 1UZ));
             }
             return true;
-        case TType::tt_sin: value = sinf(value); break;
-        case TType::tt_cos: value = cosf(value); break;
-        case TType::tt_tan: value = tanf(value); break;
-        case TType::tt_sinh: value = sinhf(value); break;
-        case TType::tt_cosh: value = coshf(value); break;
-        case TType::tt_tanh: value = tanhf(value); break;
+        case TType::Sin: value = sinf(value); break;
+        case TType::Cos: value = cosf(value); break;
+        case TType::Tan: value = tanf(value); break;
+        case TType::Sinh: value = sinhf(value); break;
+        case TType::Cosh: value = coshf(value); break;
+        case TType::Tanh: value = tanhf(value); break;
         default: return false;
         }
         context.erase(context.begin() + static_cast<std::ptrdiff_t>(open));
@@ -184,11 +184,11 @@ enum class Action : std::uint8_t {
     context.pop_back();
     context.pop_back();
     switch (type) {
-    case TType::tt_plus: context.back().value = a + b; return true;
-    case TType::tt_minus: context.back().value = b - a; return true;
-    case TType::tt_mul: context.back().value = b * a; return true;
-    case TType::tt_div: context.back().value = b / a; return true;
-    case TType::tt_power: context.back().value = powf(b, a); return true;
+    case TType::Plus: context.back().value = a + b; return true;
+    case TType::Minus: context.back().value = b - a; return true;
+    case TType::Mul: context.back().value = b * a; return true;
+    case TType::Div: context.back().value = b / a; return true;
+    case TType::Power: context.back().value = powf(b, a); return true;
     default: return false;
     }
 }
@@ -201,17 +201,17 @@ std::optional<float> evaluate(std::string_view text) {
 
     for (std::size_t next = 0UZ; next < tokens.size();) {
         const Token&      incoming = tokens[next];
-        const std::size_t op       = static_cast<std::size_t>(std::ranges::find_last_if(context, [](const ASTNode& node) { return node.type != TType::tt_expr; }).begin() - context.begin());
+        const std::size_t op       = static_cast<std::size_t>(std::ranges::find_last_if(context, [](const ASTNode& node) { return node.type != TType::Expr; }).begin() - context.begin());
 
         switch (precedenceAction(context[op].type, incoming.type)) {
         case Action::E:
         case Action::S:
-            if (incoming.type == TType::tt_const) {
+            if (incoming.type == TType::Const) {
                 const std::optional<float> number = parseNumber(incoming.range);
                 if (!number) {
                     return std::nullopt;
                 }
-                context.push_back({TType::tt_expr, *number});
+                context.push_back({TType::Expr, *number});
             } else {
                 context.push_back({incoming.type});
             }
@@ -224,7 +224,7 @@ std::optional<float> evaluate(std::string_view text) {
             break;
         case Action::X: return std::nullopt;
         case Action::A:
-            if (context.size() != 2UZ || context.back().type != TType::tt_expr) {
+            if (context.size() != 2UZ || context.back().type != TType::Expr) {
                 return std::nullopt;
             }
             return context.back().value;
@@ -264,34 +264,25 @@ int decimalPrecision(std::string_view value, TrailingZeros trailingZeros) {
 namespace {
 
 struct KeypadState {
-    static inline constexpr const char* keypad_name = "KeypadX";
-
-    std::string                             _currentBlockUniqueName;
-    std::unordered_map<std::string, double> _manualyEditedIncrements;
-    std::unordered_map<std::string, int>    _manualyEditedPrecisions;
-
-    //
-    bool        _visible     = false;
-    bool        _altMode     = false;
-    bool        _invMode     = false;
-    bool        _firstUpdate = true;
-    size_t      _parentheses = 0;
-    std::string _editBuffer;
-    std::any    _prevValue;
+    static inline constexpr const char* kKeypadName          = "KeypadX";
+    static constexpr const char*        kDecrementButtonIcon = "\u{f146}";
+    static constexpr const char*        kIncrementButtonIcon = "\u{f0fe}";
+    template<typename...>
+    constexpr static bool always_true = true;
 
     enum class ReturnState { None, Change, Accept, Discard };
 
     enum class Button {
         NoButton,
         Period,
-        E_scientific,
+        EScientific,
         Sign,
-        AC,
+        AllClear,
         Backspace,
         Enter,
         Escape,
-        Alt_2nd,
-        Alt_Inv,
+        Alt2nd,
+        AltInv,
 
         POpen  = '(',
         PClose = ')',
@@ -335,11 +326,21 @@ struct KeypadState {
         Ln,
         Pow10,
         PowE
-        // , NewEnumValue // for testing the static_assert in the toString member
     };
 
-    template<typename...>
-    constexpr static bool always_true = true;
+    enum class LinePreference { SameLine, None };
+
+    std::string                             _currentBlockUniqueName;
+    std::unordered_map<std::string, double> _manualyEditedIncrements;
+    std::unordered_map<std::string, int>    _manualyEditedPrecisions;
+
+    bool        _visible     = false;
+    bool        _altMode     = false;
+    bool        _invMode     = false;
+    bool        _firstUpdate = true;
+    size_t      _parentheses = 0;
+    std::string _editBuffer;
+    std::any    _prevValue;
 
     template<typename T = void>
     [[nodiscard]] consteval static const char* toString(Button button) noexcept {
@@ -347,14 +348,14 @@ struct KeypadState {
         switch (button) {
         case NoButton: return " ";
         case Period: return ".";
-        case E_scientific: return "EE";
+        case EScientific: return "EE";
         case Sign: return "±";
-        case AC: return "AC";
+        case AllClear: return "AC";
         case Backspace: return "<-";
         case Enter: return "Enter";
         case Escape: return "Esc";
-        case Alt_2nd: return "2nd";
-        case Alt_Inv: return "Inv";
+        case Alt2nd: return "2nd";
+        case AltInv: return "Inv";
         case POpen: return "(";
         case PClose: return ")";
         case Add: return "+";
@@ -397,8 +398,6 @@ struct KeypadState {
         default: static_assert(always_true<T>, "not all possible Button enum values are mapped");
         }
     }
-
-    enum class LinePreference { SameLine, None };
 
     template<LinePreference SameLine, Button primaryButton, ImGuiKey... keyBinding>
     [[nodiscard]] Button static keypadButton(ImVec2 size, Button oldValue) {
@@ -445,9 +444,6 @@ struct KeypadState {
         return instance;
     }
 
-    static constexpr const char* decrementButtonIcon = "\u{f146}";
-    static constexpr const char* incrementButtonIcon = "\u{f0fe}";
-
     template<typename EdTy>
     [[nodiscard]] static bool drawChangeButtons(const std::string& key, const char* label, EdTy* value) {
         assert(label);
@@ -466,8 +462,8 @@ struct KeypadState {
             bool pressed = false;
             {
                 ImGui::SameLine();
-                IMW::Font _(LookAndFeel::instance().fontIconsSolid);
-                if (DigitizerUi::Button(icon)) {
+                imw::Font _(LookAndFeel::instance().fontIconsSolid);
+                if (button(icon)) {
                     auto it = keyPad._manualyEditedIncrements.find(key);
                     if (it == keyPad._manualyEditedIncrements.end()) {
                         it = keyPad._manualyEditedIncrements.insert_or_assign(key, incrementOf(std::format("{:.4f}", static_cast<double>(*value)), TrailingZeros::Ignored)).first;
@@ -480,11 +476,11 @@ struct KeypadState {
                     pressed = true;
                 }
             }
-            IMW::detail::setItemTooltip(tooltip);
+            imw::detail::setItemTooltip(tooltip);
             return pressed;
         };
-        result = changeButton(decrementButtonIcon, "Decrement", true) || result;
-        result = changeButton(incrementButtonIcon, "Increment", false) || result;
+        result = changeButton(kDecrementButtonIcon, "Decrement", true) || result;
+        result = changeButton(kIncrementButtonIcon, "Increment", false) || result;
 
         return result;
     }
@@ -525,14 +521,14 @@ struct KeypadState {
         const float totalWidth  = ImGui::CalcItemWidth();
         float       buttonWidth = 0.f;
         if constexpr (hasChangeButtons) {
-            IMW::Font iconFont(LookAndFeel::instance().fontIconsSolid);
-            buttonWidth = IMW::CalcButtonSize(decrementButtonIcon).x;
+            imw::Font iconFont(LookAndFeel::instance().fontIconsSolid);
+            buttonWidth = imw::calcButtonSize(kDecrementButtonIcon).x;
         }
         const float spacing                     = ImGui::GetStyle().ItemSpacing.x;
         const float spaceAvailableBeforeButtons = std::max(1.f, totalWidth - (hasChangeButtons ? 2.f * (buttonWidth + spacing) : 0.f));
 
         auto&      keyPad = getInstance();
-        IMW::Group group;
+        imw::Group group;
 
         if constexpr (std::floating_point<EdTy>) {
             ImGuiDataType type = ImGuiDataType_Float;
@@ -549,7 +545,7 @@ struct KeypadState {
             if (ImGui::IsItemClicked(ImGuiMouseButton_Right)) {
                 ImGui::SetKeyboardFocusHere(-1); // keyboard focus on drag input converts it to a text input
             }
-            IMW::detail::setItemTooltip(key.c_str());
+            imw::detail::setItemTooltip(key.c_str());
 
             const bool changedByKeypadOrButtons = drawChangeButtons(key, label, value);
             return wasDragged || changedByKeypadOrButtons;
@@ -572,14 +568,14 @@ struct KeypadState {
             if (ImGui::IsItemClicked(ImGuiMouseButton_Right)) {
                 ImGui::SetKeyboardFocusHere(-1); // keyboard focus on drag input converts it to a text input
             }
-            IMW::detail::setItemTooltip(key.c_str());
+            imw::detail::setItemTooltip(key.c_str());
 
             const bool changedByKeypadOrButtons = drawChangeButtons(key, label, value);
             return wasDragged || changedByKeypadOrButtons;
         } else {
             ImGui::SetNextItemWidth(spaceAvailableBeforeButtons);
             ImGui::InputText(label, value);
-            IMW::detail::setItemTooltip(key.c_str());
+            imw::detail::setItemTooltip(key.c_str());
 
             return keyPad.editImpl(label, value);
         }
@@ -593,29 +589,27 @@ struct KeypadState {
         const ImVec2 defaultPortraitSize  = LookAndFeel::instance().keypadPortraitSize;
         const ImVec2 defaultLandscapeSize = LookAndFeel::instance().keypadLandscapeSize;
 
-        if (mainViewPortSize.x > defaultPortraitSize.x && mainViewPortSize.y > defaultPortraitSize.y) { // fits on screen
+        if (mainViewPortSize.x > defaultPortraitSize.x && mainViewPortSize.y > defaultPortraitSize.y) {
             ImGui::SetNextWindowSize(defaultPortraitSize);
         } else {
-            // main viewport is smaller than the default size
-            if (portraitMode) { // portrait mode
+            if (portraitMode) {
                 ImGui::SetNextWindowSize(ImVec2(std::clamp(defaultPortraitSize.x, .5f * defaultPortraitSize.x, mainViewPortSize.x), std::clamp(defaultPortraitSize.y, .5f * defaultPortraitSize.y, mainViewPortSize.y)));
-            } else { // landscape mode
+            } else {
                 ImGui::SetNextWindowSize(ImVec2(std::clamp(defaultLandscapeSize.x, .5f * defaultLandscapeSize.x, mainViewPortSize.x), std::clamp(defaultLandscapeSize.y, .5f * defaultLandscapeSize.y, mainViewPortSize.y)));
             }
         }
         ImGui::SetNextWindowPos(mainViewPort.GetCenter(), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
 
         bool visible = _visible; // copy because BeginPopupModal set this to false when successful but needs to remain true until input is acknowledged
-        if (auto popup = IMW::ModalPopup(keypad_name, &visible, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoDecoration)) {
+        if (auto popup = imw::ModalPopup(kKeypadName, &visible, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoDecoration)) {
             ReturnState returnState = ReturnState::None;
-            if (auto keypadInput = IMW::Child("drawKeypad Input", ImVec2{}, true, 0)) {
-                const ImVec2 windowSize = ImGui::GetContentRegionAvail(); // now inside this child;
+            if (auto keypadInput = imw::Child("drawKeypad Input", ImVec2{}, true, 0)) {
+                const ImVec2 windowSize = ImGui::GetContentRegionAvail();
 
-                // setup number and function keypad -- global style settings
-                IMW::StyleFloatVar style(ImGuiStyleVar_FrameRounding, LookAndFeel::instance().keypadRounding);
-                IMW::Font          font(LookAndFeel::instance().fontBigger());
+                imw::StyleFloatVar style(ImGuiStyleVar_FrameRounding, LookAndFeel::instance().keypadRounding);
+                imw::Font          font(LookAndFeel::instance().fontBigger());
                 const Button       activatedKey = windowSize.x < windowSize.y ? drawPortraitKeypad(valueLabel, windowSize) : drawLandscapeKeypad(valueLabel, windowSize);
-                returnState                     = processKeypadLogic(activatedKey);
+                returnState                     = pressKey(activatedKey);
             }
 
             switch (returnState) {
@@ -632,7 +626,7 @@ struct KeypadState {
     [[nodiscard]] bool editImpl(const char* /* label */, EdTy* value) noexcept {
         if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !ImGui::TempInputIsActive(ImGui::GetItemID())) {
             _visible = true;
-            ImGui::OpenPopup(keypad_name);
+            ImGui::OpenPopup(kKeypadName);
             _prevValue.emplace<EdTy>(*value); // save for discard
             _editBuffer.clear();
             std::format_to(std::back_inserter(_editBuffer), "{}", *value);
@@ -672,65 +666,43 @@ struct KeypadState {
     }
 
     [[nodiscard]] Button drawPortraitKeypad(std::string& valueLabel, const ImVec2& windowSize) const {
-        /**
-         * ┌───────────────────────┬─────┐
-         * │   NumberInputField    │ ESC │
-         * ├─────┬─────┬─────┬─────┼─────┤
-         * │ 2nd │ sin │ cos │ tan │ <-  │
-         * ├─────┼─────┼─────┼─────┼─────┤
-         * │ Inv │ 1/x │ x²  │ ²√  │  ^  │
-         * ├─────┼─────┼─────┼─────┼─────┤
-         * │ Log │10^x │  /  │  *  │  -  │
-         * ├─────┼─────┼─────┼─────┼─────┤
-         * │  (  │  7  │  8  │  9  │     │
-         * ├─────┼─────┼─────┼─────┤  +  │
-         * │  )  │  4  │  5  │  6  │     │
-         * ├─────┼─────┼─────┼─────┼─────┤
-         * │ EE  │  1  │  2  │  3  │     │
-         * ├─────┼─────┴─────┼─────┤  ⏎  │
-         * │  ±  │     0     │  .  │     │
-         * └─────┴───────────┴─────┴─────┘
-         */
-        constexpr float nRows = 8; // see above layout
-        constexpr float nCols = 5; // see above layout
+        constexpr float kRows = 8;
+        constexpr float kCols = 5;
         using enum Button;
         using enum LinePreference;
         const ImGuiStyle& style = ImGui::GetStyle();
-        const float       nx    = floorf(windowSize.x / nCols) - .5f * nCols / (nCols - 1) * style.WindowPadding.x;
-        const float       ny    = floorf(windowSize.y / nRows) - .5f * nRows / (nRows - 1) * style.WindowPadding.y;
-        ImVec2            buttonSize(std::min(nx, ny), std::min(nx, ny)); // buttons are square
-        Button            key = Button::NoButton;                         // return value
+        const float       nx    = floorf(windowSize.x / kCols) - .5f * kCols / (kCols - 1) * style.WindowPadding.x;
+        const float       ny    = floorf(windowSize.y / kRows) - .5f * kRows / (kRows - 1) * style.WindowPadding.y;
+        ImVec2            buttonSize(std::min(nx, ny), std::min(nx, ny));
+        Button            key = Button::NoButton;
 
-        // setup common number editing field
         {
-            IMW::Font font(LookAndFeel::instance().fontLarge());
+            imw::Font font(LookAndFeel::instance().fontLarge());
             // the '-1' is to accommodate the 'Esc' button
-            IMW::ItemWidth itemWidth(buttonSize.x * (nCols - 1.f) + (nCols - 2.f) * style.WindowPadding.x);
+            imw::ItemWidth itemWidth(buttonSize.x * (kCols - 1.f) + (kCols - 2.f) * style.WindowPadding.x);
             if (ImGui::InputText("##hidden", &valueLabel, ImGuiInputTextFlags_CharsScientific)) {
                 return NoButton;
             }
         }
 
-        // the 'ESC' clause button
         {
-            IMW::StyleColor button(ImGuiCol_Button, LookAndFeel::instance().palette().keypadButtonColor);
-            IMW::StyleColor text(ImGuiCol_Text, LookAndFeel::instance().palette().keypadTextColor);
+            imw::StyleColor button(ImGuiCol_Button, LookAndFeel::instance().palette().keypadButtonColor);
+            imw::StyleColor text(ImGuiCol_Text, LookAndFeel::instance().palette().keypadTextColor);
             key = keypadButton<SameLine, Escape, ImGuiKey_Escape>(buttonSize, key);
         }
 
-        // start row 2: 2nd,sin[h],cos[h],tan[h],<-
         if (_altMode) {
-            ImVec4 button_color = style.Colors[ImGuiCol_Button];
-            button_color.x *= LookAndFeel::instance().palette().keypadFunctionKeyButtonColorMultiplier.x;
-            button_color.y *= LookAndFeel::instance().palette().keypadFunctionKeyButtonColorMultiplier.y;
-            button_color.z *= LookAndFeel::instance().palette().keypadFunctionKeyButtonColorMultiplier.z;
+            ImVec4 buttonColor = style.Colors[ImGuiCol_Button];
+            buttonColor.x *= LookAndFeel::instance().palette().keypadFunctionKeyButtonColorMultiplier.x;
+            buttonColor.y *= LookAndFeel::instance().palette().keypadFunctionKeyButtonColorMultiplier.y;
+            buttonColor.z *= LookAndFeel::instance().palette().keypadFunctionKeyButtonColorMultiplier.z;
 
-            IMW::StyleColor button(ImGuiCol_Button, button_color);
-            IMW::StyleColor text(ImGuiCol_Text, LookAndFeel::instance().palette().keypadTextColor);
-            key = keypadButton<None, Alt_2nd, ImGuiKey_NumLock>(buttonSize, key);
+            imw::StyleColor button(ImGuiCol_Button, buttonColor);
+            imw::StyleColor text(ImGuiCol_Text, LookAndFeel::instance().palette().keypadTextColor);
+            key = keypadButton<None, Alt2nd, ImGuiKey_NumLock>(buttonSize, key);
 
         } else {
-            key = keypadButton<None, Alt_2nd, ImGuiKey_NumLock>(buttonSize, key);
+            key = keypadButton<None, Alt2nd, ImGuiKey_NumLock>(buttonSize, key);
         }
         if (_altMode) {
             if (_invMode) {
@@ -753,19 +725,18 @@ struct KeypadState {
                 key = keypadButton<SameLine, Tan>(buttonSize, key);
             }
         }
-        key = keypadButton<SameLine, Backspace, AC /* double-click action  */, ImGuiKey_Backspace, ImGuiKey_Delete>(buttonSize, key);
+        key = keypadButton<SameLine, Backspace, AllClear /* double-click action  */, ImGuiKey_Backspace, ImGuiKey_Delete>(buttonSize, key);
 
-        // start row 3: Inv,1/x,x²,²√,^
         if (_invMode) {
-            ImVec4 button_color = style.Colors[ImGuiCol_Button];
-            button_color.x *= LookAndFeel::instance().palette().keypadFunctionKeyButtonColorMultiplier.x;
-            button_color.y *= LookAndFeel::instance().palette().keypadFunctionKeyButtonColorMultiplier.y;
-            button_color.z *= LookAndFeel::instance().palette().keypadFunctionKeyButtonColorMultiplier.z;
-            IMW::StyleColor button(ImGuiCol_Button, button_color);
-            IMW::StyleColor text(ImGuiCol_Text, LookAndFeel::instance().palette().keypadTextColor);
-            key = keypadButton<None, Alt_Inv, ImGuiKey_CapsLock>(buttonSize, key);
+            ImVec4 buttonColor = style.Colors[ImGuiCol_Button];
+            buttonColor.x *= LookAndFeel::instance().palette().keypadFunctionKeyButtonColorMultiplier.x;
+            buttonColor.y *= LookAndFeel::instance().palette().keypadFunctionKeyButtonColorMultiplier.y;
+            buttonColor.z *= LookAndFeel::instance().palette().keypadFunctionKeyButtonColorMultiplier.z;
+            imw::StyleColor button(ImGuiCol_Button, buttonColor);
+            imw::StyleColor text(ImGuiCol_Text, LookAndFeel::instance().palette().keypadTextColor);
+            key = keypadButton<None, AltInv, ImGuiKey_CapsLock>(buttonSize, key);
         } else {
-            key = keypadButton<None, Alt_Inv, ImGuiKey_CapsLock>(buttonSize, key);
+            key = keypadButton<None, AltInv, ImGuiKey_CapsLock>(buttonSize, key);
         }
         key = keypadButton<SameLine, Rcp>(buttonSize, key);
         if (_altMode) {
@@ -777,7 +748,6 @@ struct KeypadState {
         }
         key = keypadButton<SameLine, Pow>(buttonSize, key);
 
-        // start row 4: Log,10^x,/,*,-
         if (_altMode) {
             key = keypadButton<None, Ln>(buttonSize, key);
             key = keypadButton<SameLine, PowE>(buttonSize, key);
@@ -789,36 +759,32 @@ struct KeypadState {
         key = keypadButton<SameLine, Mul, ImGuiKey_KeypadMultiply>(buttonSize, key);
         key = keypadButton<SameLine, Sub, ImGuiKey_KeypadSubtract>(buttonSize, key);
 
-        // start row 5: (,7,8,9,+(1/2, two rows)
-        key                          = keypadButton<None, POpen>(buttonSize, key);
-        key                          = keypadButton<SameLine, Button7, ImGuiKey_7, ImGuiKey_Keypad7>(buttonSize, key);
-        key                          = keypadButton<SameLine, Button8, ImGuiKey_8, ImGuiKey_Keypad8>(buttonSize, key);
-        key                          = keypadButton<SameLine, Button9, ImGuiKey_9, ImGuiKey_Keypad9>(buttonSize, key);
-        const float vpos_before_plus = ImGui::GetCursorPosY();
-        key                          = keypadButton<SameLine, Add, ImGuiKey_KeypadAdd>({buttonSize.x, buttonSize.y * 2.0f + 0.5f * style.WindowPadding.y}, key);
-        ImGui::SetCursorPosY(vpos_before_plus);
+        key                        = keypadButton<None, POpen>(buttonSize, key);
+        key                        = keypadButton<SameLine, Button7, ImGuiKey_7, ImGuiKey_Keypad7>(buttonSize, key);
+        key                        = keypadButton<SameLine, Button8, ImGuiKey_8, ImGuiKey_Keypad8>(buttonSize, key);
+        key                        = keypadButton<SameLine, Button9, ImGuiKey_9, ImGuiKey_Keypad9>(buttonSize, key);
+        const float vposBeforePlus = ImGui::GetCursorPosY();
+        key                        = keypadButton<SameLine, Add, ImGuiKey_KeypadAdd>({buttonSize.x, buttonSize.y * 2.0f + 0.5f * style.WindowPadding.y}, key);
+        ImGui::SetCursorPosY(vposBeforePlus);
 
-        // start row 6: ),4,5,6,+(2/2, two rows)
         key = keypadButton<None, PClose>(buttonSize, key);
         key = keypadButton<SameLine, Button4, ImGuiKey_4, ImGuiKey_Keypad4>(buttonSize, key);
         key = keypadButton<SameLine, Button5, ImGuiKey_5, ImGuiKey_Keypad5>(buttonSize, key);
         key = keypadButton<SameLine, Button6, ImGuiKey_6, ImGuiKey_Keypad6>(buttonSize, key);
 
-        // start row 7: E,1/,4,5,6,enter(1/2, two rows)
-        key = keypadButton<None, E_scientific, ImGuiKey_E>(buttonSize, key);
+        key = keypadButton<None, EScientific, ImGuiKey_E>(buttonSize, key);
         key = keypadButton<SameLine, Button1, ImGuiKey_1, ImGuiKey_Keypad1>(buttonSize, key);
         key = keypadButton<SameLine, Button2, ImGuiKey_2, ImGuiKey_Keypad2>(buttonSize, key);
         key = keypadButton<SameLine, Button3, ImGuiKey_3, ImGuiKey_Keypad3>(buttonSize, key);
 
         {
-            IMW::StyleColor button(ImGuiCol_Button, LookAndFeel::instance().palette().keypadButtonColor);
-            IMW::StyleColor text(ImGuiCol_Text, LookAndFeel::instance().palette().keypadTextColor);
-            const float     vpos_before_enter = ImGui::GetCursorPosY();
-            key                               = keypadButton<SameLine, Enter, ImGuiKey_Enter, ImGuiKey_KeypadEnter>({buttonSize.x, buttonSize.y * 2.f + 0.5f * style.WindowPadding.y}, key);
-            ImGui::SetCursorPosY(vpos_before_enter);
+            imw::StyleColor button(ImGuiCol_Button, LookAndFeel::instance().palette().keypadButtonColor);
+            imw::StyleColor text(ImGuiCol_Text, LookAndFeel::instance().palette().keypadTextColor);
+            const float     vposBeforeEnter = ImGui::GetCursorPosY();
+            key                             = keypadButton<SameLine, Enter, ImGuiKey_Enter, ImGuiKey_KeypadEnter>({buttonSize.x, buttonSize.y * 2.f + 0.5f * style.WindowPadding.y}, key);
+            ImGui::SetCursorPosY(vposBeforeEnter);
         }
 
-        // start row 8: ±,0 (two columns),.,enter(2/2, two rows)
         key = keypadButton<None, Sign>(buttonSize, key);
         key = keypadButton<SameLine, Button0, ImGuiKey_0, ImGuiKey_Keypad0>({buttonSize[0] * 2.f + style.WindowPadding.x, buttonSize.y}, key);
         key = keypadButton<SameLine, Period, ImGuiKey_Period, ImGuiKey_KeypadDecimal>(buttonSize, key);
@@ -826,73 +792,55 @@ struct KeypadState {
     }
 
     [[nodiscard]] Button drawLandscapeKeypad(std::string& valueLabel, const ImVec2& windowSize) const {
-        /**
-         * ┌─────────────────────────────┬─────┬─────┐
-         * │       NumberInputField      │ <-  │ ESC │
-         * ├─────┬─────┬─────┬─────┬─────┼─────┼─────┤
-         * │ 2nd │ Inv │ Log │10^x │  /  │  *  │  -  │
-         * ├─────┼─────┼─────┼─────┼─────┼─────┼─────┤
-         * │ sin │ 1/x │  (  │  7  │  8  │  9  │     │
-         * ├─────┼─────┼─────┼─────┼─────┼─────┤  +  │
-         * │ cos │ x²  │  )  │  4  │  5  │  6  │     │
-         * ├─────┼─────┼─────┼─────┼─────┼─────┼─────┤
-         * │ tan │ ²√  │ EE  │  1  │  2  │  3  │     │
-         * ├─────┼─────┼─────┼─────┴─────┼─────┤  ⏎  │
-         * │  ?  │  ^  │  ±  │     0     │  .  │     │
-         * └─────┴─────┴─────┴───────────┴─────┴─────┘
-         */
-        constexpr float nRows = 6; // see above layout
-        constexpr float nCols = 7; // see above layout
+        constexpr float kRows = 6;
+        constexpr float kCols = 7;
         using enum Button;
         using enum LinePreference;
         const ImGuiStyle& style = ImGui::GetStyle();
-        const float       nx    = floorf(windowSize.x / nCols) - .5f * nCols / (nCols - 1) * style.WindowPadding.x;
-        const float       ny    = floorf(windowSize.y / nRows) - .5f * nRows / (nRows - 1) * style.WindowPadding.y;
-        ImVec2            buttonSize(std::min(nx, ny), std::min(nx, ny)); // buttons are square
-        Button            key = Button::NoButton;                         // return value
+        const float       nx    = floorf(windowSize.x / kCols) - .5f * kCols / (kCols - 1) * style.WindowPadding.x;
+        const float       ny    = floorf(windowSize.y / kRows) - .5f * kRows / (kRows - 1) * style.WindowPadding.y;
+        ImVec2            buttonSize(std::min(nx, ny), std::min(nx, ny));
+        Button            key = Button::NoButton;
 
-        // setup common number editing field
         {
-            IMW::Font font(LookAndFeel::instance().fontLarge());
+            imw::Font font(LookAndFeel::instance().fontLarge());
             // the '-2' is to accommodate the '<-' and 'Esc' button
-            IMW::ItemWidth itemWidth(buttonSize.x * (nCols - 2.f) + (nCols - 3.f) * style.WindowPadding.x);
+            imw::ItemWidth itemWidth(buttonSize.x * (kCols - 2.f) + (kCols - 3.f) * style.WindowPadding.x);
             if (ImGui::InputText("##hidden", &valueLabel, ImGuiInputTextFlags_CharsScientific)) {
                 return NoButton;
             }
         }
 
         // the '<-' button is exceptionally placed next to the 'ESC' button
-        key = keypadButton<SameLine, Backspace, AC /* double-click action  */, ImGuiKey_Backspace, ImGuiKey_Delete>(buttonSize, key);
+        key = keypadButton<SameLine, Backspace, AllClear /* double-click action  */, ImGuiKey_Backspace, ImGuiKey_Delete>(buttonSize, key);
 
-        // the 'ESC' clause button
         {
-            IMW::StyleColor button(ImGuiCol_Button, LookAndFeel::instance().palette().keypadButtonColor);
-            IMW::StyleColor text(ImGuiCol_Text, LookAndFeel::instance().palette().keypadTextColor);
+            imw::StyleColor button(ImGuiCol_Button, LookAndFeel::instance().palette().keypadButtonColor);
+            imw::StyleColor text(ImGuiCol_Text, LookAndFeel::instance().palette().keypadTextColor);
             key = keypadButton<SameLine, Escape, ImGuiKey_Escape>(buttonSize, key);
         }
 
-        // Row 2: 2nd,Inv,Log,10^x,/,*,-
         if (_altMode) {
-            ImVec4 button_color = style.Colors[ImGuiCol_Button];
-            button_color.x *= LookAndFeel::instance().palette().keypadFunctionKeyButtonColorMultiplier.x;
-            button_color.y *= LookAndFeel::instance().palette().keypadFunctionKeyButtonColorMultiplier.y;
-            button_color.z *= LookAndFeel::instance().palette().keypadFunctionKeyButtonColorMultiplier.z;
-            IMW::StyleColor button(ImGuiCol_Button, button_color);
-            IMW::StyleColor text(ImGuiCol_Text, LookAndFeel::instance().palette().keypadTextColor);
-            key = keypadButton<None, Alt_2nd, ImGuiKey_NumLock>(buttonSize, key);
+            ImVec4 buttonColor = style.Colors[ImGuiCol_Button];
+            buttonColor.x *= LookAndFeel::instance().palette().keypadFunctionKeyButtonColorMultiplier.x;
+            buttonColor.y *= LookAndFeel::instance().palette().keypadFunctionKeyButtonColorMultiplier.y;
+            buttonColor.z *= LookAndFeel::instance().palette().keypadFunctionKeyButtonColorMultiplier.z;
+            imw::StyleColor button(ImGuiCol_Button, buttonColor);
+            imw::StyleColor text(ImGuiCol_Text, LookAndFeel::instance().palette().keypadTextColor);
+            key = keypadButton<None, Alt2nd, ImGuiKey_NumLock>(buttonSize, key);
         } else {
-            key = keypadButton<None, Alt_2nd, ImGuiKey_NumLock>(buttonSize, key);
+            key = keypadButton<None, Alt2nd, ImGuiKey_NumLock>(buttonSize, key);
         }
         if (_invMode) {
-            ImVec4 button_color = style.Colors[ImGuiCol_Button];
-            button_color.x *= LookAndFeel::instance().palette().keypadFunctionKeyButtonColorMultiplier.x;
-            button_color.y *= LookAndFeel::instance().palette().keypadFunctionKeyButtonColorMultiplier.y;
-            button_color.z *= LookAndFeel::instance().palette().keypadFunctionKeyButtonColorMultiplier.z;
-            IMW::StyleColor button(ImGuiCol_Button, button_color);
-            IMW::StyleColor text(ImGuiCol_Text, LookAndFeel::instance().palette().keypadTextColor);
-            key = keypadButton<SameLine, Alt_Inv, ImGuiKey_CapsLock>(buttonSize, key);
+            ImVec4 buttonColor = style.Colors[ImGuiCol_Button];
+            buttonColor.x *= LookAndFeel::instance().palette().keypadFunctionKeyButtonColorMultiplier.x;
+            buttonColor.y *= LookAndFeel::instance().palette().keypadFunctionKeyButtonColorMultiplier.y;
+            buttonColor.z *= LookAndFeel::instance().palette().keypadFunctionKeyButtonColorMultiplier.z;
+            imw::StyleColor button(ImGuiCol_Button, buttonColor);
+            imw::StyleColor text(ImGuiCol_Text, LookAndFeel::instance().palette().keypadTextColor);
+            key = keypadButton<SameLine, AltInv, ImGuiKey_CapsLock>(buttonSize, key);
         } else {
-            key = keypadButton<SameLine, Alt_Inv, ImGuiKey_CapsLock>(buttonSize, key);
+            key = keypadButton<SameLine, AltInv, ImGuiKey_CapsLock>(buttonSize, key);
         }
         if (_altMode) {
             key = keypadButton<SameLine, Ln>(buttonSize, key);
@@ -905,7 +853,6 @@ struct KeypadState {
         key = keypadButton<SameLine, Mul, ImGuiKey_KeypadMultiply>(buttonSize, key);
         key = keypadButton<SameLine, Sub, ImGuiKey_KeypadSubtract>(buttonSize, key);
 
-        // Row 3: sin[h],1/x,(,7,8,9,+(1/2, two rows)
         if (_altMode) {
             if (_invMode) {
                 key = keypadButton<None, ASinh>(buttonSize, key);
@@ -919,16 +866,15 @@ struct KeypadState {
                 key = keypadButton<None, Sin>(buttonSize, key);
             }
         }
-        key                          = keypadButton<SameLine, Rcp>(buttonSize, key);
-        key                          = keypadButton<SameLine, POpen>(buttonSize, key);
-        key                          = keypadButton<SameLine, Button7, ImGuiKey_7, ImGuiKey_Keypad7>(buttonSize, key);
-        key                          = keypadButton<SameLine, Button8, ImGuiKey_8, ImGuiKey_Keypad8>(buttonSize, key);
-        key                          = keypadButton<SameLine, Button9, ImGuiKey_9, ImGuiKey_Keypad9>(buttonSize, key);
-        const float vpos_before_plus = ImGui::GetCursorPosY();
-        key                          = keypadButton<SameLine, Add, ImGuiKey_KeypadAdd>({buttonSize.x, buttonSize.y * 2.0f + 0.5f * style.WindowPadding.y}, key);
-        ImGui::SetCursorPosY(vpos_before_plus);
+        key                        = keypadButton<SameLine, Rcp>(buttonSize, key);
+        key                        = keypadButton<SameLine, POpen>(buttonSize, key);
+        key                        = keypadButton<SameLine, Button7, ImGuiKey_7, ImGuiKey_Keypad7>(buttonSize, key);
+        key                        = keypadButton<SameLine, Button8, ImGuiKey_8, ImGuiKey_Keypad8>(buttonSize, key);
+        key                        = keypadButton<SameLine, Button9, ImGuiKey_9, ImGuiKey_Keypad9>(buttonSize, key);
+        const float vposBeforePlus = ImGui::GetCursorPosY();
+        key                        = keypadButton<SameLine, Add, ImGuiKey_KeypadAdd>({buttonSize.x, buttonSize.y * 2.0f + 0.5f * style.WindowPadding.y}, key);
+        ImGui::SetCursorPosY(vposBeforePlus);
 
-        // Row 4: cos[h],x²,),5,4,6,+(2/2, two rows)
         if (_altMode) {
             key = _invMode ? keypadButton<None, ACosh>(buttonSize, key) : keypadButton<None, Cosh>(buttonSize, key);
         } else {
@@ -944,7 +890,6 @@ struct KeypadState {
         key = keypadButton<SameLine, Button5, ImGuiKey_5, ImGuiKey_Keypad5>(buttonSize, key);
         key = keypadButton<SameLine, Button6, ImGuiKey_6, ImGuiKey_Keypad6>(buttonSize, key);
 
-        // Row 5: tan[h],²√,),1,2,3,enter(1/2, two rows)
         if (_altMode) {
             key = _invMode ? keypadButton<None, ATanh>(buttonSize, key) : keypadButton<None, Tanh>(buttonSize, key);
         } else {
@@ -955,19 +900,18 @@ struct KeypadState {
         } else {
             key = keypadButton<SameLine, Sqrt>(buttonSize, key);
         }
-        key = keypadButton<SameLine, E_scientific, ImGuiKey_E>(buttonSize, key);
+        key = keypadButton<SameLine, EScientific, ImGuiKey_E>(buttonSize, key);
         key = keypadButton<SameLine, Button1, ImGuiKey_1, ImGuiKey_Keypad1>(buttonSize, key);
         key = keypadButton<SameLine, Button2, ImGuiKey_2, ImGuiKey_Keypad2>(buttonSize, key);
         key = keypadButton<SameLine, Button3, ImGuiKey_3, ImGuiKey_Keypad3>(buttonSize, key);
         {
-            IMW::StyleColor button(ImGuiCol_Button, LookAndFeel::instance().palette().keypadButtonColor);
-            IMW::StyleColor text(ImGuiCol_Text, LookAndFeel::instance().palette().keypadTextColor);
-            const float     vpos_before_enter = ImGui::GetCursorPosY();
-            key                               = keypadButton<SameLine, Enter, ImGuiKey_Enter, ImGuiKey_KeypadEnter>({buttonSize.x, buttonSize.y * 2.f + 0.5f * style.WindowPadding.y}, key);
-            ImGui::SetCursorPosY(vpos_before_enter);
+            imw::StyleColor button(ImGuiCol_Button, LookAndFeel::instance().palette().keypadButtonColor);
+            imw::StyleColor text(ImGuiCol_Text, LookAndFeel::instance().palette().keypadTextColor);
+            const float     vposBeforeEnter = ImGui::GetCursorPosY();
+            key                             = keypadButton<SameLine, Enter, ImGuiKey_Enter, ImGuiKey_KeypadEnter>({buttonSize.x, buttonSize.y * 2.f + 0.5f * style.WindowPadding.y}, key);
+            ImGui::SetCursorPosY(vposBeforeEnter);
         }
 
-        // Row 7: ?,^,±,0,0,.,enter(2/2, two rows)
         key = keypadButton<None, NoButton>(buttonSize, key);
         key = keypadButton<SameLine, Pow>(buttonSize, key);
         key = keypadButton<SameLine, Sign>(buttonSize, key);
@@ -977,7 +921,7 @@ struct KeypadState {
         return key;
     }
 
-    [[nodiscard]] ReturnState processKeypadLogic(const Button& key) {
+    [[nodiscard]] ReturnState pressKey(const Button& key) {
         using enum Button;
         const Token last = lastToken(_editBuffer);
 
@@ -985,7 +929,7 @@ struct KeypadState {
         case NoButton: return ReturnState::None;
         case Escape: return ReturnState::Discard;
         case Enter: {
-            if (last.type != TType::tt_const && last.type != TType::tt_pclose) {
+            if (last.type != TType::Const && last.type != TType::PClose) {
                 return ReturnState::None;
             }
             if (onlyToken(_editBuffer)) {
@@ -1000,7 +944,7 @@ struct KeypadState {
         }
 
         case Backspace:
-            if (last.type == TType::tt_const) {
+            if (last.type == TType::Const) {
                 _editBuffer.pop_back();
             } else {
                 _editBuffer.erase(std::prev(_editBuffer.end(), static_cast<std::ptrdiff_t>(last.range.size())), _editBuffer.end());
@@ -1010,12 +954,12 @@ struct KeypadState {
                 _editBuffer.pop_back();
             }
             return ReturnState::Change;
-        case AC: _editBuffer.clear(); return ReturnState::Change;
-        case Alt_2nd: _altMode = !_altMode; return ReturnState::Change;
-        case Alt_Inv: _invMode = !_invMode; return ReturnState::Change;
+        case AllClear: _editBuffer.clear(); return ReturnState::Change;
+        case Alt2nd: _altMode = !_altMode; return ReturnState::Change;
+        case AltInv: _invMode = !_invMode; return ReturnState::Change;
 
         case Sign: {
-            if (last.type == TType::tt_const) {
+            if (last.type == TType::Const) {
                 if (last.range.data() != _editBuffer.data() && last.range.data()[-1] == '-') {
                     _editBuffer.erase(std::prev(_editBuffer.end(), static_cast<std::ptrdiff_t>(last.range.size() + 1UZ)));
                 } else {
@@ -1024,14 +968,14 @@ struct KeypadState {
                 return ReturnState::Change;
             }
 
-            if (last.type != TType::tt_pclose) {
+            if (last.type != TType::PClose) {
                 return ReturnState::None;
             }
 
             const std::vector<Token> tokens = tokenize(_editBuffer);
             std::size_t              depth  = 0UZ;
             const auto               open   = std::find_if(tokens.rbegin(), tokens.rend(), [&depth](const Token& token) {
-                if (token.type == TType::tt_pclose) {
+                if (token.type == TType::PClose) {
                     ++depth;
                 } else if (token.isPOpen() && depth > 0UZ) {
                     return --depth == 0UZ;
@@ -1052,7 +996,7 @@ struct KeypadState {
             return ReturnState::Change;
         }
         case Sqrt:
-            if (last.type != TType::tt_const) {
+            if (last.type != TType::Const) {
                 return ReturnState::None;
             }
             {
@@ -1069,7 +1013,7 @@ struct KeypadState {
             }
             return ReturnState::Change;
         case Rcp: // reciprocate
-            if (last.type != TType::tt_const) {
+            if (last.type != TType::Const) {
                 return ReturnState::None;
             }
             {
@@ -1086,7 +1030,7 @@ struct KeypadState {
             }
             return ReturnState::Change;
         case Percent:
-            if (last.type != TType::tt_const) {
+            if (last.type != TType::Const) {
                 return ReturnState::None;
             }
             {
@@ -1103,16 +1047,16 @@ struct KeypadState {
             }
             return ReturnState::Change;
         case Period:
-            if (last.type != TType::tt_const || last.range.find('.') != std::string_view::npos) {
+            if (last.type != TType::Const || last.range.find('.') != std::string_view::npos) {
                 break;
             }
-            _editBuffer.push_back('.'); // add period to the string
+            _editBuffer.push_back('.');
             return ReturnState::Change;
-        case E_scientific:
-            if (last.type != TType::tt_const || last.range.find('.') != std::string_view::npos) {
+        case EScientific:
+            if (last.type != TType::Const || last.range.find('.') != std::string_view::npos) {
                 break;
             }
-            _editBuffer.push_back('e'); // add exponential 'e' to the string
+            _editBuffer.push_back('e');
             return ReturnState::Change;
         case Add:
         case Sub:
@@ -1232,14 +1176,14 @@ struct KeypadState {
             _parentheses++;
             return ReturnState::Change;
         default:
-            if (!isdigit(char(key)) || last.type == TType::tt_pclose) {
+            if (!isdigit(char(key)) || last.type == TType::PClose) {
                 return ReturnState::None;
             }
             if (_firstUpdate) {
                 _editBuffer.clear();
                 _firstUpdate = false;
             }
-            _editBuffer.push_back(char(key)); // add k to the string
+            _editBuffer.push_back(char(key));
             return ReturnState::Change;
         }
         return ReturnState::None;
@@ -1260,4 +1204,4 @@ void InputKeypad::clearIfNewBlock(std::string_view block) { KeypadState::clearIf
 
 bool InputKeypad::isVisible() noexcept { return KeypadState::isVisible(); }
 
-} // namespace DigitizerUi::components
+} // namespace gr::od::components

@@ -1,4 +1,4 @@
-#include "../ui/common/ImguiWrap.hpp"
+#include "../ui/common/Imw.hpp"
 #include "ImGuiTestApp.hpp"
 
 #include "components/Docking.hpp"
@@ -6,7 +6,7 @@
 #include <format>
 
 using namespace boost;
-using namespace DigitizerUi;
+using namespace gr::od;
 
 struct TestState {
     DockSpace          dockspace;
@@ -21,9 +21,9 @@ std::shared_ptr<DockSpace::Window> createWindow(const std::string& name) {
     return window;
 }
 
-void createButtonGroup(DigitizerUi::DockSpace& dockspace) {
+void createButtonGroup(DockSpace& dockspace) {
 
-    IMW::Group group;
+    imw::Group group;
 
     if (ImGui::Button("row")) {
         dockspace.setLayoutType(DockingLayoutType::Row);
@@ -55,8 +55,8 @@ void createButtonGroup(DigitizerUi::DockSpace& dockspace) {
     ImGui::TextUnformatted(std::string(gr::meta::enumName(dockspace.layoutType()).value_or("")).c_str());
 }
 
-struct TestApp : public DigitizerUi::test::ImGuiTestApp {
-    using DigitizerUi::test::ImGuiTestApp::ImGuiTestApp;
+struct TestApp : public test::ImGuiTestApp {
+    using test::ImGuiTestApp::ImGuiTestApp;
 
     void registerTests() override {
         ImGuiTest* t = IM_REGISTER_TEST(engine(), "docking", "docking layouts");
@@ -64,7 +64,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
         t->GuiFunc = [](ImGuiTestContext*) {
             ImGui::SetNextWindowPos(ImVec2(0, 0));
             ImGui::SetNextWindowSize(ImVec2(1600, 1000));
-            IMW::Window window("Test Window", nullptr,
+            imw::Window window("Test Window", nullptr,
                 ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse | //
                     ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |   //
                     ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus);
@@ -94,7 +94,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
 };
 
 int main(int argc, char* argv[]) {
-    auto options             = DigitizerUi::test::TestOptions::fromArgs(argc, argv);
+    auto options             = test::TestOptions::fromArgs(argc, argv);
     options.screenshotPrefix = "docking";
 
     TestApp   app(options);

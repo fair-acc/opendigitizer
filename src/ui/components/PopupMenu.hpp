@@ -10,26 +10,26 @@
 #include <variant>
 #include <vector>
 
-#include "../common/ImguiWrap.hpp"
+#include "../common/Imw.hpp"
 #include "../common/LookAndFeel.hpp"
 
-namespace DigitizerUi {
+namespace gr::od {
 
 struct MenuButton {
     using CallbackFun = std::variant<std::function<void()>, std::function<void(MenuButton&)>>;
     std::string           label;
-    mutable float         _size;
     CallbackFun           onClick;
     ImFont*               font = nullptr;
     std::string           toolTip;
     bool                  isTransparent = false;
     bool                  isNewRow      = false;
     float                 padding       = std::max(ImGui::GetStyle().FramePadding.x, ImGui::GetStyle().FramePadding.y);
-    std::optional<ImVec4> buttonColor   = std::nullopt; // by default it is an opaque version of the ImGui button color
+    std::optional<ImVec4> buttonColor   = std::nullopt; // unset: an opaque version of the ImGui button colour
     std::optional<ImVec4> iconColor     = std::nullopt; // by default is whatever ImGuiCol_Text is
+    mutable float         _size;
 
     [[nodiscard]] float size() const {
-        IMW::Font    _(font);
+        imw::Font    _(font);
         const ImVec2 textSize         = ImGui::CalcTextSize(label.c_str());
         const float  maxSize          = std::max(textSize.x, textSize.y);
         const float  actualButtonSize = std::max(_size, 2.f * padding + maxSize);
@@ -42,14 +42,14 @@ struct MenuButton {
         bool              isClicked = false;
         {
             const float        actualButtonSize = size();
-            IMW::Font          _(font);
-            IMW::StyleColor    iconStyle(ImGuiCol_Text, iconColor.value_or(ImGui::GetStyleColorVec4(ImGuiCol_Text)));
-            IMW::StyleFloatVar frameStyle(ImGuiStyleVar_FrameRounding, buttonRounding < 0 ? LookAndFeel::instance().popupMenuRadialButtonRoundingPercentage * actualButtonSize : buttonRounding);
+            imw::Font          _(font);
+            imw::StyleColor    iconStyle(ImGuiCol_Text, iconColor.value_or(ImGui::GetStyleColorVec4(ImGuiCol_Text)));
+            imw::StyleFloatVar frameStyle(ImGuiStyleVar_FrameRounding, buttonRounding < 0 ? LookAndFeel::instance().popupMenuRadialButtonRoundingPercentage * actualButtonSize : buttonRounding);
 
             struct ButtonStyle {
-                IMW::StyleColor normal, hover, active;
+                imw::StyleColor normal, hover, active;
 
-                ButtonStyle(ImVec4 _normal, ImVec4 _hover, ImVec4 _active) : normal(ImGuiCol_Button, std::move(_normal)), hover(ImGuiCol_ButtonHovered, std::move(_hover)), active(ImGuiCol_ButtonActive, std::move(_active)) {}
+                ButtonStyle(ImVec4 normal_, ImVec4 hover_, ImVec4 active_) : normal(ImGuiCol_Button, std::move(normal_)), hover(ImGuiCol_ButtonHovered, std::move(hover_)), active(ImGuiCol_ButtonActive, std::move(active_)) {}
             };
 
             auto styles = [&]() -> std::optional<ButtonStyle> {
@@ -84,8 +84,15 @@ struct MenuButton {
 
 enum class MenuType { Radial, Vertical, Horizontal };
 
-template<std::size_t unique_id, MenuType menuType>
-class PopupMenu {
+template<std::size_t uniqueId, MenuType menuType>
+struct PopupMenu {
+    struct ButtonsOutput {
+        bool        wasHovered{};
+        std::size_t numberOfButtonRows{};
+    };
+
+    float frameRounding = LookAndFeel::instance().popupMenuButtonRounding;
+
     static std::vector<MenuButton> _buttons;
     static const std::string       _popupId;
     static ImRect                  _itemBoundaryBox;
@@ -97,10 +104,11 @@ class PopupMenu {
     float                          _stopAngle        = 90.f;
     float                          _extraRadius      = 0.f;
     float                          _animationSpeed   = LookAndFeel::instance().popupMenuAnimationLengthSeconds;
-    float                          _timeOut          = LookAndFeel::instance().popupMenuMouseoutCloseDelaySeconds;      // time in seconds to close the menu when the mouse is out of range
-    float                          _autoCloseTimeOut = LookAndFeel::instance().popupMenuMouseInactiveCloseDelaySeconds; // time in seconds to close the menu when the mouse is out of range
+    float                          _timeOut          = LookAndFeel::instance().popupMenuMouseoutCloseDelaySeconds;      // s, until the menu closes while the mouse is out of range
+    float                          _autoCloseTimeOut = LookAndFeel::instance().popupMenuMouseInactiveCloseDelaySeconds; // s, until the menu closes while the mouse is inactive
 
-    //
+    explicit PopupMenu(ImVec2 menuSize = {100, 100}, float startAngle = 0.f, float stopAngle = 360.f, float extraRadius = 0.f, float animationSpeed = LookAndFeel::instance().popupMenuAnimationLengthSeconds, float timeOut = LookAndFeel::instance().popupMenuMouseoutCloseDelaySeconds) : _menuSize(menuSize), _startAngle(startAngle), _stopAngle(stopAngle), _extraRadius(extraRadius), _animationSpeed(animationSpeed), _timeOut(timeOut) { updateAndDraw(); }
+
     [[nodiscard]] float maxButtonSize(std::size_t firstButtonIndex = 0) const {
         if (_buttons.empty()) {
             return std::max(_menuSize.x, _menuSize.y);
@@ -137,11 +145,6 @@ class PopupMenu {
         _menuSize            = _itemBoundaryBox.GetSize();
     }
 
-    struct ButtonsOutput {
-        bool        wasHovered{};
-        std::size_t numberOfButtonRows{};
-    };
-
     ButtonsOutput doPopupAndButtons(ImVec2 popupCenter, float buttonSize) {
         ButtonsOutput out{};
         if (_animationProgress >= 0.0f) {
@@ -159,8 +162,8 @@ class PopupMenu {
             }
 
             // window clip region is inset by padding so it cuts off the buttons a bit
-            IMW::StyleVar noClipInset(ImGuiStyleVar_WindowPadding, ImVec2{});
-            if (auto popup = IMW::Window(_popupId.c_str(), nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoFocusOnAppearing)) {
+            imw::StyleVar noClipInset(ImGuiStyleVar_WindowPadding, ImVec2{});
+            if (auto popup = imw::Window(_popupId.c_str(), nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoFocusOnAppearing)) {
                 ImGui::BringWindowToDisplayFront(ImGui::GetCurrentWindow());
                 if constexpr (menuType == MenuType::Radial) {
                     out.numberOfButtonRows = drawButtonsOnArc(popupCenter, _extraRadius + .5f * buttonSize + _padding);
@@ -173,12 +176,6 @@ class PopupMenu {
         return out;
     }
 
-public:
-    float frameRounding = LookAndFeel::instance().popupMenuButtonRounding;
-
-    explicit PopupMenu(ImVec2 menuSize = {100, 100}, float startAngle = 0.f, float stopAngle = 360.f, float extraRadius = 0.f, float animationSpeed = LookAndFeel::instance().popupMenuAnimationLengthSeconds, float timeOut = LookAndFeel::instance().popupMenuMouseoutCloseDelaySeconds) : _menuSize(menuSize), _startAngle(startAngle), _stopAngle(stopAngle), _extraRadius(extraRadius), _animationSpeed(animationSpeed), _timeOut(timeOut) { updateAndDraw(); }
-
-    // calculate size returned by addButton() for a single icon button in the given font
     [[nodiscard]] static float calcAddButtonIconButtonSize(ImFont* font) { return font->LegacySize + 2.f * ImGui::GetStyle().WindowPadding.x; }
 
     template<bool transparent = false, bool newRow = false>
@@ -187,7 +184,7 @@ public:
             return;
         }
         updateElementCoordinate();
-        _buttons.push_back(MenuButton{.label = std::move(label), ._size = buttonSize, .onClick = std::move(onClick), .toolTip = std::move(toolTip), .isTransparent = transparent, .isNewRow = newRow});
+        _buttons.push_back(MenuButton{.label = std::move(label), .onClick = std::move(onClick), .toolTip = std::move(toolTip), .isTransparent = transparent, .isNewRow = newRow, ._size = buttonSize});
         _isOpen = true;
     }
 
@@ -198,7 +195,7 @@ public:
         }
         updateElementCoordinate();
         const float buttonSize = font == nullptr ? ImGui::CalcTextSize(label.c_str()).y + 2.f * _padding : calcAddButtonIconButtonSize(font);
-        _buttons.push_back(MenuButton{.label = std::move(label), ._size = buttonSize, .onClick = std::move(onClick), .font = font, .toolTip = std::move(toolTip), .isTransparent = transparent, .isNewRow = newRow, .buttonColor = buttonColor, .iconColor = iconColor});
+        _buttons.push_back(MenuButton{.label = std::move(label), .onClick = std::move(onClick), .font = font, .toolTip = std::move(toolTip), .isTransparent = transparent, .isNewRow = newRow, .buttonColor = buttonColor, .iconColor = iconColor, ._size = buttonSize});
         _isOpen = true;
     }
 
@@ -259,7 +256,6 @@ public:
 #endif
     }
 
-private:
     void drawButton(MenuButton& button) {
         if (button.create(menuType == MenuType::Radial ? -1.f : frameRounding)) {
             std::visit(
@@ -278,24 +274,22 @@ private:
     [[nodiscard]] std::size_t drawButtonsOnArc(const ImVec2& centre, float arcRadius) {
         std::size_t currentRow = 0UL;
         for (std::size_t buttonIndex = 0UL; buttonIndex < _buttons.size();) {
-            // get the maximum number of buttons and button size for the current arc row
             const auto [maxButtonsInRow, maxButtonSizeInRow] = maxButtonNumberAndSizeForArc(arcRadius, buttonIndex);
 
             float cumulativeAngle = _startAngle;
             for (std::size_t buttonsInRow = 0UL; buttonIndex < _buttons.size() && buttonsInRow < maxButtonsInRow; ++buttonIndex) {
                 auto&       button     = _buttons[buttonIndex];
                 const float buttonSize = button.size();
-                // centre button if there is only one in the arc segment
-                const float angle = cumulativeAngle + ((maxButtonsInRow == 1) ? 0.5f * (_stopAngle - _startAngle) : 0.5f * ((buttonSize + _padding) / arcRadius) * (180.0f / std::numbers::pi_v<float>));
+                const float angle      = cumulativeAngle + ((maxButtonsInRow == 1) ? 0.5f * (_stopAngle - _startAngle) : 0.5f * ((buttonSize + _padding) / arcRadius) * (180.0f / std::numbers::pi_v<float>));
 
                 const float angleRad = angle * _animationProgress * (std::numbers::pi_v<float> / 180.0f);
                 ImGui::SetCursorScreenPos(ImVec2(centre.x + arcRadius * std::cos(angleRad) - 0.5f * buttonSize, centre.y + arcRadius * std::sin(angleRad) - 0.5f * buttonSize));
                 drawButton(button);
-                cumulativeAngle += ((buttonSize + _padding) / arcRadius) * (180.0f / std::numbers::pi_v<float>); // Update the cumulative angle based on the button size
+                cumulativeAngle += ((buttonSize + _padding) / arcRadius) * (180.0f / std::numbers::pi_v<float>);
                 ++buttonsInRow;
             }
             ++currentRow;
-            arcRadius += 0.5f * maxButtonSizeInRow + 0.5f * _padding + 0.5f * maxButtonNumberAndSizeForArc(arcRadius, buttonIndex).second; // update arc radius
+            arcRadius += 0.5f * maxButtonSizeInRow + 0.5f * _padding + 0.5f * maxButtonNumberAndSizeForArc(arcRadius, buttonIndex).second;
         }
         return currentRow;
     }
@@ -331,23 +325,23 @@ private:
         return timeSinceLastIoActivity;
     }
 };
-template<std::size_t unique_id, MenuType menuType>
-bool PopupMenu<unique_id, menuType>::_isOpen = false;
-template<std::size_t unique_id, MenuType menuType>
-const std::string PopupMenu<unique_id, menuType>::_popupId = std::format("MenuPopup_{}", unique_id);
-template<std::size_t unique_id, MenuType menuType>
-ImRect PopupMenu<unique_id, menuType>::_itemBoundaryBox = {{-1.f, -1.f}, {-1.f, -1.f}};
-template<std::size_t unique_id, MenuType menuType>
-float PopupMenu<unique_id, menuType>::_animationProgress = 0.f;
-template<std::size_t unique_id, MenuType menuType>
-std::vector<MenuButton> PopupMenu<unique_id, menuType>::_buttons;
+template<std::size_t uniqueId, MenuType menuType>
+bool PopupMenu<uniqueId, menuType>::_isOpen = false;
+template<std::size_t uniqueId, MenuType menuType>
+const std::string PopupMenu<uniqueId, menuType>::_popupId = std::format("MenuPopup_{}", uniqueId);
+template<std::size_t uniqueId, MenuType menuType>
+ImRect PopupMenu<uniqueId, menuType>::_itemBoundaryBox = {{-1.f, -1.f}, {-1.f, -1.f}};
+template<std::size_t uniqueId, MenuType menuType>
+float PopupMenu<uniqueId, menuType>::_animationProgress = 0.f;
+template<std::size_t uniqueId, MenuType menuType>
+std::vector<MenuButton> PopupMenu<uniqueId, menuType>::_buttons;
 
-template<std::size_t unique_id>
-using RadialCircularMenu = PopupMenu<unique_id, MenuType::Radial>;
+template<std::size_t uniqueId>
+using RadialCircularMenu = PopupMenu<uniqueId, MenuType::Radial>;
 
-template<std::size_t unique_id>
-using VerticalPopupMenu = PopupMenu<unique_id, MenuType::Vertical>;
+template<std::size_t uniqueId>
+using VerticalPopupMenu = PopupMenu<uniqueId, MenuType::Vertical>;
 
-} // namespace DigitizerUi
+} // namespace gr::od
 
 #endif // OPENDIGITIZER_POPUPMENU_HPP

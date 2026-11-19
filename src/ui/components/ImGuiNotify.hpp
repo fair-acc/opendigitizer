@@ -29,7 +29,7 @@
 #include "imgui.h"
 #include "imgui_internal.h"
 
-#include "../common/ImguiWrap.hpp"
+#include "../common/Imw.hpp"
 
 #include "../common/LookAndFeel.hpp"
 #include <gnuradio-4.0/Logger.hpp>
@@ -62,7 +62,7 @@
  * CONFIGURATION SECTION End
  */
 
-using namespace DigitizerUi;
+using namespace gr::od;
 
 static const ImGuiWindowFlags NOTIFY_DEFAULT_TOAST_FLAGS = ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoFocusOnAppearing;
 
@@ -200,12 +200,12 @@ public:
      */
     inline ImVec4 getColor() const {
         switch (this->type) {
-        case ImGuiToastType::None: return DigitizerUi::LookAndFeel::instance().palette().notificationDefault;
-        case ImGuiToastType::Success: return DigitizerUi::LookAndFeel::instance().palette().notificationSuccess;
-        case ImGuiToastType::Warning: return DigitizerUi::LookAndFeel::instance().palette().notificationWarning;
-        case ImGuiToastType::Error: return DigitizerUi::LookAndFeel::instance().palette().notificationError;
-        case ImGuiToastType::Info: return DigitizerUi::LookAndFeel::instance().palette().notificationInfo;
-        default: return DigitizerUi::LookAndFeel::instance().palette().notificationDefault;
+        case ImGuiToastType::None: return gr::od::LookAndFeel::instance().palette().notificationDefault;
+        case ImGuiToastType::Success: return gr::od::LookAndFeel::instance().palette().notificationSuccess;
+        case ImGuiToastType::Warning: return gr::od::LookAndFeel::instance().palette().notificationWarning;
+        case ImGuiToastType::Error: return gr::od::LookAndFeel::instance().palette().notificationError;
+        case ImGuiToastType::Info: return gr::od::LookAndFeel::instance().palette().notificationInfo;
+        default: return gr::od::LookAndFeel::instance().palette().notificationDefault;
         }
     }
 
@@ -457,7 +457,7 @@ inline void RenderNotifications() {
 
             // If an icon is set
             if (!NOTIFY_NULL_OR_EMPTY(icon)) {
-                IMW::Font _(LookAndFeel::instance().fontIconsSolid);
+                imw::Font _(LookAndFeel::instance().fontIconsSolid);
 
                 // Text(icon); // Render icon text
                 TextColored(textColor, "%s", icon);
@@ -500,7 +500,7 @@ inline void RenderNotifications() {
                 SetCursorPosX(GetCursorPosX() + (GetWindowSize().x - GetCursorPosX()) * scale);
 
                 {
-                    IMW::Font _(LookAndFeel::instance().fontIconsSolid);
+                    imw::Font _(LookAndFeel::instance().fontIconsSolid);
 
                     // If the button is pressed, we want to remove the notification
                     if (Button(ICON_FA_XMARK)) {
@@ -545,7 +545,7 @@ inline void RenderNotifications() {
 }
 } // namespace ImGui
 
-namespace DigitizerUi::components {
+namespace gr::od::components {
 
 struct Notification {
     inline static void success(const std::string& text, std::chrono::milliseconds dismissTime = LookAndFeel::instance().notificationDismissTime) { post(ImGuiToastType::Success, dismissTime, text); }
@@ -564,16 +564,16 @@ struct Notification {
 
     inline static void render() {
         // Notifications style setup
-        IMW::StyleFloatVar windowRounding(ImGuiStyleVar_WindowRounding, LookAndFeel::instance().notificationRounding);
-        IMW::StyleFloatVar windowBorderSize(ImGuiStyleVar_WindowBorderSize, LookAndFeel::instance().notificationBorderSize);
-        IMW::StyleColor    _(ImGuiCol_WindowBg, LookAndFeel::instance().palette().notificationWindowBg);
+        imw::StyleFloatVar windowRounding(ImGuiStyleVar_WindowRounding, LookAndFeel::instance().notificationRounding);
+        imw::StyleFloatVar windowBorderSize(ImGuiStyleVar_WindowBorderSize, LookAndFeel::instance().notificationBorderSize);
+        imw::StyleColor    _(ImGuiCol_WindowBg, LookAndFeel::instance().palette().notificationWindowBg);
 
         // Main rendering function
         ImGui::RenderNotifications();
     }
 };
 
-} // namespace DigitizerUi::components
+} // namespace gr::od::components
 
 #pragma GCC diagnostic pop
 #endif

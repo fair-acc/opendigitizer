@@ -1,16 +1,16 @@
-#ifndef OPENDIGITIZER_STATUSBAR_BLOCK_H
-#define OPENDIGITIZER_STATUSBAR_BLOCK_H
+#ifndef OPENDIGITIZER_UI_BLOCKS_SCHEDULERSTATEINDICATOR_HPP
+#define OPENDIGITIZER_UI_BLOCKS_SCHEDULERSTATEINDICATOR_HPP
 
 #include <format>
 #include <string>
 
 #include <gnuradio-4.0/Block.hpp>
 
-#include "../common/ImguiWrap.hpp"
+#include "../common/Imw.hpp"
 #include "../common/LookAndFeel.hpp"
-#include "../components/StyledStandardWidgets.hpp"
+#include "../components/StyledWidgets.hpp"
 
-namespace DigitizerUi {
+namespace gr::od {
 
 struct SchedulerStateIndicator : gr::Block<SchedulerStateIndicator, gr::Drawable<gr::UICategory::StatusBar, "ImGui">> {
     using Description = gr::Doc<"status-bar label with the lifecycle state of its scheduler (a block's state follows its scheduler's)">;
@@ -37,12 +37,12 @@ struct SchedulerStateIndicator : gr::Block<SchedulerStateIndicator, gr::Drawable
         }();
         // a selectable, not text: hosts and tests can find the shown state
         const std::string label = std::format("{}###schedulerState", gr::meta::enumName(state).value_or("?"));
-        IMW::StyleColor   textColour(ImGuiCol_Text, colour);
-        std::ignore = DigitizerUi::Selectable(label.c_str(), false, ImGuiSelectableFlags_None, ImVec2(ImGui::CalcTextSize(label.c_str(), nullptr, true).x, 0.f));
+        imw::StyleColor   textColour(ImGuiCol_Text, colour);
+        std::ignore = selectable(label.c_str(), false, ImGuiSelectableFlags_None, ImVec2(ImGui::CalcTextSize(label.c_str(), nullptr, true).x, 0.f));
         return gr::work::Status::OK;
     }
 };
 
-} // namespace DigitizerUi
+} // namespace gr::od
 
 #endif

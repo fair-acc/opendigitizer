@@ -15,12 +15,12 @@
 #include <gnuradio-4.0/BlockRegistry.hpp>
 
 #include "../common/LookAndFeel.hpp"
-#include "../components/StyledStandardWidgets.hpp"
+#include "../components/StyledWidgets.hpp"
 #include <imgui.h>
 #include <implot3d.h>
 #include <implot3d_internal.h>
 
-namespace opendigitizer::charts {
+namespace gr::od::charts {
 
 struct SurfaceBuffer {
     std::size_t _spectrumWidth = 0;
@@ -160,10 +160,30 @@ struct SurfaceBuffer {
     }
 };
 
-namespace gl = opendigitizer::shader;
+namespace gl = shader;
 
 struct SurfaceGpuRenderer {
     static constexpr std::size_t kMaxDisplayDim = 512UZ;
+
+    struct FrameState {
+        float axisMin[3]{};
+        float axisMax[3]{};
+        float axisInvRange[3]{};
+        float ndcScale[3]{};
+        float rotation[4]{0, 0, 0, 1};
+        float viewScale = 0;
+        float screenCenter[2]{};
+        float invScreenSize[2]{};
+        float colormapRange[2]{};
+        float plotRectMin[2]{};
+        float plotRectMax[2]{};
+        float fbHeight = 0;
+        float gridOrigin[2]{};       // X,Y origin for grid lines (first major tick)
+        float gridSpacing[2]{};      // X,Y major tick interval
+        float gridMinorSpacing[2]{}; // X,Y minor tick interval
+        int   gridEnabled = 0;       // 0=off, 1=major only, 2=major+minor
+        float gridColor[4]{1.f, 1.f, 1.f, 0.3f};
+    };
 
     GLuint         _program            = 0;
     GLuint         _vao                = 0;
@@ -193,25 +213,6 @@ struct SurfaceGpuRenderer {
     bool _initAttempted = false;
     bool _gpuAvailable  = false;
 
-    struct FrameState {
-        float axisMin[3]{};
-        float axisMax[3]{};
-        float axisInvRange[3]{};
-        float ndcScale[3]{};
-        float rotation[4]{0, 0, 0, 1};
-        float viewScale = 0;
-        float screenCenter[2]{};
-        float invScreenSize[2]{};
-        float colormapRange[2]{};
-        float plotRectMin[2]{};
-        float plotRectMax[2]{};
-        float fbHeight = 0;
-        float gridOrigin[2]{};       // X,Y origin for grid lines (first major tick)
-        float gridSpacing[2]{};      // X,Y major tick interval
-        float gridMinorSpacing[2]{}; // X,Y minor tick interval
-        int   gridEnabled = 0;       // 0=off, 1=major only, 2=major+minor
-        float gridColor[4]{1.f, 1.f, 1.f, 0.3f};
-    };
     FrameState _frame{};
 
     SurfaceGpuRenderer() = default;
@@ -533,7 +534,6 @@ void main() {
 
         const auto& f = self->_frame;
 
-        // save GL state
         GLint                  prevProgram = 0, prevVAO = 0, prevActiveTexture = 0;
         GLint                  prevTexture0 = 0;
         std::array<GLint, 4UZ> prevScissorBox{};
@@ -548,16 +548,13 @@ void main() {
         glGetBooleanv(GL_DEPTH_TEST, &prevDepthTest);
         glGetBooleanv(GL_DEPTH_WRITEMASK, &prevDepthMask);
 
-        // scissor to plot rect
         glScissor(static_cast<GLint>(f.plotRectMin[0]), static_cast<GLint>(f.fbHeight - f.plotRectMax[1]), static_cast<GLsizei>(f.plotRectMax[0] - f.plotRectMin[0]), static_cast<GLsizei>(f.plotRectMax[1] - f.plotRectMin[1]));
 
-        // depth testing for correct mesh occlusion
         glEnable(GL_DEPTH_TEST);
         glDepthFunc(GL_LESS);
         glDepthMask(GL_TRUE);
         glClear(GL_DEPTH_BUFFER_BIT);
 
-        // render mesh
         glUseProgram(self->_program);
         glBindVertexArray(self->_vao);
 
@@ -583,7 +580,6 @@ void main() {
 
         glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(self->_indexCount), GL_UNSIGNED_INT, nullptr);
 
-        // restore GL state
         if (!prevDepthTest) {
             glDisable(GL_DEPTH_TEST);
         }
@@ -632,7 +628,10 @@ struct SurfacePlot : gr::Block<SurfacePlot, gr::Drawable<gr::UICategory::Content
     template<typename T, gr::meta::fixed_string description = "", typename... Arguments>
     using A = gr::Annotated<T, description, Arguments...>;
 
-    // identity
+    static constexpr std::string_view kChartTypeName       = "SurfacePlot";
+    static constexpr SignalKind       kSupportedSignals    = SignalKind::Dataset1D;
+    static constexpr std::array       kImPlotColormapNames = {"Deep", "Dark", "Pastel", "Paired", "Viridis", "Plasma", "Hot", "Cool", "Pink", "Jet", "Twilight", "RdBu", "BrBG", "PiYG", "Spectral", "Greys"};
+
     A<std::string, "chart name", gr::Visible>                                                                 chart_name;
     A<std::string, "chart title">                                                                             chart_title;
     A<std::vector<std::string>, "data sinks", gr::Visible>                                                    data_sinks      = {};
@@ -642,12 +641,10 @@ struct SurfacePlot : gr::Block<SurfacePlot, gr::Drawable<gr::UICategory::Content
     A<std::uint32_t, "grid color", gr::Visible, gr::Unit<"Color">, gr::Doc<"grid line colour (0xRRGGBB)">>    grid_color      = 0xFFFFFFU;
     A<float, "grid opacity", gr::Visible, gr::Limits<0.f, 1.f>, gr::Doc<"grid line opacity (0=transparent)">> grid_opacity    = 0.3f;
 
-    // surface
     A<gr::Size_t, "history depth", gr::Visible, gr::Limits<4U, 1024U>>                                n_history        = 250U;
     A<ImPlotColormap_, "colormap", gr::Visible>                                                       colormap         = ImPlotColormap_Viridis;
     A<bool, "GPU acceleration", gr::Doc<"use GPU mesh rendering (falls back to CPU if unavailable)">> gpu_acceleration = true;
 
-    // axis limits
     A<bool, "X auto-scale"> x_auto_scale = true;
     A<bool, "Y auto-scale"> y_auto_scale = true;
     A<bool, "Z auto-scale"> z_auto_scale = true;
@@ -657,8 +654,6 @@ struct SurfacePlot : gr::Block<SurfacePlot, gr::Drawable<gr::UICategory::Content
     A<double, "Y-axis max"> y_max        = std::numeric_limits<double>::max();
     A<double, "Z-axis min"> z_min        = std::numeric_limits<double>::lowest();
     A<double, "Z-axis max"> z_max        = std::numeric_limits<double>::max();
-
-    static constexpr SignalKind supportedSignals = SignalKind::Dataset1D;
 
     GR_MAKE_REFLECTABLE(SurfacePlot, chart_name, chart_title, data_sinks, show_legend, show_grid, show_minor_grid, grid_color, grid_opacity, n_history, colormap, gpu_acceleration, x_auto_scale, y_auto_scale, z_auto_scale, x_min, x_max, y_min, y_max, z_min, z_max);
 
@@ -677,11 +672,11 @@ struct SurfacePlot : gr::Block<SurfacePlot, gr::Drawable<gr::UICategory::Content
     ImPlot3DPlot*              _savedPlot        = nullptr;
     int                        _hoveredAxisIndex = -1;
 
-    static constexpr std::string_view kChartTypeName = "SurfacePlot";
+    void reset() { requestRenderReset(); }
 
     gr::work::Result work(std::size_t = std::numeric_limits<std::size_t>::max(), gr::device::DeviceContext& = gr::device::hostBackend()) noexcept { return {0UZ, 0UZ, gr::work::Status::OK}; }
 
-    void settingsChanged(const gr::property_map& /*oldSettings*/, const gr::property_map& newSettings) { handleSettingsChanged(newSettings); }
+    void settingsChanged(const gr::property_map& /*oldSettings*/, const gr::property_map& newSettings) { applyChartSettings(newSettings); }
 
     gr::work::Status draw(const gr::property_map& config = {}) {
         [[maybe_unused]] auto [plotFlags, plotSize, showLegend, chartMode, showGrid, chartStyle] = prepareDrawPrologue(config);
@@ -715,12 +710,12 @@ struct SurfacePlot : gr::Block<SurfacePlot, gr::Drawable<gr::UICategory::Content
             flags3d |= ImPlot3DFlags_NoLegend;
         }
 
-        // compute label padding based on format — MetricInline labels are wider (include unit suffix)
+        // MetricInline labels carry the unit and are wider
         const bool anyInline              = std::ranges::any_of(_axisFormat, [](LabelFormat f) { return f == LabelFormat::MetricInline; });
         ImPlot3D::GetStyle().LabelPadding = anyInline ? ImVec2(14, 14) : ImVec2(10, 10);
 
-        // reduce tick label font size for the 3D plot to avoid overlap with the mesh
-        const auto& lnf                   = DigitizerUi::LookAndFeel::instance();
+        // a smaller tick label font, so labels do not overlap the mesh
+        const auto& lnf                   = LookAndFeel::instance();
         const auto [labelFace, labelSize] = chartTextFont(lnf.fontSmall());
         const bool pushedFont             = labelFace != nullptr || labelSize > 0.f;
         if (pushedFont) {
@@ -737,7 +732,7 @@ struct SurfacePlot : gr::Block<SurfacePlot, gr::Drawable<gr::UICategory::Content
         auto [xQuantity, xUnit] = sinkAxisInfo(true);
         auto [zQuantity, zUnit] = sinkAxisInfo(false);
 
-        // suppress axis title when MetricInline is active (unit is embedded in tick labels)
+        // no axis title with MetricInline: the tick labels carry the unit
         auto buildLabel = [](std::string_view quantity, std::string_view unit, LabelFormat fmt) -> std::string {
             if (fmt == LabelFormat::MetricInline || fmt == LabelFormat::None) {
                 return "";
@@ -751,7 +746,7 @@ struct SurfacePlot : gr::Block<SurfacePlot, gr::Drawable<gr::UICategory::Content
         ImPlot3DAxisFlags gridFlag = show_grid ? ImPlot3DAxisFlags_None : ImPlot3DAxisFlags_NoGridLines;
         ImPlot3D::SetupAxes(xLabel.empty() ? "" : xLabel.c_str(), yLabel.empty() ? "" : yLabel.c_str(), zLabel.empty() ? "" : zLabel.c_str(), gridFlag, gridFlag, gridFlag);
 
-        // apply deferred scale changes from context menu (must happen during Setup phase)
+        // the context menu's scale changes apply here: only the Setup phase may change them
         for (int i = 0; i < 3; ++i) {
             if (_pendingScale[static_cast<std::size_t>(i)] >= 0) {
                 ImPlot3D::SetupAxisScale(static_cast<ImAxis3D>(i), _pendingScale[static_cast<std::size_t>(i)]);
@@ -759,7 +754,6 @@ struct SurfacePlot : gr::Block<SurfacePlot, gr::Drawable<gr::UICategory::Content
             }
         }
 
-        // axis formatters — apply per-axis format setting (matching 2D chart options)
         _unitStore[0] = xUnit;
         _unitStore[1] = "s";
         _unitStore[2] = zUnit;
@@ -854,29 +848,24 @@ struct SurfacePlot : gr::Block<SurfacePlot, gr::Drawable<gr::UICategory::Content
             _gpuRenderer.captureGridFromTickers(_savedPlot, show_grid.value, show_minor_grid.value, gc);
         }
 
-        // GPU callback must be added AFTER EndPlot — ImPlot3D draws the box
-        // background during EndPlot, which would cover a callback placed earlier
+        // after EndPlot: ImPlot3D draws the box background during EndPlot, which would cover a callback placed earlier
         if (useGpu) {
             ImGui::GetWindowDrawList()->AddCallback(SurfaceGpuRenderer::renderCallback, &_gpuRenderer);
         }
 
         drawSurfaceContextMenu(chartMode);
         if (chartMode == ChartMode::Interaction) {
-            handleSurfaceDropTarget();
+            acceptSurfaceDrop();
         }
 
         return gr::work::Status::OK;
     }
-
-    void reset() { requestRenderReset(); }
 
     void resetRenderState() {
         _surface.clear();
         _gpuRenderer.destroy();
         _needsRefit = true;
     }
-
-    static constexpr std::array kImPlotColormapNames = {"Deep", "Dark", "Pastel", "Paired", "Viridis", "Plasma", "Hot", "Cool", "Pink", "Jet", "Twilight", "RdBu", "BrBG", "PiYG", "Spectral", "Greys"};
 
     void syncColormap() {
         registerImPlotColormaps();
@@ -913,10 +902,8 @@ struct SurfacePlot : gr::Block<SurfacePlot, gr::Drawable<gr::UICategory::Content
             return;
         }
 
-        // right-click: detect axis hover and open the appropriate popup
-        // ImPlot3D hover convention: 1 axis = edge, 2 axes = plane face, 3 axes = empty space
-        // Only open axis menu for exactly 1 (edge) and canvas menu for exactly 2 (plane face).
-        // 3 hovered axes (empty space/corners) → no popup, preserves right-click rotation.
+        // ImPlot3D hovers 1 axis on an edge, 2 on a plane face, 3 in empty space:
+        // the axis menu opens on an edge, the canvas menu on a face, and empty space keeps right-click rotation
         if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
             _hoveredAxisIndex   = -1;
             int hoveredCount    = 0;
@@ -946,7 +933,6 @@ struct SurfacePlot : gr::Block<SurfacePlot, gr::Drawable<gr::UICategory::Content
             }
         }
 
-        // axis context menu — mirrors 2D drawAxisSubmenuContent
         if (ImGui::BeginPopup("##Srf3DAxis")) {
             if (_hoveredAxisIndex >= 0 && _hoveredAxisIndex < 3) {
                 draw3DAxisSubmenuContent(_hoveredAxisIndex);
@@ -954,7 +940,6 @@ struct SurfacePlot : gr::Block<SurfacePlot, gr::Drawable<gr::UICategory::Content
             ImGui::EndPopup();
         }
 
-        // canvas context menu
         if (ImGui::BeginPopup("##Srf3DCanvas")) {
             drawCommonContextMenuItems(mode);
             ImGui::EndPopup();
@@ -974,7 +959,6 @@ struct SurfacePlot : gr::Block<SurfacePlot, gr::Drawable<gr::UICategory::Content
 
         auto ai = static_cast<std::size_t>(axisIndex);
 
-        // header
         {
             const char* icon = (axisIndex == 0) ? menu_icons::kXAxis : menu_icons::kYAxis;
             std::string label;
@@ -994,7 +978,6 @@ struct SurfacePlot : gr::Block<SurfacePlot, gr::Drawable<gr::UICategory::Content
             ImGui::Separator();
         }
 
-        // scale selector (deferred to next frame's Setup phase)
         {
             menu_icons::iconText(menu_icons::kScale, "scale:");
             ImGui::SameLine();
@@ -1003,10 +986,10 @@ struct SurfacePlot : gr::Block<SurfacePlot, gr::Drawable<gr::UICategory::Content
                 currentScale = static_cast<int>(_savedPlot->Axes[axisIndex].Scale);
             }
             std::string_view currentName = (currentScale == ImPlot3DScale_Log10) ? kScaleNames[1] : kScaleNames[0];
-            ImGui::SetNextItemWidth(DigitizerUi::LookAndFeel::instance().chartStyle.menuAxisComboWidth);
-            if (DigitizerUi::BeginCombo("##scale", currentName.data())) {
+            ImGui::SetNextItemWidth(LookAndFeel::instance().chartStyle.menuAxisComboWidth);
+            if (beginCombo("##scale", currentName.data())) {
                 for (std::size_t s = 0; s < kScaleNames.size(); ++s) {
-                    if (DigitizerUi::Selectable(kScaleNames[s], kScaleIds[s] == currentScale)) {
+                    if (selectable(kScaleNames[s], kScaleIds[s] == currentScale)) {
                         _pendingScale[ai] = kScaleIds[s];
                     }
                 }
@@ -1014,14 +997,13 @@ struct SurfacePlot : gr::Block<SurfacePlot, gr::Drawable<gr::UICategory::Content
             }
         }
 
-        // format selector
         {
             menu_icons::iconText(menu_icons::kFormat, "format:");
             ImGui::SameLine();
-            ImGui::SetNextItemWidth(DigitizerUi::LookAndFeel::instance().chartStyle.menuAxisComboWidth);
-            if (DigitizerUi::BeginCombo("##format", gr::meta::enumName(_axisFormat[ai]).value_or("").data())) {
+            ImGui::SetNextItemWidth(LookAndFeel::instance().chartStyle.menuAxisComboWidth);
+            if (beginCombo("##format", gr::meta::enumName(_axisFormat[ai]).value_or("").data())) {
                 for (auto f : gr::meta::enumValues<LabelFormat>()) {
-                    if (DigitizerUi::Selectable(gr::meta::enumName(f).value_or("").data(), f == _axisFormat[ai])) {
+                    if (selectable(gr::meta::enumName(f).value_or("").data(), f == _axisFormat[ai])) {
                         _axisFormat[ai] = f;
                     }
                 }
@@ -1046,13 +1028,13 @@ struct SurfacePlot : gr::Block<SurfacePlot, gr::Drawable<gr::UICategory::Content
         drawLimitSpinners(autoFit, minVal, maxVal, [&](double v) { minRef(axisIndex) = v; }, [&](double v) { maxRef(axisIndex) = v; });
     }
 
-    void handleSurfaceDropTarget() {
-        std::ignore = dnd::handleDropTarget([this](const dnd::Payload& payload) { return onSinkAddedFromDnd(payload) && payload.hasSource(); }, dnd::kPayloadType, supportedSignals);
+    void acceptSurfaceDrop() {
+        std::ignore = dnd::acceptDrop([this](const dnd::Payload& payload) { return onSinkAddedFromDnd(payload) && payload.hasSource(); }, dnd::kPayloadType, kSupportedSignals);
     }
 
-    // log10(centre frequency) of each log-spaced column — the linear X coordinate used in log mode (matches the
-    // column mapping of buildLogBinnedRow). A linear axis over [log10(fMin), log10(fMax)] then renders correctly on
-    // both the CPU and the GPU mesh path (which projects vertices linearly), with decade-uniform grid spacing.
+    // log10(centre frequency) of each log-spaced column of buildLogBinnedRow, the linear X coordinate in log mode:
+    // a linear axis over [log10(fMin), log10(fMax)] then renders correctly on both the CPU and the GPU mesh path (which projects vertices linearly),
+    // with decade-uniform grid spacing
     void buildLog10FreqAxis(double fMin, double fMax) {
         _logFreqAxis.resize(kLogSpectrumColumns);
         const double logMin  = std::log(fMin);
@@ -1095,6 +1077,6 @@ struct SurfacePlot : gr::Block<SurfacePlot, gr::Drawable<gr::UICategory::Content
     }
 };
 
-} // namespace opendigitizer::charts
+} // namespace gr::od::charts
 
 #endif // OPENDIGITIZER_CHARTS_SURFACEPLOT_HPP

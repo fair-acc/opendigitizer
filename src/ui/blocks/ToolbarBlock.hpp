@@ -8,28 +8,24 @@
 
 #include <gnuradio-4.0/Block.hpp>
 
-#include "../common/ImguiWrap.hpp"
+#include "../common/Imw.hpp"
 #include "../common/LookAndFeel.hpp"
-#include "../components/StyledStandardWidgets.hpp"
+#include "../components/StyledWidgets.hpp"
 #include "TargetMap.hpp"
 
-namespace DigitizerUi {
+namespace gr::od {
 namespace toolbar {
 [[nodiscard]] inline bool drawItem(const std::string& uniqueName, const std::string& label, const std::string& icon, const std::string& tooltip, auto widget) {
-    IMW::ChangeStrId id(uniqueName.c_str());
+    imw::ChangeStrId id(uniqueName.c_str());
     bool             changed = false;
     if (icon.empty()) {
         changed = widget(label.c_str());
     } else {
-        IMW::Font font(LookAndFeel::instance().fontIconsSolid);
+        imw::Font font(LookAndFeel::instance().fontIconsSolid);
         changed = widget(icon.c_str());
     }
 
     (void)tooltip;
-    // TODO: fix tooltips not drawing correctly in the flowgraph. this is the same issue as ImControlChoice being disabled when drawn in the flowgraph.
-    // if (!tooltip.empty()) {
-    //     ImGui::SetItemTooltip("%s", tooltip.c_str());
-    // }
     return changed;
 }
 
@@ -70,12 +66,12 @@ inline void sendToTargets(gr::MsgPortOutBuiltin& port, std::string_view targetMa
     }
     for (const TargetEntry& target : targets->entries()) {
         if (target.isGlob()) {
-            continue; // TODO: GR4 support
+            continue;
         }
         sendSettings(port, target.blockTarget, gr::property_map{{std::pmr::string(target.propertyName), payload}});
     }
 }
 } // namespace toolbar
-} // namespace DigitizerUi
+} // namespace gr::od
 
 #endif

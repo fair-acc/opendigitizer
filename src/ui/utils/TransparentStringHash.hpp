@@ -3,9 +3,8 @@
 
 #include <string>
 
-namespace opendigitizer {
-struct TransparentStringHash // why isn't std::hash<std::string> this exact same thing?
-{
+namespace gr::od {
+struct TransparentStringHash {
     using hash_type      = std::hash<std::string_view>;
     using is_transparent = void;
 
@@ -13,6 +12,6 @@ struct TransparentStringHash // why isn't std::hash<std::string> this exact same
     size_t operator()(std::string_view str) const { return hash_type{}(str); }
     size_t operator()(std::string const& str) const { return hash_type{}(str); }
 };
-} // namespace opendigitizer
+} // namespace gr::od
 
 #endif

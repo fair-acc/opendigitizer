@@ -38,7 +38,7 @@
 
 using namespace std::string_literals;
 
-namespace DigitizerUi {
+namespace gr::od {
 
 namespace {
 enum class What { Header, Flowgraph };
@@ -156,7 +156,7 @@ DashboardStorageInfo::~DashboardStorageInfo() noexcept {
     std::erase_if(knownDashboardStorage(), [](const auto& s) { return s.expired(); });
 }
 
-std::vector<std::weak_ptr<DashboardStorageInfo>>& DigitizerUi::DashboardStorageInfo::knownDashboardStorage() {
+std::vector<std::weak_ptr<DashboardStorageInfo>>& DashboardStorageInfo::knownDashboardStorage() {
     static std::vector<std::weak_ptr<DashboardStorageInfo>> sources;
     return sources;
 }
@@ -175,11 +175,7 @@ std::shared_ptr<DashboardStorageInfo> DashboardStorageInfo::get(std::string_view
     return dashboardStorageInfo;
 }
 
-// This does not really have a shared pointer semantics,
-// it is a static shared pointer, so it has a static lifetime.
-// It is a shared pointer because DashboardSources are used
-// as shared pointers, and this is a single special instance
-// of all dashboard sources which is not saved.
+// a static instance, a shared_ptr only because DashboardSources are; it is never saved
 std::shared_ptr<DashboardStorageInfo> DashboardStorageInfo::memoryDashboardStorage() {
     static auto storageInfo = std::make_shared<DashboardStorageInfo>("Unsaved"s);
     return storageInfo;
@@ -204,12 +200,11 @@ void Dashboard::setNewDescription(const std::shared_ptr<DashboardDescription>& d
 
 void Dashboard::loadPlugins(std::function<void()> done) {
 #if defined(__EMSCRIPTEN__) && !defined(OD_WASM_STATIC_BLOCKLIBS)
-    // Bare filenames next to index.html — filesystem::path must not see full URLs
-    // (collapses "http://" → "http:/"). Sequential: parallel dlopen of ~60MB freezes
-    // the main thread and can stall the HTML spinner via run-dependencies.
+    // bare filenames next to index.html: filesystem::path must not see full URLs (it collapses "http://" to "http:/").
+    // Sequential: a parallel dlopen of ~60 MB freezes the main thread and can stall the HTML spinner via run-dependencies.
     std::vector<std::string> names;
-    names.reserve(Digitizer::kPluginWasmNames.size());
-    for (const auto name : Digitizer::kPluginWasmNames) {
+    names.reserve(kPluginWasmNames.size());
+    for (const auto name : kPluginWasmNames) {
         names.emplace_back(name);
     }
     gr::log::debug("loading {} plugin side-modules sequentially", names.size());
@@ -290,8 +285,8 @@ void Dashboard::loadAndThen(std::string_view grcData, std::function<void(gr::Gra
             return dashboardUri.factory().hostName(dashboardUri.hostName().value_or("localhost")).port(dashboardUri.port().value_or(8080)).scheme(dashboardUri.scheme().value_or("https")).build().str();
         }();
         gr::graph::forEachBlock<gr::block::Category::NormalBlock>(grGraph, [&sourceHost](auto& block) {
-            if (block->typeName().starts_with(baseTypeName<opendigitizer::RemoteStreamSource<float>>()) || block->typeName().starts_with(baseTypeName<opendigitizer::RemoteDataSetSource<float>>())) {
-                auto* sourceBlock = static_cast<opendigitizer::RemoteSourceBase*>(block->raw());
+            if (block->typeName().starts_with(baseTypeName<RemoteStreamSource<float>>()) || block->typeName().starts_with(baseTypeName<RemoteDataSetSource<float>>())) {
+                auto* sourceBlock = static_cast<RemoteSourceBase*>(block->raw());
                 sourceBlock->host = sourceHost;
             }
         });
@@ -379,7 +374,7 @@ std::expected<void, gr::Error> Dashboard::doLoad(const gr::property_map& dashboa
         gr::property_map           chartParameters = parameters->value_or(gr::property_map{});
         gr::Tensor<gr::pmt::Value> axesConfig      = axes->value_or(gr::Tensor<gr::pmt::Value>{});
 
-        // Transfer 'sources:' to 'data_sinks' (see grc_compat namespace in Dashboard.hpp)
+        // 'sources:' become 'data_sinks' (see grc_compat in Dashboard.hpp)
         gr::Tensor<gr::pmt::Value> dataSinksTensor(gr::extents_from, {plotSources->size()});
         for (std::size_t i = 0; i < plotSources->size(); ++i) {
             if (!(*plotSources)[i].is_string()) {
@@ -398,7 +393,6 @@ std::expected<void, gr::Error> Dashboard::doLoad(const gr::property_map& dashboa
             continue;
         }
 
-        // Set uiConstraints on the block (axes config and window layout for chart to read in draw())
         blockPtr->uiConstraints()["axes"] = axesConfig;
 
         constexpr auto rectValue = [](const gr::pmt::Value& v) -> std::uint64_t {
@@ -474,12 +468,12 @@ void Dashboard::saveStore(const gr::property_map& headerYaml, const gr::property
             return;
         }
 
-        constexpr std::uint32_t headerStart = 32;
-        const auto              headerSize  = static_cast<std::uint32_t>(headerYamlStr.size());
-        const auto              graphStart  = headerStart + headerSize + 1;
-        const auto              graphSize   = static_cast<std::uint32_t>(graphYamlStr.size());
-        // The reader expects the flowgraph offset and size at byte 16.
-        const std::array<std::uint32_t, 8> offsets{headerStart, headerSize, 0, 0, graphStart, graphSize, 0, 0};
+        constexpr std::uint32_t kHeaderStart = 32;
+        const auto              headerSize   = static_cast<std::uint32_t>(headerYamlStr.size());
+        const auto              graphStart   = kHeaderStart + headerSize + 1;
+        const auto              graphSize    = static_cast<std::uint32_t>(graphYamlStr.size());
+        // the reader expects the flowgraph offset and size at byte 16
+        const std::array<std::uint32_t, 8> offsets{kHeaderStart, headerSize, 0, 0, graphStart, graphSize, 0, 0};
         stream.write(reinterpret_cast<const char*>(offsets.data()), sizeof(offsets));
         stream << headerYamlStr << '\n' << graphYamlStr << '\n';
 #endif
@@ -564,15 +558,13 @@ std::pair<gr::property_map, gr::property_map> Dashboard::serialise() {
     }();
 
     gr::Tensor<gr::pmt::Value> plots;
-    // Iterate UIWindows for chart serialization (new API)
     for (const auto& w : uiWindows) {
         if (!w.block) {
             continue;
         }
 
         property_map plotMap;
-        plotMap["name"] = w.window ? w.window->name : std::string(w.block->uniqueName());
-        // Extract short chart type name from fully-qualified name (e.g., "opendigitizer::charts::XYChart" -> "XYChart")
+        plotMap["name"]          = w.window ? w.window->name : registeredUniqueName(w.block->uniqueName());
         std::string fullTypeName = std::string(w.block->typeName());
         if (auto pos = fullTypeName.rfind("::"); pos != std::string::npos) {
             plotMap["type"] = fullTypeName.substr(pos + 2);
@@ -580,7 +572,6 @@ std::pair<gr::property_map, gr::property_map> Dashboard::serialise() {
             plotMap["type"] = fullTypeName;
         }
 
-        // Serialize axes from uiConstraints
         gr::Tensor<gr::pmt::Value> plotAxes;
         const auto&                constraints = w.block->uiConstraints();
         if (constraints.contains("axes")) {
@@ -590,7 +581,6 @@ std::pair<gr::property_map, gr::property_map> Dashboard::serialise() {
         }
         plotMap["axes"] = plotAxes;
 
-        // Serialize signal sinks from data_sinks property
         gr::Tensor<gr::pmt::Value> plotSinkBlockNames;
         for (const auto& sinkName : grc_compat::getBlockSinkNames(w.block.get())) {
             plotSinkBlockNames.emplace_back(sinkName);
@@ -608,7 +598,7 @@ namespace {
 
 [[nodiscard]] std::string chartNameOf(const gr::BlockModel& block) {
     const std::string name = block.settings().get("chart_name").value_or(gr::pmt::Value{}).value_or(std::string());
-    return name.empty() ? std::string(block.uniqueName()) : name;
+    return name.empty() ? registeredUniqueName(block.uniqueName()) : name;
 }
 
 } // namespace
@@ -657,7 +647,7 @@ void Dashboard::copyChart(std::string_view sourceChartId) {
     gr::property_map constraints = sourceBlock.uiConstraints(); // without the window position
     constraints.erase("window");
     pendingCharts.insert_or_assign(newName, std::move(constraints));
-    session.sendToScheduler(gr::scheduler::property::kEmplaceBlock, {{"type", std::string(sourceBlock.typeName())}, {"properties", std::move(properties)}});
+    session.sendToScheduler(gr::scheduler::property::kEmplaceBlock, {{"type", std::string(registeredId(sourceBlock.typeName()))}, {"properties", std::move(properties)}});
 }
 
 bool Dashboard::transmuteUIWindow(UIWindow& win, std::string_view newChartType) {
@@ -665,10 +655,10 @@ bool Dashboard::transmuteUIWindow(UIWindow& win, std::string_view newChartType) 
         return false;
     }
     const std::string newTypeName = resolveChartTypeName(newChartType);
-    if (newTypeName == win.block->typeName()) {
+    if (newTypeName == registeredId(win.block->typeName())) {
         return true;
     }
-    const std::string windowName = win.window ? win.window->name : std::string(win.block->uniqueName());
+    const std::string windowName = win.window ? win.window->name : registeredUniqueName(win.block->uniqueName());
     gr::property_map  properties{{"chart_name", windowName}, {"name", std::string(win.block->name())}};
     if (const auto sinkNames = grc_compat::getBlockSinkNames(win.block.get()); !sinkNames.empty()) {
         properties["data_sinks"] = grc_compat::sinkNamesTensor(sinkNames);
@@ -714,7 +704,7 @@ void Dashboard::loadUIWindowSources() {
         if (!w.block) {
             continue;
         }
-        // Re-set data_sinks to trigger settingsChanged() -> syncSinksFromNames()
+        // set again to trigger settingsChanged() and syncSinksFromNames()
         auto names = grc_compat::getBlockSinkNames(w.block.get());
         if (!names.empty()) {
             grc_compat::setBlockSinkNames(w.block.get(), names);
@@ -729,9 +719,9 @@ void Dashboard::addRemoteSignal(const SignalData& signalData) {
         const auto                     params  = uri.queryParamMap();
         const auto                     acqMode = params.find("acquisitionModeFilter");
         if (acqMode != params.end() && acqMode->second && acqMode->second != "streaming") {
-            return std::string(baseTypeName<opendigitizer::RemoteDataSetSource<float>>());
+            return std::string(withoutTemplateArguments(registeredId<RemoteDataSetSource<float>>()));
         }
-        return std::string(baseTypeName<opendigitizer::RemoteStreamSource<float>>());
+        return std::string(withoutTemplateArguments(registeredId<RemoteStreamSource<float>>()));
     }();
 
     auto blockParams = [&] {
@@ -750,7 +740,7 @@ void Dashboard::addRemoteSignal(const SignalData& signalData) {
 }
 
 std::string Dashboard::resolveChartTypeName(std::string_view chartTypeName) const {
-    using namespace opendigitizer::charts;
+    using namespace charts;
     if (pluginLoader->isBlockAvailable(chartTypeName)) {
         return std::string(chartTypeName);
     }
@@ -765,7 +755,7 @@ std::string Dashboard::resolveChartTypeName(std::string_view chartTypeName) cons
             return registeredType;
         }
     }
-    return std::string(gr::meta::type_name<XYChart>());
+    return std::string(registeredId<XYChart>());
 }
 
 std::shared_ptr<gr::BlockModel> Dashboard::emplaceChartBlock(gr::Graph& graph, std::string_view chartTypeName, const std::string& chartName, const gr::property_map& chartParameters) {
@@ -833,4 +823,4 @@ std::shared_ptr<DashboardDescription> DashboardDescription::createEmpty(const st
     description->storageInfo = DashboardStorageInfo::memoryDashboardStorage();
     return description;
 }
-} // namespace DigitizerUi
+} // namespace gr::od

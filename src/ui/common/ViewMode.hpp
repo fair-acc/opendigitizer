@@ -1,7 +1,7 @@
-#ifndef APP_DEFINITIONS_HPP_
-#define APP_DEFINITIONS_HPP_
+#ifndef OPENDIGITIZER_UI_VIEWMODE_HPP
+#define OPENDIGITIZER_UI_VIEWMODE_HPP
 
-namespace DigitizerUi {
+namespace gr::od {
 enum class ViewMode {
     INTERACTION,
     LAYOUT,

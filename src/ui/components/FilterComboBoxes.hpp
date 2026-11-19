@@ -8,18 +8,17 @@
 #include <string>
 #include <vector>
 
-#include "../common/ImguiWrap.hpp"
+#include "../common/Imw.hpp"
 #include "../common/LookAndFeel.hpp"
-#include "StyledStandardWidgets.hpp"
+#include "StyledWidgets.hpp"
 
-namespace DigitizerUi {
+namespace gr::od {
 
-inline auto ColorComboBoxExpectedWidth(const std::string& label) {
+inline auto colorComboBoxExpectedWidth(const std::string& label) {
     const auto padding  = GImGui->Style.FramePadding.x;
     ImVec2     textSize = ImGui::CalcTextSize(label.c_str(), NULL, true);
 
-    // Space for the main title, plus the arrow and some extra spacetitle
-    auto comboWidth = 1.3f * textSize.x + textSize.y + 3 * padding;
+    auto comboWidth = LookAndFeel::instance().filterComboTextWidthScale * textSize.x + textSize.y + 3 * padding;
     return comboWidth;
 }
 
@@ -38,7 +37,7 @@ struct FilterCombo {
     std::vector<FilterTag> items;
 };
 
-inline FilterTag* ColorComboBox(char* id, const std::string& label, ImColor color, float comboWidth, std::vector<FilterTag>& items) {
+inline FilterTag* colorComboBox(char* id, const std::string& label, ImColor color, float comboWidth, std::vector<FilterTag>& items) {
     FilterTag* result = nullptr;
 
     ImGui::SetNextItemWidth(comboWidth);
@@ -48,17 +47,17 @@ inline FilterTag* ColorComboBox(char* id, const std::string& label, ImColor colo
         color = ImGuiCol_FrameBg;
     }
 
-    IMW::StyleColor frameBg(ImGuiCol_FrameBg, color);
-    IMW::StyleColor frameBgHovered(ImGuiCol_FrameBgHovered, color);
-    IMW::StyleColor frameBgActive(ImGuiCol_FrameBgActive, color);
-    IMW::StyleColor button(ImGuiCol_Button, color);
-    IMW::StyleColor buttonHovered(ImGuiCol_ButtonHovered, color);
-    IMW::StyleColor buttonActive(ImGuiCol_ButtonActive, color);
+    imw::StyleColor frameBg(ImGuiCol_FrameBg, color);
+    imw::StyleColor frameBgHovered(ImGuiCol_FrameBgHovered, color);
+    imw::StyleColor frameBgActive(ImGuiCol_FrameBgActive, color);
+    imw::StyleColor button(ImGuiCol_Button, color);
+    imw::StyleColor buttonHovered(ImGuiCol_ButtonHovered, color);
+    imw::StyleColor buttonActive(ImGuiCol_ButtonActive, color);
 
-    if (auto combo = DigitizerUi::ComboBox(id, label.c_str(), 0)) {
+    if (auto combo = ComboBox(id, label.c_str(), 0)) {
         for (auto& item : items) {
-            IMW::StyleColor itemBg(ImGuiCol_Header, color);
-            if (DigitizerUi::Selectable(item.title.c_str(), item.isActive)) {
+            imw::StyleColor itemBg(ImGuiCol_Header, color);
+            if (selectable(item.title.c_str(), item.isActive)) {
                 result = std::addressof(item);
             }
         }
@@ -78,15 +77,15 @@ struct FilterComboBoxes {
         bool first                 = true;
 
         for (FilterCombo& combo : combos) {
-            float desiredWidth = ColorComboBoxExpectedWidth(combo.label.c_str());
-            if (!first && remainingContentWidth > desiredWidth * 1.2f) {
+            float desiredWidth = colorComboBoxExpectedWidth(combo.label.c_str());
+            if (!first && remainingContentWidth > desiredWidth * LookAndFeel::instance().filterComboWrapScale) {
                 ImGui::SameLine();
             } else {
                 remainingContentWidth = contentWidth;
             }
-            remainingContentWidth -= desiredWidth * 1.2f;
+            remainingContentWidth -= desiredWidth * LookAndFeel::instance().filterComboWrapScale;
 
-            if (FilterTag* currentResult = ColorComboBox(combo.id.data(), combo.label, combo.color[LookAndFeel::instance().style == LookAndFeel::Style::Light ? 0 : 1], desiredWidth, combo.items)) {
+            if (FilterTag* currentResult = colorComboBox(combo.id.data(), combo.label, combo.color[LookAndFeel::instance().style == LookAndFeel::Style::Light ? 0 : 1], desiredWidth, combo.items)) {
                 result = currentResult;
             }
             first = false;
@@ -96,6 +95,6 @@ struct FilterComboBoxes {
     }
 };
 
-} // namespace DigitizerUi
+} // namespace gr::od
 
 #endif

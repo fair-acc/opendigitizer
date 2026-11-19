@@ -22,7 +22,7 @@
 #include <imgui.h>
 #include <implot.h>
 
-namespace opendigitizer::charts {
+namespace gr::od::charts {
 
 enum class TopPaneMode : int {
     Spectrum = 0, // magnitude line traces (max/min hold, average)
@@ -35,7 +35,9 @@ struct SpectrumView : gr::Block<SpectrumView, gr::Drawable<gr::UICategory::Conte
     template<typename T, gr::meta::fixed_string description = "", typename... Arguments>
     using A = gr::Annotated<T, description, Arguments...>;
 
-    // identity
+    static constexpr std::string_view kChartTypeName    = "SpectrumView";
+    static constexpr SignalKind       kSupportedSignals = SignalKind::Dataset1D;
+
     A<std::string, "chart name", gr::Visible>              chart_name;
     A<std::vector<std::string>, "data sinks", gr::Visible> data_sinks  = {};
     A<bool, "show legend", gr::Visible>                    show_legend = false;
@@ -43,27 +45,22 @@ struct SpectrumView : gr::Block<SpectrumView, gr::Drawable<gr::UICategory::Conte
 
     A<TopPaneMode, "top pane mode", gr::Visible> top_pane_mode = TopPaneMode::Spectrum;
 
-    // spectrum trace settings (top pane mode 0)
     A<bool, "show max hold", gr::Visible>                                                                                    show_max_hold    = true;
     A<bool, "show min hold", gr::Visible>                                                                                    show_min_hold    = true;
     A<bool, "show average", gr::Visible>                                                                                     show_average     = false;
     A<std::uint32_t, "trace color", gr::Visible, gr::Unit<"Color">, gr::Doc<"RGB colour for accumulated traces (0xRRGGBB)">> trace_color      = 0x8855BBU;
     A<gr::Size_t, "decay tau frames", gr::Doc<"exponential decay time constant in frames (0 = infinite hold)">>              decay_tau_frames = 100U;
 
-    // density settings (top pane mode 1)
     A<gr::Size_t, "amplitude bins", gr::Visible, gr::Limits<4U, 1024U>>                       amplitude_bins             = 256U;
     A<gr::Size_t, "histogram decay tau", gr::Doc<"histogram decay in frames (0 = infinite)">> histogram_decay_tau_frames = 100U;
     A<bool, "show current overlay", gr::Visible>                                              show_current_overlay       = true;
 
-    // waterfall settings (bottom pane)
     A<gr::Size_t, "history depth", gr::Visible, gr::Limits<16U, 4096U>>                                      n_history        = 256U;
     A<ImPlotColormap_, "colormap", gr::Visible>                                                              colormap         = ImPlotColormap_Viridis;
     A<bool, "GPU acceleration", gr::Doc<"use GPU texture for rendering (falls back to CPU if unavailable)">> gpu_acceleration = true;
 
-    // pane layout
     A<float, "top pane ratio", gr::Limits<0.2f, 0.8f>, gr::Doc<"fraction of height for top pane">> top_pane_ratio = 0.4f;
 
-    // axis limits
     A<bool, "X auto-scale"> x_auto_scale = true;
     A<bool, "Y auto-scale"> y_auto_scale = true;
     A<double, "X-axis min"> x_min        = std::numeric_limits<double>::lowest();
@@ -87,8 +84,6 @@ struct SpectrumView : gr::Block<SpectrumView, gr::Drawable<gr::UICategory::Conte
     RangeLabelsSetting     show_range_labels = true;
     F0LabelsSetting        show_f0_labels    = true;
 
-    static constexpr SignalKind supportedSignals = SignalKind::Dataset1D;
-
     GR_MAKE_REFLECTABLE(SpectrumView, chart_name, data_sinks, show_legend, show_grid, top_pane_mode, show_max_hold, show_min_hold, show_average, trace_color, decay_tau_frames, amplitude_bins, histogram_decay_tau_frames, show_current_overlay, n_history, colormap, gpu_acceleration, top_pane_ratio, x_auto_scale, y_auto_scale, x_min, x_max, y_min, y_max, range_style, range_min, range_max, range_min_width, range_color, range_min_targets, range_max_targets, f0_style, f0, f0_color, f0_targets, follow_inputs, snap_to_bins, show_range_labels, show_f0_labels);
 
     std::unordered_map<std::string, TraceAccumulator> _tracesPerSink;
@@ -105,13 +100,11 @@ struct SpectrumView : gr::Block<SpectrumView, gr::Drawable<gr::UICategory::Conte
     double                       _topPaneYMin = -120.0;          // captured from the displayed top-pane Y-axis range
     double                       _topPaneYMax = 0.0;
 
-    static constexpr std::string_view kChartTypeName = "SpectrumView";
+    void reset() { requestRenderReset(); }
 
     gr::work::Result work(std::size_t = std::numeric_limits<std::size_t>::max(), gr::device::DeviceContext& = gr::device::hostBackend()) noexcept { return {0UZ, 0UZ, gr::work::Status::OK}; }
 
-    void settingsChanged(const gr::property_map& /*oldSettings*/, const gr::property_map& newSettings) { handleSettingsChanged(newSettings); }
-
-    void reset() { requestRenderReset(); }
+    void settingsChanged(const gr::property_map& /*oldSettings*/, const gr::property_map& newSettings) { applyChartSettings(newSettings); }
 
     void resetRenderState() {
         _tracesPerSink.clear();
@@ -141,9 +134,9 @@ struct SpectrumView : gr::Block<SpectrumView, gr::Drawable<gr::UICategory::Conte
         const auto [xMinLim, xMaxLim] = axisLimits(x_auto_scale.value, x_min.value, x_max.value, parseAxisConfig(this->ui_constraints.value, true));
         _sharedXCond                  = trackLimitsCond(true, xMinLim, xMaxLim);
 
-        const auto& lnf                   = DigitizerUi::LookAndFeel::instance();
+        const auto& lnf                   = LookAndFeel::instance();
         const auto [labelFace, labelSize] = chartTextFont(lnf.fontSmall());
-        DigitizerUi::IMW::FontWithSize plotFont(labelFace, labelSize);
+        imw::FontWithSize plotFont(labelFace, labelSize);
 
         ImPlotSubplotFlags subplotFlags = ImPlotSubplotFlags_LinkCols | ImPlotSubplotFlags_LinkAllX;
         auto               subplotId    = std::format("##combined_{}", chart_name.value);
@@ -167,7 +160,7 @@ struct SpectrumView : gr::Block<SpectrumView, gr::Drawable<gr::UICategory::Conte
             ImPlot::PushStyleColor(ImPlotCol_AxisGrid, contrastingGridColor(colormap.value));
         }
 
-        ImPlot::PushStyleVar(ImPlotStyleVar_FitPadding, DigitizerUi::LookAndFeel::instance().chartStyle.spectrumFitPadding);
+        ImPlot::PushStyleVar(ImPlotStyleVar_FitPadding, LookAndFeel::instance().chartStyle.spectrumFitPadding);
         if (ImPlot::BeginPlot("##spectrum", ImVec2(0, 0), plotFlags)) {
             setupSingleAxis(true, ImAxis_X1, paneSize, showGrid, LabelFormat::MetricInline, /*foreground=*/true, _sharedXCond);
             setupSingleAxis(false, ImAxis_Y1, paneSize, showGrid);
@@ -181,7 +174,7 @@ struct SpectrumView : gr::Block<SpectrumView, gr::Drawable<gr::UICategory::Conte
             drawFrequencyMarkers(0UZ);
 
             tooltip::showPlotMouseTooltip();
-            handleCommonInteractions(chartMode);
+            updateInteractions(chartMode);
 
             auto yLimits = ImPlot::GetPlotLimits(ImAxis_X1, ImAxis_Y1).Y;
             _topPaneYMin = yLimits.Min;
@@ -224,7 +217,7 @@ struct SpectrumView : gr::Block<SpectrumView, gr::Drawable<gr::UICategory::Conte
 
         ImGui::PushID("bottom");
         ImPlot::PushStyleColor(ImPlotCol_AxisGrid, contrastingGridColor(colormap.value));
-        ImPlot::PushStyleVar(ImPlotStyleVar_FitPadding, DigitizerUi::LookAndFeel::instance().chartStyle.spectrumFitPadding);
+        ImPlot::PushStyleVar(ImPlotStyleVar_FitPadding, LookAndFeel::instance().chartStyle.spectrumFitPadding);
 
         if (ImPlot::BeginPlot("##waterfall", ImVec2(0, 0), plotFlags | ImPlotFlags_NoLegend)) {
             setupSingleAxis(true, ImAxis_X1, paneSize, showGrid, LabelFormat::None, /*foreground=*/true, _sharedXCond);
@@ -244,18 +237,18 @@ struct SpectrumView : gr::Block<SpectrumView, gr::Drawable<gr::UICategory::Conte
 
             setupFinish();
 
-            constexpr bool newestAtTop = true;
+            constexpr bool kNewestAtTop = true;
             if (renderInfo) {
-                _waterfall.render(renderInfo->freqMin, renderInfo->freqMax, yLo, yHi, newestAtTop);
+                _waterfall.render(renderInfo->freqMin, renderInfo->freqMax, yLo, yHi, kNewestAtTop);
             } else if (_waterfall.filledRows() > 0 && _lastRenderInfo) {
-                _waterfall.render(_lastRenderInfo->freqMin, _lastRenderInfo->freqMax, yLo, yHi, newestAtTop);
+                _waterfall.render(_lastRenderInfo->freqMin, _lastRenderInfo->freqMax, yLo, yHi, kNewestAtTop);
             }
             drawFrequencyMarkers(1UZ);
 
             tooltip::showPlotMouseTooltip();
             drawContextMenu(chartMode, "SpectrumViewBottom");
             if (chartMode == ChartMode::Interaction) {
-                handlePlotDropTarget();
+                acceptPlotDrop();
             }
             ImPlot::EndPlot();
         }
@@ -266,6 +259,6 @@ struct SpectrumView : gr::Block<SpectrumView, gr::Drawable<gr::UICategory::Conte
     }
 };
 
-} // namespace opendigitizer::charts
+} // namespace gr::od::charts
 
 #endif // OPENDIGITIZER_CHARTS_SPECTRUMVIEW_HPP

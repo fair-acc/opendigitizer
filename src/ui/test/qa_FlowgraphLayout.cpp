@@ -9,8 +9,10 @@
 #include <ranges>
 #include <vector>
 
+using namespace gr::od;
+
 using namespace boost::ut;
-using namespace DigitizerUi::flowgraph_layout;
+using namespace flowgraph_layout;
 
 namespace {
 
@@ -35,7 +37,7 @@ const boost::ut::suite<"FlowgraphLayout"> layoutTests = [] {
     "branching graph"_test = [] {
         enum : std::size_t { Source, A, B, C, D };
         const std::vector<Size> sizes = {{120.f, 80.f}, {160.f, 100.f}, {90.f, 60.f}, {130.f, 120.f}, {100.f, 70.f}};
-        // Initial order A/B and C/D crosses A -> D with B -> C.
+        // the initial order A/B and C/D crosses A -> D with B -> C
         const std::vector<Edge> edges = {{Source, A, 30.f, 30.f}, {Source, B, 30.f, 30.f}, {A, D, 30.f, 30.f}, {B, C, 30.f, 30.f}};
 
         const auto positions = compute(sizes, edges);

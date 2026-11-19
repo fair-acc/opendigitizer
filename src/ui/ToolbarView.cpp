@@ -2,11 +2,11 @@
 
 #include <algorithm>
 
-#include "common/ImguiWrap.hpp"
+#include "common/Imw.hpp"
 #include "common/LookAndFeel.hpp"
-#include "components/StyledStandardWidgets.hpp"
+#include "components/StyledWidgets.hpp"
 
-namespace DigitizerUi {
+namespace gr::od {
 
 namespace {
 
@@ -17,12 +17,12 @@ void drawSchedulerControls(GraphSession& session) {
     }
     const gr::lifecycle::State state  = session.state();
     const auto                 button = [](const char* label, const char* tooltip, bool enabled) {
-        IMW::Disabled disabled(!enabled);
+        imw::Disabled disabled(!enabled);
         bool          pressed    = false;
         const float   buttonSide = ImGui::GetFrameHeight(); // of the text font, like the other toolbar buttons
         {
-            IMW::Font font(LookAndFeel::instance().fontIconsSolid);
-            pressed = DigitizerUi::Button(label, ImVec2{buttonSide, buttonSide});
+            imw::Font font(LookAndFeel::instance().fontIconsSolid);
+            pressed = gr::od::button(label, ImVec2{buttonSide, buttonSide});
         }
         ImGui::SetItemTooltip("%s", tooltip);
         ImGui::SameLine();
@@ -100,7 +100,7 @@ void ToolbarView::draw(GraphSession& session, bool schedulerControls) {
         return;
     }
 
-    IMW::Child toolbar("##Toolbar", ImVec2(ImGui::GetContentRegionAvail().x, LookAndFeel::instance().dashboardStyle.toolbarRowHeight * static_cast<float>(_rows)), false, ImGuiWindowFlags_NoScrollbar);
+    imw::Child toolbar("##Toolbar", ImVec2(ImGui::GetContentRegionAvail().x, LookAndFeel::instance().dashboardStyle.toolbarRowHeight * static_cast<float>(_rows)), false, ImGuiWindowFlags_NoScrollbar);
     const auto widthsOf = [this](const std::string& key) {
         const float fixed = _fixedWidths.contains(key) ? _fixedWidths.at(key) : 0.f;
         return toolbar::publishedWidths(key).value_or(toolbar::ItemWidths{.natural = fixed, .minimum = fixed, .label = 0.f});
@@ -147,4 +147,4 @@ void ToolbarView::draw(GraphSession& session, bool schedulerControls) {
     ImGui::GetWindowDrawList()->AddLine(ImVec2(pos.x, pos.y + size.y - 1.f), ImVec2(pos.x + size.x, pos.y + size.y - 1.f), lineColor);
 }
 
-} // namespace DigitizerUi
+} // namespace gr::od

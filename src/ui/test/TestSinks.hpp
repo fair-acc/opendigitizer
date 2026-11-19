@@ -12,9 +12,9 @@
 #include <unordered_map>
 #include <vector>
 
-namespace opendigitizer::test {
+namespace gr::od::test {
 
-class TestStreamingSink : public opendigitizer::SignalSink {
+struct TestStreamingSink : SignalSink {
     std::string         _uniqueName;
     std::string         _signalName;
     std::uint32_t       _color      = 0xFFFFFF;
@@ -31,9 +31,8 @@ class TestStreamingSink : public opendigitizer::SignalSink {
     std::string         _abscissaQuantity = "time";
     std::string         _abscissaUnit     = "s";
 
-    opendigitizer::CapacityRequests _capacityRequests;
+    CapacityRequests _capacityRequests;
 
-public:
     explicit TestStreamingSink(std::string name, std::size_t capacity = 2048) : _uniqueName(std::move(name)), _signalName(_uniqueName), _capacity(capacity), _capacityRequests{.minimum = capacity} {
         _xValues.reserve(capacity);
         _yValues.reserve(capacity);
@@ -63,11 +62,11 @@ public:
 
     [[nodiscard]] std::size_t bufferCapacity() const noexcept override { return _capacity; }
 
-    void requestCapacity(std::string_view source, std::size_t capacity, std::chrono::seconds timeout = std::chrono::seconds{60}, opendigitizer::CapacityRequests::clock::time_point now = opendigitizer::CapacityRequests::clock::now()) override { _capacity = std::max(_capacity, _capacityRequests.request(source, capacity, now + timeout)); }
+    void requestCapacity(std::string_view source, std::size_t capacity, std::chrono::seconds timeout = std::chrono::seconds{60}, CapacityRequests::clock::time_point now = CapacityRequests::clock::now()) override { _capacity = std::max(_capacity, _capacityRequests.request(source, capacity, now + timeout)); }
 
-    void expireCapacityRequests(opendigitizer::CapacityRequests::clock::time_point now = opendigitizer::CapacityRequests::clock::now()) override { _capacity = _capacityRequests.expire(now); }
+    void expireCapacityRequests(CapacityRequests::clock::time_point now = CapacityRequests::clock::now()) override { _capacity = _capacityRequests.expire(now); }
 
-    [[nodiscard]] opendigitizer::DataGuard dataGuard() const override { return opendigitizer::DataGuard(_mutex); }
+    [[nodiscard]] DataGuard dataGuard() const override { return DataGuard(_mutex); }
 
     gr::work::Status draw(const gr::property_map& /*config*/) override { return gr::work::Status::OK; }
 
@@ -97,7 +96,7 @@ public:
     }
 };
 
-class TestDataSetSink : public opendigitizer::SignalSink {
+struct TestDataSetSink : SignalSink {
     std::string                    _uniqueName;
     std::deque<gr::DataSet<float>> _dataSets;
     std::size_t                    _maxDataSets;
@@ -105,7 +104,6 @@ class TestDataSetSink : public opendigitizer::SignalSink {
     mutable std::mutex             _mutex;
     bool                           _drawEnabled = true;
 
-public:
     explicit TestDataSetSink(std::string name, std::size_t maxDataSets = 10) : _uniqueName(std::move(name)), _maxDataSets(maxDataSets) {}
 
     [[nodiscard]] std::string_view name() const noexcept override { return _uniqueName; }
@@ -152,11 +150,11 @@ public:
 
     [[nodiscard]] std::size_t bufferCapacity() const noexcept override { return _maxDataSets; }
 
-    void requestCapacity(std::string_view /*source*/, std::size_t /*capacity*/, std::chrono::seconds /*timeout*/ = std::chrono::seconds{60}, opendigitizer::CapacityRequests::clock::time_point /*now*/ = opendigitizer::CapacityRequests::clock::now()) override {}
+    void requestCapacity(std::string_view /*source*/, std::size_t /*capacity*/, std::chrono::seconds /*timeout*/ = std::chrono::seconds{60}, CapacityRequests::clock::time_point /*now*/ = CapacityRequests::clock::now()) override {}
 
-    void expireCapacityRequests(opendigitizer::CapacityRequests::clock::time_point /*now*/ = opendigitizer::CapacityRequests::clock::now()) override {}
+    void expireCapacityRequests(CapacityRequests::clock::time_point /*now*/ = CapacityRequests::clock::now()) override {}
 
-    [[nodiscard]] opendigitizer::DataGuard dataGuard() const override { return opendigitizer::DataGuard(_mutex); }
+    [[nodiscard]] DataGuard dataGuard() const override { return DataGuard(_mutex); }
 
     gr::work::Status draw(const gr::property_map& /*config*/) override { return gr::work::Status::OK; }
 
@@ -188,24 +186,24 @@ inline std::shared_ptr<TestDataSetSink> makeTestDataSetSink(std::string name, st
     return std::make_shared<TestDataSetSink>(std::move(name), maxDataSets);
 }
 
-inline std::shared_ptr<opendigitizer::charts::XYChart> makeXYChart(const std::string& name = "") {
+inline std::shared_ptr<charts::XYChart> makeXYChart(const std::string& name = "") {
     gr::property_map initParams;
     if (!name.empty()) {
         initParams["chart_name"] = name;
     }
-    return std::make_shared<opendigitizer::charts::XYChart>(std::move(initParams));
+    return std::make_shared<charts::XYChart>(std::move(initParams));
 }
 
-inline std::shared_ptr<opendigitizer::charts::YYChart> makeYYChart(const std::string& name = "") {
+inline std::shared_ptr<charts::YYChart> makeYYChart(const std::string& name = "") {
     gr::property_map initParams;
     if (!name.empty()) {
         initParams["chart_name"] = name;
     }
-    return std::make_shared<opendigitizer::charts::YYChart>(std::move(initParams));
+    return std::make_shared<charts::YYChart>(std::move(initParams));
 }
 
-inline std::variant<std::shared_ptr<opendigitizer::charts::XYChart>, std::shared_ptr<opendigitizer::charts::YYChart>, std::monostate> makeChartByType(std::string_view typeName, const std::string& name = "") {
-    using namespace opendigitizer::charts;
+inline std::variant<std::shared_ptr<charts::XYChart>, std::shared_ptr<charts::YYChart>, std::monostate> makeChartByType(std::string_view typeName, const std::string& name = "") {
+    using namespace charts;
     using Storage = std::variant<std::shared_ptr<XYChart>, std::shared_ptr<YYChart>, std::monostate>;
 
     std::string lowerTypeName(typeName);
@@ -220,6 +218,6 @@ inline std::variant<std::shared_ptr<opendigitizer::charts::XYChart>, std::shared
     return Storage{std::monostate{}};
 }
 
-} // namespace opendigitizer::test
+} // namespace gr::od::test
 
 #endif // OPENDIGITIZER_TEST_TESTSINKS_HPP

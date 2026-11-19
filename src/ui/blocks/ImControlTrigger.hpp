@@ -6,10 +6,10 @@
 
 #include <gnuradio-4.0/Block.hpp>
 
-#include "../components/StyledStandardWidgets.hpp"
+#include "../components/StyledWidgets.hpp"
 #include "ImControl.hpp"
 
-namespace DigitizerUi {
+namespace gr::od {
 
 struct ImControlTrigger : ImControl<ImControlTrigger> {
     using Description = gr::Doc<"UI control that sends a boolean true settings set message when pressed, to a block and property determined by target_map">;
@@ -31,7 +31,7 @@ struct ImControlTrigger : ImControl<ImControlTrigger> {
 
         drawWithLabel(layout, [this, buttonSize](float) {
             LabelAndFont labelAndFont(*this);
-            if (DigitizerUi::Button(labelAndFont.selectedLabel().c_str(), buttonSize)) {
+            if (gr::od::button(labelAndFont.selectedLabel().c_str(), buttonSize)) {
                 sendToTargets(true);
             }
         });
@@ -39,6 +39,6 @@ struct ImControlTrigger : ImControl<ImControlTrigger> {
     }
 };
 
-} // namespace DigitizerUi
+} // namespace gr::od
 
 #endif

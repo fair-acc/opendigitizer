@@ -1,4 +1,4 @@
-#include "Setup.hpp"
+#include "DashboardBlocks.hpp"
 
 #include <gnuradio-4.0/GrAudioBlocks.hpp>
 
@@ -21,18 +21,18 @@
 #include "blocks/ImPropertyReadout.hpp"
 #include "blocks/LowPassFilter.hpp"
 #include "blocks/PianoControl.hpp"
+#include "blocks/SchedulerStateIndicator.hpp"
 #include "blocks/SineOscillator.hpp"
-#include "blocks/StatusBarBlock.hpp"
 #include "blocks/TagSink.hpp"
 #include "blocks/ValueSource.hpp"
 #include "charts/Charts.hpp"
 #include "components/ImGuiNotify.hpp"
 #include "components/SignalColours.hpp"
 
-namespace DigitizerUi {
+namespace gr::od {
 
 void registerDashboardBlocks(gr::BlockRegistry& registry) {
-    using namespace opendigitizer::charts;
+    using namespace charts;
     registerChart<XYChart>(registry);
     registerChart<YYChart>(registry);
     registerChart<SpectrumPlot>(registry);
@@ -45,24 +45,24 @@ void registerDashboardBlocks(gr::BlockRegistry& registry) {
     registerChart<LocalisationChart>(registry);
     registerVideoBlocks(registry);
     registerLocalisationBlocks(registry);
-    opendigitizer::registerPlotSinks<float, double, gr::DataSet<float>, gr::DataSet<double>, gr::UncertainValue<float>, gr::Tensor<float>, gr::Tensor<double>, gr::Tensor<std::uint32_t>, gr::property_map>(registry);
-    std::ignore = gr::registerBlock<opendigitizer::TagSink, std::uint8_t, float>(registry);
-    std::ignore = gr::registerBlock<ImControlNumber>(registry);
-    std::ignore = gr::registerBlock<ImControlToggle>(registry);
-    std::ignore = gr::registerBlock<ImControlTrigger>(registry);
-    std::ignore = gr::registerBlock<ImControlText>(registry);
-    std::ignore = gr::registerBlock<opendigitizer::ImControlValue, float, double>(registry);
-    std::ignore = gr::registerBlock<opendigitizer::ValueSource, float, double>(registry);
-    std::ignore = gr::registerBlock<ImControlCamera>(registry);
-    std::ignore = gr::registerBlock<ImControlDevice>(registry);
-    std::ignore = gr::registerBlock<ImControlChoice>(registry);
-    std::ignore = gr::registerBlock<ImControlColor>(registry);
-    std::ignore = gr::registerBlock<ImPropertyReadout>(registry);
-    std::ignore = gr::registerBlock<SchedulerStateIndicator>(registry);
-    std::ignore = gr::registerBlock<opendigitizer::GainEnvelope, float, int16_t>(registry);
-    std::ignore = gr::registerBlock<opendigitizer::LowPassFilter, float>(registry);
-    std::ignore = gr::registerBlock<opendigitizer::PianoControl>(registry);
-    std::ignore = gr::registerBlock<opendigitizer::SineOscillator, float>(registry);
+    registerPlotSinks<float, double, gr::DataSet<float>, gr::DataSet<double>, gr::UncertainValue<float>, gr::Tensor<float>, gr::Tensor<double>, gr::Tensor<std::uint32_t>, gr::property_map>(registry);
+    registerWithIdPrefix<TagSink, std::uint8_t, float>(registry, kOpendigitizerIdPrefix);
+    registerWithIdPrefix<ImControlNumber>(registry, kDigitizerUiIdPrefix);
+    registerWithIdPrefix<ImControlToggle>(registry, kDigitizerUiIdPrefix);
+    registerWithIdPrefix<ImControlTrigger>(registry, kDigitizerUiIdPrefix);
+    registerWithIdPrefix<ImControlText>(registry, kDigitizerUiIdPrefix);
+    registerWithIdPrefix<ImControlValue, float, double>(registry, kOpendigitizerIdPrefix);
+    registerWithIdPrefix<ValueSource, float, double>(registry, kOpendigitizerIdPrefix);
+    registerWithIdPrefix<ImControlCamera>(registry, kDigitizerUiIdPrefix);
+    registerWithIdPrefix<ImControlDevice>(registry, kDigitizerUiIdPrefix);
+    registerWithIdPrefix<ImControlChoice>(registry, kDigitizerUiIdPrefix);
+    registerWithIdPrefix<ImControlColor>(registry, kDigitizerUiIdPrefix);
+    registerWithIdPrefix<ImPropertyReadout>(registry, kDigitizerUiIdPrefix);
+    registerWithIdPrefix<SchedulerStateIndicator>(registry, kDigitizerUiIdPrefix);
+    registerWithIdPrefix<GainEnvelope, float, int16_t>(registry, kOpendigitizerIdPrefix);
+    registerWithIdPrefix<LowPassFilter, float>(registry, kOpendigitizerIdPrefix);
+    registerWithIdPrefix<PianoControl>(registry, kOpendigitizerIdPrefix);
+    registerWithIdPrefix<SineOscillator, float>(registry, kOpendigitizerIdPrefix);
     registerSignalBlocks(registry);
     gr::blocklib::initGrAudioBlocks(registry);
 }
@@ -88,7 +88,7 @@ void initialise(std::optional<LookAndFeel::Style> style) {
     if (LookAndFeel::instance().fontNormal() == nullptr) {
         LookAndFeel::mutableInstance().loadFonts();
     }
-    std::ignore = opendigitizer::SignalColours::instance();
+    std::ignore = SignalColours::instance();
     registerDashboardBlocks(gr::globalBlockRegistry());
     std::ignore = logHistory();
     if (style) {
@@ -96,4 +96,4 @@ void initialise(std::optional<LookAndFeel::Style> style) {
     }
 }
 
-} // namespace DigitizerUi
+} // namespace gr::od

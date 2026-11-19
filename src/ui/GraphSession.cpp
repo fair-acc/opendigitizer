@@ -13,7 +13,7 @@
 #include "common/FramePacer.hpp"
 #include "components/ImGuiNotify.hpp"
 
-namespace DigitizerUi {
+namespace gr::od {
 
 class GraphSession::Run {
     struct JobControl {
@@ -84,7 +84,7 @@ public:
         output[0]   = std::move(message);
     }
 
-    void handleMessages(UiGraphModel& model) {
+    void receiveMessages(UiGraphModel& model) {
         const auto available = _fromScheduler.streamReader().available();
         if (available == 0UZ) {
             return;
@@ -298,10 +298,10 @@ void GraphSession::sendMessage(gr::Message message) {
     }
 }
 
-void GraphSession::handleMessages() {
+void GraphSession::receiveMessages() {
     if (_run) {
-        _run->handleMessages(graphModel);
+        _run->receiveMessages(graphModel);
     }
 }
 
-} // namespace DigitizerUi
+} // namespace gr::od

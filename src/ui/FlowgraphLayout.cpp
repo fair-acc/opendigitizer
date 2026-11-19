@@ -4,12 +4,12 @@
 #include <ranges>
 #include <utility>
 
-namespace DigitizerUi::flowgraph_layout {
+namespace gr::od::flowgraph_layout {
 namespace {
 
 using Indices = std::vector<std::size_t>;
 
-// Move blocks towards their target positions while preserving their order and minimum spacing.
+// moves blocks towards their target positions, keeping their order and minimum spacing
 void compactLayer(const Indices& layer, const std::vector<float>& layerOffsetsY, const std::vector<float>& desiredY, std::vector<Position>& positions) {
     struct Run {
         std::size_t begin;
@@ -41,16 +41,14 @@ void compactLayer(const Indices& layer, const std::vector<float>& layerOffsetsY,
 
 } // namespace
 
-// Simplified Sugiyama-style layered layout.
-// Sugiyama, Tagawa and Toda (1981): https://doi.org/10.1109/TSMC.1981.4308636
-// See also GR4's layoutSugiyama() in algorithm/include/gnuradio-4.0/algorithm/ImGraph.hpp.
+// a simplified Sugiyama-style layered layout, after Sugiyama, Tagawa and Toda (1981): https://doi.org/10.1109/TSMC.1981.4308636;
+// see also GR4's layoutSugiyama() in algorithm/include/gnuradio-4.0/algorithm/ImGraph.hpp
 std::vector<Position> compute(const std::vector<Size>& nodeSizes, const std::vector<Edge>& edges, const Options& options) {
     std::vector<Position> positions(nodeSizes.size());
     if (nodeSizes.empty()) {
         return positions;
     }
 
-    // Collect incoming and outgoing connections for each block.
     std::vector<Indices> incoming(nodeSizes.size());
     std::vector<Indices> outgoing(nodeSizes.size());
     for (std::size_t i = 0UZ; i < edges.size(); i++) {
@@ -61,7 +59,7 @@ std::vector<Position> compute(const std::vector<Size>& nodeSizes, const std::vec
         }
     }
 
-    // DFS feedback-edge detection: mark connections that return to a block on the current path.
+    // depth-first feedback-edge detection: connections back to a block on the current path
     enum class Visit { Unseen, Active, Finished };
     struct Frame {
         std::size_t node;
@@ -96,7 +94,7 @@ std::vector<Position> compute(const std::vector<Size>& nodeSizes, const std::vec
         }
     }
 
-    // Longest-path ranking: ignore feedback edges and place each block one column after its rightmost predecessor.
+    // longest-path ranking: feedback edges ignored, each block one column after its rightmost predecessor
     std::vector<std::size_t> rank(nodeSizes.size(), 0UZ);
     for (const auto node : finishOrder | std::views::reverse) {
         for (const auto edgeIndex : outgoing[node]) {
@@ -107,7 +105,7 @@ std::vector<Position> compute(const std::vector<Size>& nodeSizes, const std::vec
         }
     }
 
-    // Find connected groups so separate flowgraphs can be placed independently.
+    // connected groups, so separate flowgraphs are placed independently
     std::vector<Indices> components;
     std::vector<bool>    assigned(nodeSizes.size(), false);
     for (std::size_t root = 0UZ; root < nodeSizes.size(); root++) {
@@ -142,7 +140,7 @@ std::vector<Position> compute(const std::vector<Size>& nodeSizes, const std::vec
     std::vector<float>       neighbourTargetsY;
     float                    componentY = options.padding;
     for (const auto& component : components) {
-        // Barycentre ordering: reorder each column to reduce connection crossings.
+        // barycentre ordering: each column reordered to reduce connection crossings
         const auto           maxRank = std::ranges::max(component | std::views::transform([&](auto node) { return rank[node]; }));
         std::vector<Indices> layers(maxRank + 1UZ);
         std::vector<Indices> outgoingByLayer(maxRank + 1UZ);
@@ -156,8 +154,7 @@ std::vector<Position> compute(const std::vector<Size>& nodeSizes, const std::vec
             }
         }
 
-        auto portOrder = [&](std::size_t node, float portY) { return static_cast<float>(order[node]) + portY / std::max(nodeSizes[node].height, 1.f); };
-        // Estimate crossings between connections joining the same pair of columns.
+        auto portOrder      = [&](std::size_t node, float portY) { return static_cast<float>(order[node]) + portY / std::max(nodeSizes[node].height, 1.f); };
         auto countCrossings = [&] {
             std::size_t count = 0UZ;
             for (const auto& edgeGroup : outgoingByLayer) {
@@ -192,14 +189,13 @@ std::vector<Position> compute(const std::vector<Size>& nodeSizes, const std::vec
             }
         };
 
-        // Keep the best order because later passes can increase crossings.
+        // the best order is kept, as later passes can increase crossings
         auto bestLayers    = layers;
         auto bestCrossings = countCrossings();
         for (std::size_t sweep = 0UZ; sweep < options.crossingMinimizationSweeps && bestCrossings > 0UZ; sweep++) {
-            // Try left-to-right and right-to-left passes.
             for (const bool predecessors : {true, false}) {
                 sweepLayers(predecessors, [&](Indices& layer) {
-                    // Score each block by the average vertical order of its neighbours' ports.
+                    // each block scored by the average vertical order of its neighbours' ports
                     for (const auto node : layer) {
                         float       sum   = 0.f;
                         std::size_t count = 0UZ;
@@ -225,7 +221,6 @@ std::vector<Position> compute(const std::vector<Size>& nodeSizes, const std::vec
         }
         layers = std::move(bestLayers);
 
-        // Set column widths and centre each column vertically.
         std::vector<float> layerHeights;
         Size               componentSize;
         for (const auto& layer : layers) {
@@ -248,7 +243,7 @@ std::vector<Position> compute(const std::vector<Size>& nodeSizes, const std::vec
             }
         }
 
-        // Median + compaction: align connected ports while keeping blocks in order and separated.
+        // median and compaction: connected ports aligned while blocks stay in order and apart
         const auto median = [](std::vector<float>& values) {
             std::ranges::sort(values);
             const auto middle = values.size() / 2UZ;
@@ -267,7 +262,6 @@ std::vector<Position> compute(const std::vector<Size>& nodeSizes, const std::vec
             }
         }
 
-        // Stack each connected group below the previous one.
         const auto minY      = std::ranges::min(component | std::views::transform([&](auto node) { return positions[node].y; }));
         componentSize.height = 0.f;
         for (const auto node : component) {
@@ -313,4 +307,4 @@ WrappedRows computeFixedBlockWrappingWithGap(std::span<const Size> nodeSizes, fl
     return result;
 }
 
-} // namespace DigitizerUi::flowgraph_layout
+} // namespace gr::od::flowgraph_layout

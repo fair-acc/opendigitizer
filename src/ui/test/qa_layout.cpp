@@ -15,33 +15,34 @@
 #include <Dashboard.hpp>
 #include <DashboardPage.hpp>
 
-// TODO: blocks are locally included/registered for this test -> should become a global feature
 #include "blocks/Arithmetic.hpp"
 #include "blocks/ImPlotSink.hpp"
 
 #include <cmrc/cmrc.hpp>
 #include <memory.h>
 
+using namespace gr::od;
+
 CMRC_DECLARE(ui_test_assets);
 
 using namespace boost;
 using namespace boost::ut;
 
-struct TestState : opendigitizer::test::TestDashboardRunner {
-    DigitizerUi::DockingLayoutType              layoutType = DigitizerUi::DockingLayoutType::Row;
-    std::shared_ptr<DigitizerUi::DashboardPage> dashboardPage;
+struct TestState : test::TestDashboardRunner {
+    DockingLayoutType              layoutType = DockingLayoutType::Row;
+    std::shared_ptr<DashboardPage> dashboardPage;
 };
 
 TestState* gState = nullptr;
 
-struct TestApp : public DigitizerUi::test::ImGuiTestApp {
-    using DigitizerUi::test::ImGuiTestApp::ImGuiTestApp;
+struct TestApp : public test::ImGuiTestApp {
+    using test::ImGuiTestApp::ImGuiTestApp;
 
     void registerTests() override {
         ImGuiTest* t = IM_REGISTER_TEST(engine(), "dashboardpage", "layouting");
 
         t->GuiFunc = [](ImGuiTestContext*) {
-            IMW::Window window("Test Window", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoSavedSettings);
+            imw::Window window("Test Window", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoSavedSettings);
 
             ImGui::SetWindowPos({0, 0});
             ImGui::SetWindowSize(ImVec2(800, 800));
@@ -49,7 +50,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             if (gState->dashboard) {
                 gState->dashboard->layoutType = gState->layoutType;
                 if (!gState->dashboardPage) {
-                    gState->dashboardPage = std::make_shared<DigitizerUi::DashboardPage>();
+                    gState->dashboardPage = std::make_shared<DashboardPage>();
                     gState->dashboardPage->setDashboard(*gState->dashboard);
                 }
                 gState->dashboardPage->draw();
@@ -61,17 +62,17 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             "DashboardPage::layout"_test = [ctx] {
                 ctx->SetRef("Test Window");
 
-                gState->layoutType = DigitizerUi::DockingLayoutType::Row;
-                opendigitizer::test::waitUntilAllSamplesDrawn(ctx, *gState->dashboard);
+                gState->layoutType = DockingLayoutType::Row;
+                test::waitUntilAllSamplesDrawn(ctx, *gState->dashboard);
                 captureScreenshot(*ctx);
 
-                gState->layoutType = DigitizerUi::DockingLayoutType::Column;
+                gState->layoutType = DockingLayoutType::Column;
                 captureScreenshot(*ctx);
 
-                gState->layoutType = DigitizerUi::DockingLayoutType::Grid;
+                gState->layoutType = DockingLayoutType::Grid;
                 captureScreenshot(*ctx);
 
-                gState->layoutType = DigitizerUi::DockingLayoutType::Free;
+                gState->layoutType = DockingLayoutType::Free;
                 captureScreenshot(*ctx);
             };
         };
@@ -79,13 +80,13 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
 };
 
 int main(int argc, char* argv[]) {
-    auto options             = DigitizerUi::test::TestOptions::fromArgs(argc, argv);
+    auto options             = test::TestOptions::fromArgs(argc, argv);
     options.screenshotPrefix = "dashboardpage_layout";
 
     options.speedMode = ImGuiTestRunSpeed_Normal;
     TestApp app(options);
 
-    // init early, as Dashboard invokes ImGui style stuff
+    // before the dashboard, which sets ImGui styles
     app.initImGui();
     TestState state;
     gState = std::addressof(state);

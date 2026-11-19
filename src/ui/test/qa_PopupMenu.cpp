@@ -3,28 +3,12 @@
 #include "components/PopupMenu.hpp"
 #include <boost/ut.hpp>
 
+using namespace gr::od;
+
 using namespace boost;
 
-/**
-  Tests opening a PopupMenu and clicking on its button
-
-  Very simple as it's a proof of concept for ImGui Test Engine.
-
-  boost::ut vs ImGuiTest
-      We're using boost::ut as the unit-test framework. ImGuiTest is
-      an implementation detail, required by the test engine.
-
-      Use boost::ut for asserts and reporting results instead of
-      ImGuiTest's equivalents.
-
-      Feel free to add several boost::ut tests under the same ImGuiTest.
-      While for pure unit-tests the relation is 1:1, for end-to-end tests
-      well have 1:N, that is, 1 ImGuiTest doing several UI interactions,
-      so N boost:ut::test grouping testable functionallity.
- */
-
-struct TestApp : public DigitizerUi::test::ImGuiTestApp {
-    using DigitizerUi::test::ImGuiTestApp::ImGuiTestApp;
+struct TestApp : public test::ImGuiTestApp {
+    using test::ImGuiTestApp::ImGuiTestApp;
 
     void registerTests() override {
         struct TestState {
@@ -35,11 +19,11 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
         t->SetVarsDataType<TestState>();
 
         t->GuiFunc = [](ImGuiTestContext* ctx) {
-            IMW::Window window("Test Window", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoSavedSettings);
+            imw::Window window("Test Window", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoSavedSettings);
             ImGui::SetWindowPos({0, 0});
             ImGui::SetWindowSize(ImVec2(500, 500));
 
-            DigitizerUi::VerticalPopupMenu<1> menu;
+            VerticalPopupMenu<1> menu;
 
             if (!menu.isOpen()) {
                 menu.addButton("button", [ctx] {

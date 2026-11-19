@@ -28,15 +28,17 @@
 
 #include "blocks/TargetMap.hpp"
 
+using namespace gr::od;
+
 using namespace std::string_literals;
 
-bool DigitizerUi::isChartTypeName(std::string_view typeName) { return opendigitizer::charts::chartTypes().contains(typeName); }
+bool gr::od::isChartTypeName(std::string_view typeName) { return charts::chartTypes().contains(registeredId(typeName)); }
 
-bool DigitizerUi::isPlotSinkTypeName(std::string_view typeName) { return opendigitizer::plotSinkTypes().contains(typeName); }
+bool gr::od::isPlotSinkTypeName(std::string_view typeName) { return plotSinkTypes().contains(registeredId(typeName)); }
 
-bool DigitizerUi::isDataSetPlotSinkTypeName(std::string_view typeName) {
-    const auto type = opendigitizer::plotSinkTypes().find(typeName);
-    return type != opendigitizer::plotSinkTypes().end() && type->second;
+bool gr::od::isDataSetPlotSinkTypeName(std::string_view typeName) {
+    const auto type = plotSinkTypes().find(registeredId(typeName));
+    return type != plotSinkTypes().end() && type->second;
 }
 
 UiGraphBlock::~UiGraphBlock() {
@@ -103,8 +105,7 @@ auto UiGraphBlock::findPortIteratorByName(auto& ports, const std::string& portNa
 }
 
 void UiGraphBlock::emplaceChild(const gr::property_map& blockData) {
-    // Only graphs can have children emplaced. Schedulers have only one child
-    // (the graph) which is never emplaced, it is there from the start
+    // only graphs have children emplaced; a scheduler's one child, the graph, is there from the start
     auto* thisGraphInfo = std::get_if<GraphBlockInfo>(&blockCategoryInfo);
     assert(thisGraphInfo);
 
@@ -115,15 +116,10 @@ void UiGraphBlock::emplaceChild(const gr::property_map& blockData) {
         block.setBlockData(blockData);
     } else {
         const auto [newBlockOwnerSchedulerUniqueName, newBlockOwnerGraphUniqueName] = [&] -> std::pair<std::string, std::string> {
-            return {// If `this` is a graph, then the owner scheduler for the
-                    // new block is our owner scheduler [...]
-                thisGraphInfo->ownerSchedulerUniqueName,
-                // [...] and were the owning graph
-                blockUniqueName};
+            // a child of this graph: our owner scheduler, and this graph as its owner
+            return {thisGraphInfo->ownerSchedulerUniqueName, blockUniqueName};
         }();
 
-        // Before we properly process the block, we need to set its category
-        // and initialize its owner graph and scheduler
         childBlocks.push_back(ownerGraph->makeGraphBlock(this, blockData, newBlockOwnerSchedulerUniqueName, newBlockOwnerGraphUniqueName));
     }
 }
@@ -148,7 +144,6 @@ void UiGraphBlock::emplaceEdge(const gr::property_map& data) {
     if (edge) {
         childEdges.emplace_back(std::move(*edge));
     } else {
-        // Failed to read edge data
         gr::log::debug("requestFullUpdate reason: failed to read edge data {}", data);
         ownerGraph->requestFullUpdate();
     }
@@ -159,17 +154,15 @@ void UiGraphBlock::setSchedulerGraph(const gr::property_map& data) {
     const auto& children = getProperty<gr::property_map>(data, "children"s);
     assert(children.size() == 1 && "Schedulers contain only a single child -- the graph");
 
-    for (const auto& [graphUniqueName, graphData_] : children) {
+    for (const auto& [graphUniqueName, graphValue] : children) {
         const bool found     = !childBlocks.empty() && childBlocks[0]->blockUniqueName == std::string_view(graphUniqueName);
-        const auto graphData = graphData_.get_if<gr::property_map>();
+        const auto graphData = graphValue.get_if<gr::property_map>();
         if (!graphData) {
             continue;
         }
         if (found) {
-            // Graph was not replaced
             childBlocks[0]->setBlockData(*graphData);
         } else {
-            // We have a new graph
             childBlocks.clear();
             childBlocks.push_back(ownerGraph->makeGraphBlock(this, *graphData, blockUniqueName, {}));
         }
@@ -183,13 +176,12 @@ void UiGraphBlock::setGraphChildren(const gr::property_map& data) {
 
     std::set<std::string> childrenUniqueNames;
 
-    // Update or create blocks that GR knows
     if (data.contains("children"s)) {
         const auto& children = getProperty<gr::property_map>(data, "children"s);
-        for (const auto& [childUniqueName, blockData_] : children) {
+        for (const auto& [childUniqueName, blockValue] : children) {
             childrenUniqueNames.insert(std::string(childUniqueName));
             const auto [blockIt, found] = findBlockIteratorBy({SearchProperty::UniqueName}, childUniqueName);
-            const auto blockData        = blockData_.get_if<gr::property_map>();
+            const auto blockData        = blockValue.get_if<gr::property_map>();
             if (!blockData) {
                 continue;
             }
@@ -218,9 +210,7 @@ void UiGraphBlock::setGraphChildren(const gr::property_map& data) {
         }
     }
 
-    // Delete blocks that GR doesn't know about.
-    // This is similar to erase-remove, but we need the list of blocks
-    // we want to delete in order to disconnect them first.
+    // like erase-remove, but the removed blocks are disconnected first
     const auto toRemove = std::partition(childBlocks.begin(), childBlocks.end(), [&childrenUniqueNames](const auto& child) { //
         return childrenUniqueNames.contains(child->blockUniqueName);
     });
@@ -230,12 +220,11 @@ void UiGraphBlock::setGraphChildren(const gr::property_map& data) {
 
     childBlocks.erase(toRemove, childBlocks.end());
 
-    // Establish new edges
     childEdges.clear();
     if (data.contains("edges"s)) {
         const auto& edges = getProperty<gr::property_map>(data, "edges"s);
-        for (const auto& [index, edgeData_] : edges) {
-            const auto edgeData = edgeData_.get_if<gr::property_map>();
+        for (const auto& [index, edgeValue] : edges) {
+            const auto edgeData = edgeValue.get_if<gr::property_map>();
             if (!edgeData) {
                 continue;
             }
@@ -299,17 +288,13 @@ void UiGraphBlock::setBlockData(const gr::property_map& data) {
     if (isGraph()) {
         setGraphChildren(data);
     } else if (isScheduler()) {
-        // When we get new data for a scheduler, we can only set the
-        // basic data and send the inspection message for the scheduler
-        // to send us its data.
+        // new scheduler data: only the basic data, then the inspection message asks the scheduler for the rest
         ownerGraph->send(gr::message::Command::Get, blockUniqueName, gr::scheduler::property::kSchedulerInspect);
     }
 
-    // graphs and schedulers derive their ports from their children, so this has to
-    // run once the children are known
+    // graphs and schedulers derive their ports from their children: only once the children are known
     if (updatePorts(data) && parentBlock && !parentBlock->newGraphDataBeingSet) {
-        // this update did not come through the parent, so the parent's edges may
-        // point into the port collections we have just rebuilt
+        // an update not through the parent: its edges may point into the port collections just rebuilt
         parentBlock->graphResolveEdgePortPointersAndRemoveIfInvalid();
     }
 }
@@ -361,8 +346,7 @@ void UiGraphBlock::setBasicBlockData(const gr::property_map& blockData) {
         updateFieldFrom(blockTypeName, blockData, {}, gr::serialization_fields::BLOCK_ID);
     }
 
-    // Meta information needs special handling as it contains the
-    // information about the exported ports
+    // the meta information holds the exported ports
     if (auto metaInformation = getOptionalProperty<gr::property_map>(blockData, gr::serialization_fields::BLOCK_META_INFORMATION); metaInformation.has_value()) {
 
         blockMetaInformation   = *metaInformation;
@@ -378,13 +362,13 @@ void UiGraphBlock::setBasicBlockData(const gr::property_map& blockData) {
                 return;
             }
 
-            for (const auto& [subBlockName, portMappings_] : *map) {
-                const auto portMappings = portMappings_.template get_if<gr::property_map>();
+            for (const auto& [subBlockName, portMappingsValue] : *map) {
+                const auto portMappings = portMappingsValue.template get_if<gr::property_map>();
                 if (!portMappings) {
                     continue;
                 }
-                for (const auto& [portName, portMapping_] : *portMappings) {
-                    const auto portMapping = portMapping_.template get_if<gr::property_map>();
+                for (const auto& [portName, portMappingValue] : *portMappings) {
+                    const auto portMapping = portMappingValue.template get_if<gr::property_map>();
                     if (!portMapping) {
                         continue;
                     }
@@ -414,13 +398,13 @@ void UiGraphBlock::setBasicBlockData(const gr::property_map& blockData) {
 }
 
 bool UiGraphBlock::updatePorts(const gr::property_map& blockData) {
-    auto processPorts = [&blockData, this](auto& portsCollection, std::string_view portsField, gr::PortDirection direction) {
+    auto readPorts = [&blockData, this](auto& portsCollection, std::string_view portsField, gr::PortDirection direction) {
         portsCollection.clear();
 
         const auto appendDeclaredPorts = [&] {
             const auto declaredPorts = getProperty<gr::property_map>(blockData, portsField);
-            for (const auto& [portName, portData_] : declaredPorts) {
-                const auto portData = portData_.get_if<gr::property_map>();
+            for (const auto& [portName, portValue] : declaredPorts) {
+                const auto portData = portValue.get_if<gr::property_map>();
                 if (!portData) {
                     continue;
                 }
@@ -452,11 +436,8 @@ bool UiGraphBlock::updatePorts(const gr::property_map& blockData) {
             }
         };
 
-        // When inspecting a scheduler, the scheduler's own exported ports are not reported.
-        // This indicates that descriptions of child blocks will arrive later, so we should
-        // wait to see those materialize before figuring out what our exported ports are.
-        // TODO: check if gnuradio can just serialize the exported ports when doing a
-        // scheduler inspect message, so we do not have to do updatePorts()
+        // a scheduler inspection does not report the scheduler's own exported ports:
+        // the child blocks' descriptions arrive later, and the exported ports follow from them
         const bool hasPorts = blockData.contains(portsField);
 
         if (hasPorts || !(isGraph() || isScheduler())) {
@@ -471,8 +452,8 @@ bool UiGraphBlock::updatePorts(const gr::property_map& blockData) {
         }
     };
 
-    processPorts(_inputPorts, gr::serialization_fields::BLOCK_INPUT_PORTS, gr::PortDirection::INPUT);
-    processPorts(_outputPorts, gr::serialization_fields::BLOCK_OUTPUT_PORTS, gr::PortDirection::OUTPUT);
+    readPorts(_inputPorts, gr::serialization_fields::BLOCK_INPUT_PORTS, gr::PortDirection::INPUT);
+    readPorts(_outputPorts, gr::serialization_fields::BLOCK_OUTPUT_PORTS, gr::PortDirection::OUTPUT);
 
     return isGraph() || isScheduler();
 }
@@ -490,14 +471,14 @@ std::optional<UiGraphEdge> UiGraphBlock::parseEdgeData(const gr::property_map& e
             return gr::PortDefinition(portField.value_or(std::string()));
         }
         if (const auto indices = portField.value_or(gr::Tensor<gr::pmt::Value>{}); indices.size() == 2) {
-            // this is a collection in format [topLevel, subIndex]. it is serialized in this form by saveGraphToMap
+            // a collection [topLevel, subIndex], as saveGraphToMap serialises it
             return gr::PortDefinition(static_cast<std::size_t>(indices[0].value_or(std::int64_t{})), static_cast<std::size_t>(indices[1].value_or(std::int64_t{})));
         }
         if (const auto index = portField.get_if<std::int64_t>()) { // regular port definition, by index
             return gr::PortDefinition(static_cast<std::size_t>(*index));
         }
 
-        // gr::serializeEdge write port collections in this format
+        // gr::serializeEdge writes port collections in this format
         return gr::PortDefinition(getProperty<std::size_t>(edgeData, key + ".top_level"), getProperty<std::size_t>(edgeData, key + ".sub_index"));
     };
 
@@ -514,9 +495,8 @@ std::optional<UiGraphEdge> UiGraphBlock::parseEdgeData(const gr::property_map& e
         return {};
     }
 
-    // if this is a graph description saved with saveGraphToMap, then it used regular names, because that function is for persisting the graph
-    // if this is an edge message that only exists at runtime, then it used unique name. To make things easier elsewhere we always use unique
-    // name in the UI and not what was written in the message.
+    // a graph saved with saveGraphToMap uses regular names (it persists the graph), a runtime edge message unique names:
+    // the UI always uses unique names, not what the message holds
     edge.edgeSourceBlockUniqueName      = edge.edgeSourcePort->ownerBlock->blockUniqueName;
     edge.edgeDestinationBlockUniqueName = edge.edgeDestinationPort->ownerBlock->blockUniqueName;
 
@@ -541,8 +521,6 @@ UiGraphPort* UiGraphBlock::resolveChildPort(const std::string& childNameOrUnique
 
     return std::visit(gr::meta::overloaded{//
                           [&ports](const gr::PortDefinition::IndexBased& indexBasedDefinition) -> UiGraphPort* {
-                              // TODO: sub-index for ports -- when we add UI support for
-                              // port arrays
                               if (indexBasedDefinition.topLevel >= ports.size()) {
                                   return nullptr;
                               }
@@ -596,8 +574,7 @@ void UiGraphBlock::removeContext(const ContextTime& contextTime) { ownerGraph->s
 void UiGraphBlock::requestBlockUpdate() {
     const auto& targetGraph = ownerSchedulerUniqueName();
 
-    // If we are updating a nested scheduler, we need to send the
-    // introspection message to its parent
+    // a nested scheduler's update sends the introspection message to its parent
     if (blockUniqueName == ownerSchedulerUniqueName()) {
         if (parentBlock) { // a nested scheduler is a scheduler *and* a block
             ownerGraph->send(gr::message::Command::Get, parentBlock->blockUniqueName, gr::scheduler::property::kSchedulerInspect);
@@ -847,8 +824,11 @@ void updateKnownTypeMap(auto& map, const auto& data) {
         if (!typeValue.is_string()) {
             continue;
         }
-        const auto type             = typeValue.value_or(std::string());
-        auto       splitterPosition = std::ranges::find(type, '<');
+        const auto type = typeValue.value_or(std::string());
+        if (registeredId(type) != type) {
+            continue; // listed under its registered id
+        }
+        auto splitterPosition = std::ranges::find(type, '<');
 
         if (splitterPosition != type.cend()) {
             map[std::string(type.cbegin(), splitterPosition)].emplace(splitterPosition, type.cend());
@@ -978,7 +958,7 @@ bool UiGraphModel::apply(const gr::Message& message) {
     }
 
     if (!message.data) {
-        DigitizerUi::components::Notification::error(std::format("Received an error: {}\n", message.data.error().message));
+        components::Notification::error(std::format("Received an error: {}\n", message.data.error().message));
         return false;
     }
 
@@ -1001,8 +981,8 @@ bool UiGraphModel::apply(const gr::Message& message) {
             return endpoints;
         }();
         if (debugReceivedMessages && (debugReceivedMessages->empty() || debugReceivedMessages->contains(message.endpoint))) {
-            std::println("UiGraphModel::processMessage called with message = {} {}", message.serviceName, message.endpoint);
-            pretty_print_map(*message.data, -1UZ, 1);
+            std::println("UiGraphModel::apply called with message = {} {}", message.serviceName, message.endpoint);
+            printMap(*message.data, -1UZ, 1);
         }
     }
 
@@ -1017,21 +997,18 @@ bool UiGraphModel::apply(const gr::Message& message) {
         return it->second.value_or(std::string());
     };
 
-    // We can not really process messages until we get the initial graph contents
+    // no message processing before the initial graph contents
     if (rootBlock.blockUniqueName.empty()) {
         if (message.endpoint == scheduler::kSchedulerInspected) {
             assert(getProperty<std::string>(data, "block_category") == "ScheduledBlockGroup");
 
-            // The SchedulerInspected message is special. If we do not know about
-            // anything WRT the GR flowgraph, we need to deduce that the root scheduler
-            // in the kSchedulerInspected message is the top level scheduler
+            // SchedulerInspected is special: knowing nothing of the flowgraph yet, its root scheduler is the top-level one
             rootBlock.blockCategoryInfo = UiGraphBlock::SchedulerBlockInfo{};
             rootBlock.blockUniqueName   = message.serviceName;
             const auto& children        = getProperty<gr::property_map>(data, "children");
             assert(children.size() == 1);
 
         } else {
-            // We can not process any messages until we get the Graph contents
             requestFullUpdate();
             return false;
         }
@@ -1093,8 +1070,7 @@ bool UiGraphModel::apply(const gr::Message& message) {
         targetBlock.block->setBasicBlockData(data);
         targetBlock.block->setSchedulerGraph(data);
         if (targetBlock.block->updatePorts(data) && targetBlock.parentGraph) {
-            // the scheduler's ports were just rebuilt, so the parent's edges may
-            // point into the port collections we have replaced
+            // the scheduler's ports were just rebuilt: the parent's edges may point into the replaced port collections
             targetBlock.parentGraph->graphResolveEdgePortPointersAndRemoveIfInvalid();
         }
         targetBlock.block->blockCategoryInfo = UiGraphBlock::SchedulerBlockInfo{.childrenLoaded = true};
@@ -1111,7 +1087,7 @@ bool UiGraphModel::apply(const gr::Message& message) {
         knownSchedulerTypes["gr::Graph"] = {"<>"};
 
     } else if (message.endpoint == "LifecycleState") {
-        // Nothing to do for lifecycle state changes
+        // nothing to do for lifecycle state changes
         auto valueIt = data.find("state");
         if (valueIt != data.end() && valueIt->second.value_or(std::string()) == "RUNNING") {
             gr::log::debug("lifecycle state changed to RUNNING, requesting an update");
@@ -1157,13 +1133,12 @@ bool UiGraphModel::apply(const gr::Message& message) {
                 return false;
             }
             saveBlockPositions(*graphData);
-            m_localFlowgraphGrc = gr::pmt::yaml::serialize(*graphData);
+            localFlowgraphGrc = gr::pmt::yaml::serialize(*graphData);
         } else {
             assert(false);
         }
     } else if (message.endpoint == graph::kSubgraphExportedPort) {
-        // read exported ports out of meta information, easier to treat this as
-        // source of truth than update our own cache based on these export events
+        // exported ports read from the meta information, the source of truth, rather than tracked from these export events
         targetBlock.block->requestBlockUpdate();
 
     } else if (message.endpoint == scheduler::kBlocksGrouped || message.endpoint == scheduler::kBlocksUngrouped) {
@@ -1171,7 +1146,7 @@ bool UiGraphModel::apply(const gr::Message& message) {
 
     } else {
         if (!message.data) {
-            DigitizerUi::components::Notification::error(std::format("Not processed: {} data: {}\n", message.endpoint, message.data.error().message));
+            components::Notification::error(std::format("Not processed: {} data: {}\n", message.endpoint, message.data.error().message));
         }
         return false;
     }
@@ -1235,7 +1210,7 @@ void UiGraphBlock::applySettings(const gr::property_map& data) {
     }
 }
 
-gr::property_map DigitizerUi::emplaceEdgeData(std::string sourceBlock, std::string sourcePort, std::string destinationBlock, std::string destinationPort) {
+gr::property_map gr::od::emplaceEdgeData(std::string sourceBlock, std::string sourcePort, std::string destinationBlock, std::string destinationPort) {
     return gr::property_map{
         {std::pmr::string(gr::serialization_fields::EDGE_SOURCE_BLOCK), std::move(sourceBlock)},
         {std::pmr::string(gr::serialization_fields::EDGE_SOURCE_PORT), std::move(sourcePort)},
@@ -1248,8 +1223,6 @@ gr::property_map DigitizerUi::emplaceEdgeData(std::string sourceBlock, std::stri
 }
 
 std::unique_ptr<UiGraphBlock> UiGraphModel::makeGraphBlock(UiGraphBlock* parent, const gr::property_map& blockData, const std::string& ownerSchedulerUniqueName, const std::string& ownerGraphUniqueName) {
-    // Before we properly process the block, we need to set its category
-    // and initialize its owner graph and scheduler
     auto newBlock = std::make_unique<UiGraphBlock>(/*owner*/ this, /*parentBlock*/ parent);
     updateFieldFrom(newBlock->blockUniqueName, blockData, {}, gr::serialization_fields::BLOCK_UNIQUE_NAME);
     updateFieldFrom(newBlock->blockCategory, blockData, {}, gr::serialization_fields::BLOCK_CATEGORY);
@@ -1267,8 +1240,6 @@ std::unique_ptr<UiGraphBlock> UiGraphModel::makeGraphBlock(UiGraphBlock* parent,
             .ownerSchedulerUniqueName = ownerSchedulerUniqueName};
     }
 
-    // Sets the block data, including its children if it is a
-    // scheduler or a graph
     newBlock->setBlockData(blockData);
 
     return newBlock;
@@ -1302,12 +1273,12 @@ bool UiGraphModel::blockInTree(const UiGraphBlock& block, const UiGraphBlock& tr
 template<typename T>
 static bool fitsImGuiSlider(double minValue, double maxValue) {
     if constexpr (std::floating_point<T>) {
-        constexpr double limit = kImGuiSliderDoubleLimit;
-        return minValue >= -limit && maxValue <= limit;
+        constexpr double kLimit = kImGuiSliderDoubleLimit;
+        return minValue >= -kLimit && maxValue <= kLimit;
     } else {
         // imgui limit for integer slider is (2^62 - 1) (using < below instead of subtracting to prevent overflowing double precision at this large of a number)
-        constexpr double limit = static_cast<double>(std::int64_t{1} << 62);
-        return minValue >= -limit && maxValue < limit;
+        constexpr double kLimit = static_cast<double>(std::int64_t{1} << 62);
+        return minValue >= -kLimit && maxValue < kLimit;
     }
 }
 

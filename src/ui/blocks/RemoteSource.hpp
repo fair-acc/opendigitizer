@@ -29,7 +29,7 @@
 #pragma GCC diagnostic ignored "-Wuseless-cast"
 #endif
 
-namespace opendigitizer {
+namespace gr::od {
 
 inline opencmw::URI<> resolveRelativeTopic(const std::string& remote, const std::string& base) {
     auto pathUrl = opencmw::URI<>(remote);
@@ -65,8 +65,8 @@ class RemoteSubscriptionHandle {
 public:
     friend class RemoteSubscriptions;
 
+    constexpr RemoteSubscriptionHandle() = default;
     constexpr explicit operator bool() const { return _subscription; }
-    constexpr RemoteSubscriptionHandle()                                 = default;
     RemoteSubscriptionHandle(const RemoteSubscriptionHandle&)            = delete;
     RemoteSubscriptionHandle& operator=(const RemoteSubscriptionHandle&) = delete;
 
@@ -80,7 +80,7 @@ public:
     ~RemoteSubscriptionHandle() { reset(); }
     void reset() noexcept;
 
-    /// It's safe to call reconnect during the user's callback, it doesn't modify subscriptions
+    /// safe to call during the user's callback: it does not modify subscriptions
     void reconnect() noexcept;
 };
 
@@ -95,7 +95,7 @@ struct RemoteSourceCommon {
     std::shared_ptr<Queue>     _queue = std::make_shared<Queue>();
     std::atomic<std::uint64_t> _reconnect{0ULL}; // 0 == disabled, otherwise time since epoch in ns
 
-    void settingsChanged(const gr::property_map& /*old_settings*/, const gr::property_map& new_settings);
+    void settingsChanged(const gr::property_map& /*old_settings*/, const gr::property_map& newSettings);
     void stopSubscription() { _subscription.reset(); }
     void startSubscription();
     void start();
@@ -117,8 +117,7 @@ struct RemoteSourceCommon {
 
 namespace detail {
 struct RemoteSourceSubscription {
-    /// Returning a valid RemoteSubscriptionHandle from a Subscription::Callback indicates
-    /// that the subscription should be closed after the callback is complete
+    /// a valid RemoteSubscriptionHandle returned from a Callback closes the subscription after the callback
     using Callback = std::function<RemoteSubscriptionHandle(const opencmw::mdp::Message&)>;
 
     const std::string                         subscribedUri;
@@ -128,7 +127,6 @@ struct RemoteSourceSubscription {
     explicit RemoteSourceSubscription(std::string_view uri) : subscribedUri(uri) {}
     ~RemoteSourceSubscription() { disconnect(); }
 
-    // push back a callback and return an id to use to delete it later
     [[nodiscard]] std::size_t pushCallback(Callback&& callback) {
         static std::size_t lastUsedId = 0;
         const auto         guard      = std::scoped_lock{callbacksMutex};
@@ -151,7 +149,6 @@ struct RemoteSourceSubscription {
 
     void start();
 
-private:
     void                     disconnect();
     opencmw::client::Command buildSubscribeCommand();
 };
@@ -159,6 +156,12 @@ private:
 
 class RemoteSubscriptions {
     using Subscription = detail::RemoteSourceSubscription;
+
+private:
+    // mutual exclusion between subscribing/unsubscribing (writing), and the rest client worker thread calling the callback (reading)
+    mutable std::shared_mutex                                                                              _mutex;
+    std::unordered_map<std::string, std::unique_ptr<Subscription>, TransparentStringHash, std::equal_to<>> _subscriptions;
+    opencmw::client::RestClient                                                                            _client = opencmw::client::RestClient(opencmw::client::VerifyServerCertificates(Digitizer::Settings::instance().checkCertificates));
 
     static RemoteSubscriptions& instance();
 
@@ -187,12 +190,6 @@ public:
 
     friend class RemoteSubscriptionHandle;
     friend struct detail::RemoteSourceSubscription;
-
-private:
-    // mutual exclusion between subscribing/unsubscribing (writing), and the rest client worker thread calling the callback (reading)
-    mutable std::shared_mutex                                                                              _mutex;
-    std::unordered_map<std::string, std::unique_ptr<Subscription>, TransparentStringHash, std::equal_to<>> _subscriptions;
-    opencmw::client::RestClient                                                                            _client = opencmw::client::RestClient(opencmw::client::VerifyServerCertificates(Digitizer::Settings::instance().checkCertificates));
 };
 
 inline RemoteSubscriptions& RemoteSubscriptions::instance() {
@@ -261,20 +258,19 @@ inline void RemoteSubscriptionHandle::reset() noexcept {
     _id           = 0;
 }
 
-class RemoteSources {
+struct RemoteSources {
+    std::mutex                                                                    _mutex;
+    std::unordered_map<std::string, RemoteSourceInfo>                             _knownRemoteSources;
+    std::unordered_map<std::string, std::function<void(const RemoteSourceInfo&)>> _addingSourcesCallbacks;
+
     RemoteSources() = default;
 
     RemoteSources(const RemoteSources&)            = delete;
     RemoteSources& operator=(const RemoteSources&) = delete;
 
-    std::mutex                                                                    _mutex;
-    std::unordered_map<std::string, RemoteSourceInfo>                             _knownRemoteSources;
-    std::unordered_map<std::string, std::function<void(const RemoteSourceInfo&)>> _addingSourcesCallbacks;
-
-public:
     static RemoteSources& instance() {
-        static RemoteSources s_instance;
-        return s_instance;
+        static RemoteSources sources;
+        return sources;
     }
 
     template<typename TBlock>
@@ -323,16 +319,12 @@ void RemoteSourceCommon<Derived, QueueContents>::startSubscription() {
 }
 
 template<typename Derived, typename QueueContents>
-void RemoteSourceCommon<Derived, QueueContents>::settingsChanged(const gr::property_map& /*old_settings*/, const gr::property_map& new_settings) {
+void RemoteSourceCommon<Derived, QueueContents>::settingsChanged(const gr::property_map& /*old_settings*/, const gr::property_map& newSettings) {
     static_assert(std::is_base_of_v<RemoteSourceBase, Derived>);
     static_assert(std::is_base_of_v<RemoteSourceCommon, Derived>);
     // GR doesn't set the state for a block added after the scheduler started
-    // if (Parent::state() != gr::lifecycle::State::RUNNING) {
-    //     std::print("<<RemoteSource.hpp>> We didn't get a running lifetime from GR\n");
-    //     return; // early return, only apply settings for the running flowgraph
-    // }
     auto* self = static_cast<RemoteSourceBase*>(static_cast<Derived*>(this));
-    if ((new_settings.contains("host") || new_settings.contains("remote_uri")) && !self->host.empty() && !self->remote_uri.empty()) {
+    if ((newSettings.contains("host") || newSettings.contains("remote_uri")) && !self->host.empty() && !self->remote_uri.empty()) {
         RemoteSources::instance().notifyOfRemoteSource(self->remote_uri, static_cast<Derived*>(this));
         stopSubscription();
         startSubscription();
@@ -356,6 +348,8 @@ template<typename T>
 requires std::is_floating_point_v<T> || gr::UncertainValueLike<T>
 struct RemoteStreamSource : RemoteSourceBase, RemoteSourceCommon<RemoteStreamSource<T>, RemoteStreamSourceData>, gr::Block<RemoteStreamSource<T>> {
     using Parent = gr::Block<RemoteStreamSource<T>>;
+    using Queue  = RemoteSourceCommon<RemoteStreamSource, RemoteStreamSourceData>::Queue;
+
     gr::PortOut<T> out;
 
     gr::Annotated<std::pmr::string, "signal name", gr::Visible, gr::Doc<"Identifier for the signal">>                                                                         signal_name;
@@ -367,8 +361,6 @@ struct RemoteStreamSource : RemoteSourceBase, RemoteSourceCommon<RemoteStreamSou
     gr::Annotated<float, "reconnect timeout", gr::Doc<"reconnect timeout in sec">>                                                                                            reconnect_timeout = 5.f;
 
     GR_MAKE_REFLECTABLE(RemoteStreamSource, out, remote_uri, signal_name, signal_unit, signal_quantity, signal_min, signal_max, host, verbose_console, reconnect_timeout);
-
-    using Queue = RemoteSourceCommon<RemoteStreamSource, RemoteStreamSourceData>::Queue;
 
     explicit RemoteStreamSource(gr::property_map props) : Parent(props) {
         RemoteSources::instance().registerRemoteSource(this);
@@ -436,13 +428,13 @@ struct RemoteStreamSource : RemoteSourceBase, RemoteSourceCommon<RemoteStreamSou
             }
 
             updateSettingsFromAcquisition(d.acq);
-            // Only one signal is stored
+            // only one signal is stored
             const auto nSamplesToCopy = std::min(output.size() - written, nSamples - d.read);
             auto       inValues       = std::span{d.acq.channelValues.elements()}.subspan(d.read, nSamplesToCopy);
             auto       outIt          = output.begin() + cast_to_signed(written);
             if constexpr (std::is_same_v<T, float>) {
                 std::ranges::copy(inValues, outIt);
-            } else if constexpr (gr::UncertainValueLike<T>) { // TODO: still needs to be tested when we get full support of gr::UncertainValue
+            } else if constexpr (gr::UncertainValueLike<T>) {
                 if (d.acq.channelValues.elements().size() != d.acq.channelErrors.elements().size()) {
                     this->emitErrorMessage("subscriptionCallback(..)",                                                                                       //
                         gr::Error(std::format("Inconsistent data from '{}': Sample type is UncertainValue but channelValues size ({}) != signalErrors ({})", //
@@ -459,7 +451,6 @@ struct RemoteStreamSource : RemoteSourceBase, RemoteSourceCommon<RemoteStreamSou
                 std::ranges::transform(inValues, outIt, [](float v) { return static_cast<T>(v); });
             }
 
-            // publish trigger info
             for (const auto& [idx, trigger, timestamp, offset, yaml] : std::views::zip(d.acq.triggerIndices.value(), d.acq.triggerEventNames.value(), d.acq.triggerTimestamps.value(), d.acq.triggerOffsets.value(), d.acq.triggerYamlPropertyMaps.value())) {
                 // this tag was already handled in a previous call OR it will be published in the next call
                 if (idx < cast_to_signed(d.read) || static_cast<std::size_t>(idx - cast_to_signed(d.read)) >= nSamplesToCopy) {
@@ -478,13 +469,12 @@ struct RemoteStreamSource : RemoteSourceBase, RemoteSourceCommon<RemoteStreamSou
                 const auto yamlMap = gr::pmt::yaml::deserialize(yaml);
                 if (yamlMap) {
                     const gr::property_map& rootMap = yamlMap.value();
-                    map.insert(rootMap.begin(), rootMap.end()); // Ignore duplicates (do not overwrite)
+                    map.insert(rootMap.begin(), rootMap.end()); // duplicates ignored, not overwritten
                 } else {
-                    // throw gr::exception(std::format("Could not parse yaml for Tag property_map: {}:{}\n{}", yamlMap.error().message, yamlMap.error().line, yaml));
                 }
                 if (verbose_console) {
-                    const auto tag_time = std::chrono::system_clock::time_point() + std::chrono::nanoseconds(timestamp);
-                    std::print("RemoteStreamSource: {} publish tag (tag-time: {}, systemtime: {}): {}\n", this->name.value, gr::time::getIsoTime(tag_time), gr::time::getIsoTime(), gr::join(map));
+                    const auto tagTime = std::chrono::system_clock::time_point() + std::chrono::nanoseconds(timestamp);
+                    std::print("RemoteStreamSource: {} publish tag (tag-time: {}, systemtime: {}): {}\n", this->name.value, gr::time::getIsoTime(tagTime), gr::time::getIsoTime(), gr::join(map));
                 }
                 const auto tagIndex = written + static_cast<std::size_t>(idx - cast_to_signed(d.read));
                 output.publishTag(map, tagIndex);
@@ -503,10 +493,10 @@ struct RemoteStreamSource : RemoteSourceBase, RemoteSourceCommon<RemoteStreamSou
     std::optional<gr::Message> propertyCallbackLifecycleState(std::string_view propertyName, gr::Message message) { return Parent::propertyCallbackLifecycleState(propertyName, std::move(message)); }
 
     RemoteSubscriptionHandle copyRestResponseDataIntoQueue(const opencmw::mdp::Message& rep, const std::weak_ptr<Queue>& maybeQueue) {
-        long           skipped_updates     = 0;
-        constexpr auto skip_warning_prefix = "Warning: skipped ";
-        if (rep.error.starts_with(skip_warning_prefix)) {
-            skipped_updates = std::stol(rep.error.substr(std::string_view(skip_warning_prefix).size()));
+        long           skippedUpdates     = 0;
+        constexpr auto kSkipWarningPrefix = "Warning: skipped ";
+        if (rep.error.starts_with(kSkipWarningPrefix)) {
+            skippedUpdates = std::stol(rep.error.substr(std::string_view(kSkipWarningPrefix).size()));
         } else if (!rep.error.empty()) {
             gr::emit<gr::message::Command::Notify>(this->msgOut, gr::Error(std::format("Error in subscription:{}. Re-subscribing {}", rep.error, remote_uri)), {.endpoint = "subscription", .serviceName = this->unique_name});
             uint64_t nowTimeoutNs = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count()) //
@@ -522,7 +512,7 @@ struct RemoteStreamSource : RemoteSourceBase, RemoteSourceCommon<RemoteStreamSou
             acq.channelErrors                      = opencmw::MultiArray<float, 2>({0.f}, std::array<uint32_t, 2>{1U, 1U});
             acq.triggerEventNames                  = {"SubscriptionInterrupted"s};
             acq.triggerIndices                     = {std::int64_t(0)};
-            acq.triggerTimestamps.value()          = {0}; // {std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count()};
+            acq.triggerTimestamps.value()          = {0};
             acq.triggerOffsets                     = {0.f};
             const gr::property_map yamlPropertyMap = {{"subscription-error", rep.error}};
             acq.triggerYamlPropertyMaps            = {gr::pmt::yaml::serialize(yamlPropertyMap)};
@@ -541,7 +531,7 @@ struct RemoteStreamSource : RemoteSourceBase, RemoteSourceCommon<RemoteStreamSou
             opendigitizer::acq::Acquisition acq;
             auto                            buf = rep.data;
             opencmw::deserialise<opencmw::YaS, opencmw::ProtocolCheck::IGNORE>(buf, acq);
-            if (skipped_updates != 0) {
+            if (skippedUpdates != 0) {
                 acq.triggerIndices.insert(acq.triggerIndices.begin(), 0L);
                 acq.triggerTimestamps.insert(acq.triggerTimestamps.begin(), 0);
                 acq.triggerEventNames.insert(acq.triggerEventNames.begin(), "WARNING_SAMPLES_DROPPED");
@@ -557,20 +547,28 @@ struct RemoteStreamSource : RemoteSourceBase, RemoteSourceCommon<RemoteStreamSou
         this->progress->notify_all();
         return {};
     }
-}; // RemoteStreamSource
+};
 
 template<typename T>
 requires std::is_floating_point_v<T> || gr::UncertainValueLike<T>
 struct RemoteDataSetSource : RemoteSourceBase, RemoteSourceCommon<RemoteDataSetSource<T>, gr::DataSet<T>>, gr::Block<RemoteDataSetSource<T>> {
     using Parent = gr::Block<RemoteDataSetSource<T>>;
+    using Queue  = RemoteSourceCommon<RemoteDataSetSource, gr::DataSet<T>>::Queue;
+
+    constexpr static auto floatToDatasetTypeConvert = [](float v) constexpr {
+        if constexpr (gr::UncertainValueLike<T>) {
+            return static_cast<T::value_type>(v);
+        } else {
+            return static_cast<T>(v);
+        }
+    };
+
     gr::PortOut<gr::DataSet<T>> out;
 
     gr::Annotated<bool, "verbose console", gr::Doc<"For debugging">>               verbose_console   = false;
     gr::Annotated<float, "reconnect timeout", gr::Doc<"reconnect timeout in sec">> reconnect_timeout = 5.f;
 
     GR_MAKE_REFLECTABLE(RemoteDataSetSource, out, remote_uri, host, verbose_console, reconnect_timeout);
-
-    using Queue = RemoteSourceCommon<RemoteDataSetSource, gr::DataSet<T>>::Queue;
 
     explicit RemoteDataSetSource(gr::property_map props) : Parent(std::move(props)) {
         RemoteSources::instance().registerRemoteSource(this);
@@ -591,24 +589,13 @@ struct RemoteDataSetSource : RemoteSourceBase, RemoteSourceCommon<RemoteDataSetS
         return n == 0UZ ? gr::work::Status::INSUFFICIENT_INPUT_ITEMS : gr::work::Status::OK;
     }
 
-    std::optional<gr::Message> propertyCallbackLifecycleState(std::string_view propertyName, gr::Message message) {
-        //
-        return Parent::propertyCallbackLifecycleState(propertyName, std::move(message));
-    }
-
-    constexpr static auto floatToDatasetTypeConvert = [](float v) constexpr {
-        if constexpr (gr::UncertainValueLike<T>) {
-            return static_cast<T::value_type>(v);
-        } else {
-            return static_cast<T>(v);
-        }
-    };
+    std::optional<gr::Message> propertyCallbackLifecycleState(std::string_view propertyName, gr::Message message) { return Parent::propertyCallbackLifecycleState(propertyName, std::move(message)); }
 
     RemoteSubscriptionHandle copyRestResponseDataIntoQueue(const opencmw::mdp::Message& rep, const std::weak_ptr<Queue>& maybeQueue) {
-        long           skipped_samples     = 0;
-        constexpr auto skip_warning_prefix = "Warning: skipped ";
-        if (rep.error.starts_with(skip_warning_prefix)) {
-            skipped_samples = std::stol(rep.error.substr(std::string_view(skip_warning_prefix).size()));
+        long           skippedSamples     = 0;
+        constexpr auto kSkipWarningPrefix = "Warning: skipped ";
+        if (rep.error.starts_with(kSkipWarningPrefix)) {
+            skippedSamples = std::stol(rep.error.substr(std::string_view(kSkipWarningPrefix).size()));
         } else if (!rep.error.empty()) {
             emit<gr::message::Command::Notify>(this->msgOut, gr::Error(std::format("Error in subscription: {}. Re-subscribing {}\n", rep.error, remote_uri)), {.endpoint = "subscription", .serviceName = this->unique_name});
             uint64_t nowTimeoutNs = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count()) //
@@ -638,11 +625,9 @@ struct RemoteDataSetSource : RemoteSourceBase, RemoteSourceCommon<RemoteDataSetS
 
             ds.timestamp = acq.acqLocalTimeStamp.value(); // UTC timestamp [ns]
 
-            // signal data layout:
             ds.extents = {static_cast<int32_t>(nSamples)};
             ds.layout  = gr::LayoutRight{};
 
-            // axis layout:
             ds.axis_names = {"x-axis"};
             ds.axis_units = {"a.u."};
             if (nSamples == acq.channelTimeSinceRefTrigger.size()) {
@@ -655,7 +640,6 @@ struct RemoteDataSetSource : RemoteSourceBase, RemoteSourceCommon<RemoteDataSetS
                         remote_uri, acq.channelTimeSinceRefTrigger.size(), nSamples)));
             }
 
-            // signal meta info
             if (nSignals == acq.channelNames.size() && nSignals == acq.channelQuantities.size() && nSignals == acq.channelUnits.size()) {
                 ds.signal_names.assign(acq.channelNames.begin(), acq.channelNames.end());
                 ds.signal_units.assign(acq.channelUnits.begin(), acq.channelUnits.end());
@@ -679,8 +663,7 @@ struct RemoteDataSetSource : RemoteSourceBase, RemoteSourceCommon<RemoteDataSetS
 
             copySignalValues(ds, acq, nSignals, nSamples);
 
-            // meta data
-            ds.meta_information.push_back({{"subscription-updates-skipped", static_cast<uint64_t>(skipped_samples)}});
+            ds.meta_information.push_back({{"subscription-updates-skipped", static_cast<uint64_t>(skippedSamples)}});
             ds.timing_events.resize(1UZ);
 
             for (const auto& [idx, yaml] : std::views::zip(acq.triggerIndices.value(), acq.triggerYamlPropertyMaps.value())) {
@@ -689,7 +672,6 @@ struct RemoteDataSetSource : RemoteSourceBase, RemoteSourceCommon<RemoteDataSetS
                     const gr::property_map& rootMap = yamlMap.value();
                     ds.timing_events[0].emplace_back(static_cast<std::ptrdiff_t>(idx), rootMap);
                 } else {
-                    // throw gr::exception(std::format("Could not parse yaml for Tag property_map: {}:{}\n{}", yamlMap.error().message, yamlMap.error().line, yaml));
                 }
             }
 
@@ -704,9 +686,6 @@ struct RemoteDataSetSource : RemoteSourceBase, RemoteSourceCommon<RemoteDataSetS
         return {};
     }
 
-private:
-    /// Copy signal values from an acquisition into a dataset
-    // TODO: still needs to be tested when we get full support of gr::UncertainValue
     void copySignalValues(gr::DataSet<T>& ds, const opendigitizer::acq::Acquisition& acq, std::size_t nSignals, std::size_t nSamples) {
         ds.signal_values.resize(nSignals * nSamples);
         if constexpr (gr::UncertainValueLike<T>) {
@@ -741,6 +720,6 @@ private:
     }
 };
 
-} // namespace opendigitizer
+} // namespace gr::od
 
 #endif

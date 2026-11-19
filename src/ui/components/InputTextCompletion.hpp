@@ -8,15 +8,17 @@
 #include <ranges>
 #include <vector>
 
-namespace DigitizerUi::components {
+namespace gr::od::components {
 
 template<typename T>
 concept CompletionNamesCollection = !std::is_const_v<T> && std::ranges::forward_range<T> && std::is_same_v<std::remove_cvref_t<std::ranges::range_value_t<T>>, std::string>;
 
-/// Struct containing params to pass to ImGui::InputText. Intended use:
-/// InputTextCompletion(namesContainer}.inputText(...))
+/// usage: inputTextCompletion(names).inputText(...)
 template<CompletionNamesCollection Collection>
 struct InputTextCompletionContext {
+    Collection*            data     = nullptr;
+    ImGuiInputTextCallback callback = &inputTextCompletionCallback;
+
     static int inputTextCompletionCallback(ImGuiInputTextCallbackData* d) {
         assert(d->UserData && "no userdata passed to ImGui::InputText()?");
         if (d->EventKey == ImGuiKey_Tab) {
@@ -25,8 +27,7 @@ struct InputTextCompletionContext {
             std::string_view         inputBufferSoFar = {d->Buf, static_cast<std::size_t>(d->BufTextLen)};
 
             if (inputBufferSoFar.empty()) {
-                // user has not typed anything yet so we don't know what they
-                // want, and the rest of this function does not handle this case
+                // nothing typed yet: no completion
                 return 0;
             }
 
@@ -64,19 +65,16 @@ struct InputTextCompletionContext {
         return 0;
     }
 
-    Collection*            data     = nullptr;
-    ImGuiInputTextCallback callback = &inputTextCompletionCallback;
-
     auto inputText(const char* label, std::string* buffer, ImGuiInputTextFlags flags = ImGuiInputTextFlags_None) { //
         return ImGui::InputText(label, buffer, flags | ImGuiInputTextFlags_CallbackCompletion, callback, data);
     }
 };
 
 template<CompletionNamesCollection Collection>
-InputTextCompletionContext<Collection> InputTextCompletion(Collection& collection) {
+InputTextCompletionContext<Collection> inputTextCompletion(Collection& collection) {
     return {std::addressof(collection)};
 }
 
-} // namespace DigitizerUi::components
+} // namespace gr::od::components
 
 #endif

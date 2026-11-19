@@ -3,10 +3,12 @@
 
 #include <boost/ut.hpp>
 
+using namespace gr::od;
+
 using namespace boost;
 
-struct TestApp : public DigitizerUi::test::ImGuiTestApp {
-    using DigitizerUi::test::ImGuiTestApp::ImGuiTestApp;
+struct TestApp : public test::ImGuiTestApp {
+    using test::ImGuiTestApp::ImGuiTestApp;
 
     void registerTests() override {
         struct TestState {
@@ -18,11 +20,11 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
         t->SetVarsDataType<TestState>();
 
         t->GuiFunc = [](ImGuiTestContext* ctx) {
-            IMW::Window window("Test Window", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoSavedSettings);
+            imw::Window window("Test Window", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoSavedSettings);
             ImGui::SetWindowSize(ImVec2(300, 300));
 
             auto& vars = ctx->GetVars<TestState>();
-            if (DigitizerUi::components::InputKeypad::edit("item_source", "label", &vars.value)) {
+            if (components::InputKeypad::edit("item_source", "label", &vars.value)) {
                 // do not override with false every frame
                 vars.edited = true;
             }
@@ -32,7 +34,6 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             ut::test("keypad visual test") = [ctx] {
                 ImGuiContext& g = *GImGui;
 
-                // keypad isn't visible yet
                 ut::expect(g.OpenPopupStack.empty());
 
                 ctx->SetRef("Test Window");
@@ -44,7 +45,6 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 ctx->SleepNoSkip(0.2f, 0.02f); // the modal background fades in over 1/6 s of frame time
                 captureScreenshot(*ctx, keypadWindow->ID);
 
-                // nothing edited yet
                 auto& vars = ctx->GetVars<TestState>();
                 ut::expect(vars.value == 0);
                 ut::expect(!vars.edited);
@@ -53,13 +53,11 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 auto subWindowInfo = ctx->WindowInfo("//KeypadX/drawKeypad Input");
                 ctx->SetRef(subWindowInfo.Window->ID);
 
-                // press some buttons
                 ctx->ItemClick("9");
                 ctx->ItemClick("Enter");
                 ut::expect(vars.value == 9);
                 ut::expect(vars.edited);
 
-                // no keypad now
                 ut::expect(g.OpenPopupStack.empty());
             };
 
@@ -85,7 +83,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
 };
 
 int main(int argc, char* argv[]) {
-    auto options             = DigitizerUi::test::TestOptions::fromArgs(argc, argv);
+    auto options             = test::TestOptions::fromArgs(argc, argv);
     options.screenshotPrefix = "keypad";
 
     TestApp app(options);

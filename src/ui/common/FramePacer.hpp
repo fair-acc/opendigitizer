@@ -10,41 +10,8 @@
 #include <chrono>
 #include <cstdint>
 
-namespace DigitizerUi {
+namespace gr::od {
 
-/**
- * @brief FramePacer: Event-driven rendering with min/max rate limiting.
- *
- * Replaces busy-wait vsync loops with true sleep via SDL_WaitEventTimeout.
- * Uses SDL_PushEvent to wake the main thread when requestFrame() is called
- * from worker threads (e.g., data arrival callbacks).
- *
- * Supports three rendering triggers:
- *   1. Event-driven: render when requestFrame() is called (input, data arrival)
- *   2. Minimum rate: guaranteed refresh even without events (e.g., 1 Hz for clock updates)
- *   3. Maximum rate: throttling to cap CPU/GPU usage (e.g., 60 Hz)
- *
- * Usage:
- *   // Main loop (native):
- *   auto& pacer = globalFramePacer();
- *   pacer.setMinRate(1.0);   // refresh at least 1 Hz
- *   pacer.setMaxRate(60.0);  // cap at 60 Hz
- *
- *   while (running) {
- *       SDL_WaitEventTimeout(nullptr, pacer.getWaitTimeoutMs());  // true sleep
- *       processEvents();  // input handlers call pacer.requestFrame()
- *       if (pacer.shouldRender()) {
- *           render();
- *           pacer.rendered();
- *       }
- *   }
- *
- *   // Data callback (worker thread):
- *   void onDataArrived(std::span<float> samples) {
- *       buffer.push(samples);
- *       globalFramePacer().requestFrame();  // wakes main thread via SDL event
- *   }
- */
 struct FrameRequestEvent {
     static inline std::uint32_t _sdlEventType{0};
 
@@ -59,18 +26,22 @@ struct FrameRequestEvent {
     }
 };
 
+/// event-driven rendering between a minimum and a maximum frame rate:
+/// the main loop sleeps in SDL_WaitEventTimeout(getWaitTimeoutMs()) instead of busy-waiting on vsync, renders while shouldRender() and then calls rendered();
+/// requestFrame() from any thread (input, data arrival) wakes it with an SDL event;
+/// the minimum rate refreshes without events (e.g. 1 Hz for the clock), the maximum rate caps CPU and GPU use
 template<typename TClock = std::chrono::steady_clock>
 struct BasicFramePacer : FrameRequestEvent {
     using clock      = TClock;
     using time_point = clock::time_point;
     using duration   = clock::duration;
 
-    static constexpr std::uint32_t minFramesNeededToResolveWidgetChanges = 3U;
+    static constexpr std::uint32_t kMinFramesNeededToResolveWidgetChanges = 3U;
 
     std::chrono::nanoseconds   _maxPeriod;
     std::chrono::nanoseconds   _minPeriod;
     time_point                 _lastRender{clock::now() - _maxPeriod};
-    std::atomic<std::uint32_t> _pendingFrames{minFramesNeededToResolveWidgetChanges};
+    std::atomic<std::uint32_t> _pendingFrames{kMinFramesNeededToResolveWidgetChanges};
 
     time_point                 _statsStart{clock::now()};
     std::atomic<std::uint64_t> _requestCount{0};
@@ -79,7 +50,7 @@ struct BasicFramePacer : FrameRequestEvent {
     constexpr BasicFramePacer(std::chrono::nanoseconds maxPeriod = std::chrono::seconds{1}, std::chrono::nanoseconds minPeriod = std::chrono::milliseconds{16}) noexcept : _maxPeriod(maxPeriod), _minPeriod(minPeriod) {}
 
     void requestFrame() noexcept {
-        if (registerSdlEvent() && _pendingFrames.exchange(minFramesNeededToResolveWidgetChanges, std::memory_order_acq_rel) == 0U) {
+        if (registerSdlEvent() && _pendingFrames.exchange(kMinFramesNeededToResolveWidgetChanges, std::memory_order_acq_rel) == 0U) {
             SDL_Event event{.type = _sdlEventType};
             SDL_PushEvent(&event);
         }
@@ -148,6 +119,6 @@ inline FramePacer& globalFramePacer() {
     return instance;
 }
 
-} // namespace DigitizerUi
+} // namespace gr::od
 
 #endif // OPENDIGITIZER_FRAME_PACER_HPP

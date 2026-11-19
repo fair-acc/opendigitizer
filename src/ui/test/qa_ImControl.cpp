@@ -31,11 +31,13 @@
 #include <string>
 #include <vector>
 
+using namespace gr::od;
+
 CMRC_DECLARE(ui_test_assets);
 
 using namespace boost;
 using namespace boost::ut;
-using namespace opendigitizer::test;
+using namespace test;
 
 namespace {
 constexpr ImVec2 kDashboardWindowPos{40.f, 80.f};
@@ -45,16 +47,16 @@ constexpr ImVec2 kPianoWindowPos{40.f, 400.f};
 constexpr ImVec2 kPianoWindowSize{900.f, 240.f};
 
 struct TestState : TestDashboardRunner {
-    DigitizerUi::ToolbarView                                           view;
-    std::unique_ptr<StandaloneControl<DigitizerUi::ImControlToggle>>   toggle;
-    std::unique_ptr<StandaloneControl<DigitizerUi::ImControlTrigger>>  trigger;
-    std::unique_ptr<StandaloneControl<DigitizerUi::ImControlText>>     text;
-    std::unique_ptr<StandaloneControl<DigitizerUi::ImControlChoice>>   choice;
-    std::unique_ptr<StandaloneControl<DigitizerUi::ImPropertyReadout>> readout;
-    std::unique_ptr<StandaloneControl<opendigitizer::PianoControl>>    piano;
-    std::unique_ptr<StandaloneControl<opendigitizer::PianoControl>>    pianoWithoutGenerator;
-    bool                                                               showLabels                        = true;
-    bool                                                               includeControlledPropertyInConfig = true;
+    ToolbarView                                           view;
+    std::unique_ptr<StandaloneControl<ImControlToggle>>   toggle;
+    std::unique_ptr<StandaloneControl<ImControlTrigger>>  trigger;
+    std::unique_ptr<StandaloneControl<ImControlText>>     text;
+    std::unique_ptr<StandaloneControl<ImControlChoice>>   choice;
+    std::unique_ptr<StandaloneControl<ImPropertyReadout>> readout;
+    std::unique_ptr<StandaloneControl<PianoControl>>      piano;
+    std::unique_ptr<StandaloneControl<PianoControl>>      pianoWithoutGenerator;
+    bool                                                  showLabels                        = true;
+    bool                                                  includeControlledPropertyInConfig = true;
 };
 
 TestState* gState = nullptr;
@@ -83,8 +85,8 @@ bool containsMatchingMessage(const std::vector<gr::Message>& messages, std::stri
 DrawableBlockConfig controlledParsedConfig(gr::pmt::Value value, std::vector<std::string> choices = {}) { return DrawableBlockConfig{.firstControlledProperty = {.value = value, .hints = {.choices = choices}}, .aggregateControlledPropertyHints = {.choices = choices}}; }
 gr::property_map    controlledConfig(gr::pmt::Value value, std::vector<std::string> choices = {}) { return controlledParsedConfig(std::move(value), std::move(choices)).toMap().value_or(gr::property_map{}); }
 
-/// the InvisibleButton covering the whole keyboard of @param piano, drawn in the "pianoPanel" window
-ImGuiTestItemInfo pianoKeyboardInfo(ImGuiTestContext* ctx, const opendigitizer::PianoControl& piano) {
+/// the InvisibleButton covering the whole keyboard of `piano`, drawn in the "pianoPanel" window
+ImGuiTestItemInfo pianoKeyboardInfo(ImGuiTestContext* ctx, const PianoControl& piano) {
     const ImGuiWindow* window = ctx->WindowInfo("//pianoPanel").Window;
     expect(window != nullptr) << fatal;
     const std::string_view uniqueName = piano.unique_name.value();
@@ -98,14 +100,14 @@ std::size_t countMessagesSettingKey(const std::vector<gr::Message>& messages, st
 void sendSetTargetMapMessage(const std::string& control, const std::string& targetMap) { gState->sendSetting(control, {{"target_map", targetMap}}); }
 } // namespace
 
-struct TestApp : public DigitizerUi::test::ImGuiTestApp {
-    using DigitizerUi::test::ImGuiTestApp::ImGuiTestApp;
+struct TestApp : public test::ImGuiTestApp {
+    using test::ImGuiTestApp::ImGuiTestApp;
 
     static DrawableBlockConfig::ControlledProperty getFirstControlledProperty(std::string_view controlName) {
-        auto&                            model   = gState->dashboard->session.graphModel;
-        const DigitizerUi::UiGraphBlock* control = model.recursiveFindBlockByName(controlName).block;
+        auto&               model   = gState->dashboard->session.graphModel;
+        const UiGraphBlock* control = model.recursiveFindBlockByName(controlName).block;
         expect(control != nullptr) << fatal << controlName;
-        return DigitizerUi::UiGraphModel::firstControlledPropertyConfig(model.resolveControlledProperties(*control).value_or(std::vector<DigitizerUi::UiGraphModel::BlockPointerPropertyNamePair>{}));
+        return UiGraphModel::firstControlledPropertyConfig(model.resolveControlledProperties(*control).value_or(std::vector<UiGraphModel::BlockPointerPropertyNamePair>{}));
     }
 
     void registerTests() override {
@@ -113,10 +115,10 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             ImGui::SetNextWindowPos(kDashboardWindowPos);
             ImGui::SetNextWindowSize(kWindowSize);
             {
-                IMW::Window window("Host", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
+                imw::Window window("Host", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
                 // draw the toolbar for the dashboard, if the dashboard is active
                 if (gState->dashboard) {
-                    gState->dashboard->session.handleMessages();
+                    gState->dashboard->session.receiveMessages();
                     if (gState->dashboard->isInitialised) {
                         gState->view.draw(gState->dashboard->session, false);
                     }
@@ -126,7 +128,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 ImGui::SetNextWindowPos(kUiControlWindowPos);
                 ImGui::SetNextWindowSize(kWindowSize);
                 {
-                    IMW::Window uiControlPanel("uiControlPanel", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
+                    imw::Window uiControlPanel("uiControlPanel", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
                     // makeConfig() here needs a targetValue to be provided just to tell the control that it is connected to something. controls which do not receive a value are drawn disabled.
                     const auto makeConfig = [](gr::pmt::Value targetValue) { return DrawableBlockConfig{.firstControlledProperty = {.value = std::move(targetValue)}, .showLabel = gState->showLabels}.toMap().value_or(gr::property_map{}); };
                     std::ignore           = gState->toggle->block.draw(makeConfig(false));
@@ -143,7 +145,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 ImGui::SetNextWindowPos(kPianoWindowPos);
                 ImGui::SetNextWindowSize(kPianoWindowSize);
                 {
-                    IMW::Window pianoPanel("pianoPanel", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
+                    imw::Window pianoPanel("pianoPanel", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
                     const auto  connectedConfig = DrawableBlockConfig{.firstControlledProperty = {.value = false}}.toMap().value_or(gr::property_map{});
                     std::ignore                 = gState->piano->block.draw(connectedConfig);
                     std::ignore                 = gState->pianoWithoutGenerator->block.draw(connectedConfig);
@@ -245,7 +247,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 "the text input sets the string on each named block"_test = [&] {
                     expect(gState->blockHasStringKeyValuePair("plotSink1", "signal_name", "first")) << fatal << "signal name starts at \"first\", as is written in the .grc";
                     expect(gState->blockHasStringKeyValuePair("plotSink2", "signal_name", "second")) << fatal << "signal name starts at \"second\", as is written in the .grc";
-                    // not sure whether it is really an important contract that the first block listed in the target_map is the one that determines the default value for the control, but for now that is the behavior
+                    // the first target_map block supplying the default value is the current behaviour, not necessarily a contract
                     gState->waitUntil(ctx, "text input should inherit the initial value from its first target", [] { return gState->blockHasStringKeyValuePair("controlText", "value", "first"); });
                     ctx->ItemInputValue("**/##Name", "foo bar"); // ui control block with name "controlText" has label "Name"
                     gState->waitUntil(ctx, "text input got propagated to all target blocks", [] { return gState->blockHasStringKeyValuePair("plotSink1", "signal_name", "foo bar") && gState->blockHasStringKeyValuePair("plotSink2", "signal_name", "foo bar"); });
@@ -265,7 +267,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
 
                 "picking a choice sets the enum on the target and stores it in the control block"_test = [&] {
                     expect(gState->blockHasStringKeyValuePair("signalGenerator1", "signal_type", "Sin")) << fatal;
-                    const DigitizerUi::UiGraphBlock* control = gState->dashboard->session.graphModel.recursiveFindBlockByName("controlChoice").block;
+                    const UiGraphBlock* control = gState->dashboard->session.graphModel.recursiveFindBlockByName("controlChoice").block;
                     expect(control != nullptr) << fatal;
                     ctx->ItemClick(controlItemId(ctx, "//Host/##Toolbar", control->blockUniqueName, "##Shape"));
                     ctx->ItemClick("//$FOCUSED/Cos");
@@ -279,7 +281,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                         return typed.has_value() && typed->size() == 1UZ && *typed->begin() == input;
                     };
                     expect(gState->waitUntil(ctx, "the selector routes input 0 as the .grc says", [&] { return routedFrom(0U); })) << fatal;
-                    const DigitizerUi::UiGraphBlock* control = gState->dashboard->session.graphModel.recursiveFindBlockByName("controlRoute").block;
+                    const UiGraphBlock* control = gState->dashboard->session.graphModel.recursiveFindBlockByName("controlRoute").block;
                     expect(control != nullptr) << fatal;
                     ctx->ItemClick(controlItemId(ctx, "//Host/##Toolbar", control->blockUniqueName, "##Route"));
                     for (const char* offered : {"first", "second"}) {
@@ -292,7 +294,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 "an ImControlChoice without target_map sends each key's value to its blocks, the selected one at start"_test = [&] {
                     const auto preset = [](float amplitude, std::string_view name) { return gState->blockHasBasicTypeKeyValuePair<float>("signalGenerator1", "amplitude", amplitude) && gState->blockHasBasicTypeKeyValuePair<float>("signalGenerator2", "amplitude", amplitude) && gState->blockHasStringKeyValuePair("plotSink3", "signal_name", name); };
                     expect(gState->waitUntil(ctx, "'quiet' applied at start, overriding the .grc amplitudes", [&] { return preset(0.5f, "routed quietly"); })) << fatal;
-                    const DigitizerUi::UiGraphBlock* control = gState->dashboard->session.graphModel.recursiveFindBlockByName("controlPreset").block;
+                    const UiGraphBlock* control = gState->dashboard->session.graphModel.recursiveFindBlockByName("controlPreset").block;
                     expect(control != nullptr) << fatal;
                     ctx->ItemClick(controlItemId(ctx, "//Host/##Toolbar", control->blockUniqueName, "##Preset"));
                     ctx->ItemClick("//$FOCUSED/loud");
@@ -301,7 +303,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
 
                 "an ImControlDevice lists its entries above the target's available_devices; a device sends its id selector and device_values"_test = [&] {
                     expect(gState->waitUntil(ctx, "the entry 'off' applied at start", [] { return gState->blockHasStringKeyValuePair("deviceTarget", "route", "off"); })) << fatal;
-                    const DigitizerUi::UiGraphBlock* control = gState->dashboard->session.graphModel.recursiveFindBlockByName("controlDevice").block;
+                    const UiGraphBlock* control = gState->dashboard->session.graphModel.recursiveFindBlockByName("controlDevice").block;
                     expect(control != nullptr) << fatal;
                     const auto pick = [&](const char* item) {
                         ctx->ItemClick(controlItemId(ctx, "//Host/##Toolbar", control->blockUniqueName, "##device"));
@@ -314,7 +316,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 };
 
                 "an ImControlDevice falls back to its fallback entry while the target's device is not open, and returns to the device"_test = [&] {
-                    const DigitizerUi::UiGraphBlock* control = gState->dashboard->session.graphModel.recursiveFindBlockByName("controlDevice").block;
+                    const UiGraphBlock* control = gState->dashboard->session.graphModel.recursiveFindBlockByName("controlDevice").block;
                     expect(control != nullptr) << fatal;
                     const ImGuiID comboId = controlItemId(ctx, "//Host/##Toolbar", control->blockUniqueName, "##device");
                     gState->sendSetting("deviceTarget", {{"device_state", std::string("open")}});
@@ -367,10 +369,10 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 gState->reload(cmrc::ui_test_assets::get_filesystem(), "examples/qa_imcontrol_color.grc", "color");
                 gState->waitForScheduler(ctx);
 
-                auto&                            model   = gState->dashboard->session.graphModel;
-                const DigitizerUi::UiGraphBlock* control = model.recursiveFindBlockByName("controlColor").block;
-                const DigitizerUi::UiGraphBlock* target  = model.recursiveFindBlockByName("target").block;
-                const DigitizerUi::UiGraphBlock* sink    = model.recursiveFindBlockByName("sink1").block;
+                auto&               model   = gState->dashboard->session.graphModel;
+                const UiGraphBlock* control = model.recursiveFindBlockByName("controlColor").block;
+                const UiGraphBlock* target  = model.recursiveFindBlockByName("target").block;
+                const UiGraphBlock* sink    = model.recursiveFindBlockByName("sink1").block;
                 expect(control != nullptr && target != nullptr && sink != nullptr) << fatal;
                 gState->waitUntil(ctx, "model has the correct units", [control, target, sink] { return !control->uiControlCompatibleTypeMap().empty() && target->blockSettingsMetaInformation.contains("no_unit_number") && sink->blockSettingsMetaInformation.contains("color"); });
 
@@ -453,7 +455,6 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 };
 
                 "ImControlReadout shows expected text"_test = [&] {
-                    using DigitizerUi::ImPropertyReadout;
                     expect(ctx->ItemExists("**/##Reading"));
                     using namespace std::string_literals;
                     expect(eq(ImPropertyReadout::readoutText(controlledParsedConfig(std::int32_t{42})), "42"s));
@@ -482,7 +483,6 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             t->GuiFunc = commonGuiFunc;
 
             t->TestFunc = [](ImGuiTestContext* ctx) { // NOSONAR test lambda length
-                using opendigitizer::PianoControl;
                 using Key                         = PianoControl::Key;
                 static constexpr float kEpsilon   = 1e-3f;
                 const auto             isNearlyEq = [](float a, float b) { return std::abs(a - b) < kEpsilon; };
@@ -618,7 +618,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
 };
 
 int main(int argc, char* argv[]) {
-    auto options             = DigitizerUi::test::TestOptions::fromArgs(argc, argv);
+    auto options             = test::TestOptions::fromArgs(argc, argv);
     options.screenshotPrefix = "imcontrol";
     TestApp app(options);
 
@@ -629,17 +629,17 @@ int main(int argc, char* argv[]) {
     auto& registry = gr::globalBlockRegistry();
     gr::blocklib::initGrBasicBlocks(registry);
     gr::blocklib::initGrTestingBlocks(registry);
-    gr::registerBlock<opendigitizer::test::UiControlCompatibilityTarget>(registry);
-    gr::registerBlock<opendigitizer::test::UiControlDeviceTarget>(registry);
-    state.toggle  = std::make_unique<StandaloneControl<DigitizerUi::ImControlToggle>>(gr::property_map{{"name", "standalone_toggle"}, {"label", "Enabled"}, {"value", false}, {"target_map", "TargetA,TargetB:enabled"}});
-    state.trigger = std::make_unique<StandaloneControl<DigitizerUi::ImControlTrigger>>(gr::property_map{{"name", "standalone_trigger"}, {"label", "Fire"}, {"target_map", "TargetA:fire"}});
-    state.text    = std::make_unique<StandaloneControl<DigitizerUi::ImControlText>>(gr::property_map{{"name", "standalone_text"}, {"label", "Title"}, {"value", "start"}, {"target_map", "TargetA:caption"}});
+    registerWithIdPrefix<test::UiControlCompatibilityTarget>(registry, kOpendigitizerIdPrefix);
+    registerWithIdPrefix<test::UiControlDeviceTarget>(registry, kOpendigitizerIdPrefix);
+    state.toggle  = std::make_unique<StandaloneControl<ImControlToggle>>(gr::property_map{{"name", "standalone_toggle"}, {"label", "Enabled"}, {"value", false}, {"target_map", "TargetA,TargetB:enabled"}});
+    state.trigger = std::make_unique<StandaloneControl<ImControlTrigger>>(gr::property_map{{"name", "standalone_trigger"}, {"label", "Fire"}, {"target_map", "TargetA:fire"}});
+    state.text    = std::make_unique<StandaloneControl<ImControlText>>(gr::property_map{{"name", "standalone_text"}, {"label", "Title"}, {"value", "start"}, {"target_map", "TargetA:caption"}});
 
-    state.choice  = std::make_unique<StandaloneControl<DigitizerUi::ImControlChoice>>(gr::property_map{{"name", "standalone_choice"}, {"label", "Waveform"}, {"target_map", "TargetA:shape"}});
-    state.readout = std::make_unique<StandaloneControl<DigitizerUi::ImPropertyReadout>>(gr::property_map{{"name", "standalone_readout"}, {"label", "Reading"}, {"target_map", "TargetA:shape"}});
+    state.choice  = std::make_unique<StandaloneControl<ImControlChoice>>(gr::property_map{{"name", "standalone_choice"}, {"label", "Waveform"}, {"target_map", "TargetA:shape"}});
+    state.readout = std::make_unique<StandaloneControl<ImPropertyReadout>>(gr::property_map{{"name", "standalone_readout"}, {"label", "Reading"}, {"target_map", "TargetA:shape"}});
 
-    state.piano                 = std::make_unique<StandaloneControl<opendigitizer::PianoControl>>(gr::property_map{{"name", "standalone_piano"}, {"label", "Keys"}, {"target_map", "Envelope:pressed"}, {"signal_generator_name", "Oscillator"}});
-    state.pianoWithoutGenerator = std::make_unique<StandaloneControl<opendigitizer::PianoControl>>(gr::property_map{{"name", "standalone_piano_without_generator"}, {"label", "Gate"}, {"target_map", "Envelope:pressed"}});
+    state.piano                 = std::make_unique<StandaloneControl<PianoControl>>(gr::property_map{{"name", "standalone_piano"}, {"label", "Keys"}, {"target_map", "Envelope:pressed"}, {"signal_generator_name", "Oscillator"}});
+    state.pianoWithoutGenerator = std::make_unique<StandaloneControl<PianoControl>>(gr::property_map{{"name", "standalone_piano_without_generator"}, {"label", "Gate"}, {"target_map", "Envelope:pressed"}});
 
     const bool result = app.runTests();
     return result ? 0 : 1;

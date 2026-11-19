@@ -7,7 +7,7 @@
 
 #include "GraphModel.hpp"
 
-namespace DigitizerUi {
+namespace gr::od {
 
 /// a running flowgraph as the UI sees it: GR4 scheduler, graph model, frame pacer
 class GraphSession {
@@ -38,9 +38,9 @@ public:
     void sendToScheduler(std::string_view endpoint, gr::property_map data) { sendMessage(makeMessage(gr::message::Command::Set, std::string(schedulerUniqueName()), std::string(endpoint), std::move(data))); }
 
     void sendMessage(gr::Message message);
-    void handleMessages();
+    void receiveMessages();
 };
 
-} // namespace DigitizerUi
+} // namespace gr::od
 
 #endif

@@ -1,28 +1,24 @@
 #ifndef IMGUI_XKCD_HPP
 #define IMGUI_XKCD_HPP
 
-// xkcd-style hand-drawn rendering for ImGui/ImPlot.
-// Single-header library. Injects a custom vertex shader via ImDrawList callbacks.
-// Requires: OpenGL 3.x+ or OpenGL ES 3.0+ (WebGL2).
-//
-// Only untextured geometry (lines, fills, grids) is wobbled — text is preserved
-// because text vertices use font atlas UVs, not the white-pixel UV near (0,0).
+// xkcd-style hand-drawn rendering for ImGui/ImPlot: a custom vertex shader injected via ImDrawList callbacks, for OpenGL 3.x+ or OpenGL ES 3.0+ (WebGL2).
+// Only untextured geometry (lines, fills, grids) wobbles: text vertices use font atlas UVs, not the white-pixel UV near (0,0).
 
 #include "imgui.h"
 
-namespace ImXkcd {
+namespace gr::od::xkcd {
 
-void Init();
-void Apply(ImDrawData* drawData);
-void Shutdown();
+void init();
+void apply(ImDrawData* drawData);
+void shutdown();
 
 inline bool         enabled      = true;
 inline float        amplitude    = 7.f;    // pixel displacement strength
 inline float        frequency    = 0.002f; // noise frequency (lower = smoother wobble)
-inline float        seed         = 42.0f;  // deterministic noise seed
-inline unsigned int minElemCount = 50;     // skip draw commands below this index count (filters grid/axis lines)
+inline float        seed         = 42.0f;
+inline unsigned int minElemCount = 50; // skip draw commands below this index count (filters grid/axis lines)
 
-} // namespace ImXkcd
+} // namespace gr::od::xkcd
 
 #ifdef IMGUI_XKCD_IMPLEMENTATION
 
@@ -32,7 +28,7 @@ inline unsigned int minElemCount = 50;     // skip draw commands below this inde
 #include <array>
 #include <print>
 
-namespace ImXkcd {
+namespace gr::od::xkcd {
 namespace detail {
 
 inline GLuint gProgram     = 0;
@@ -157,11 +153,11 @@ inline void enableCallback(const ImDrawList*, const ImDrawCmd*) {
 
 } // namespace detail
 
-inline void Init() {
+inline void init() {
     using namespace detail;
 
-    const GLuint vs = opendigitizer::shader::compileShader(GL_VERTEX_SHADER, detail::kGlslPrefix, kVertBody);
-    const GLuint fs = opendigitizer::shader::compileShader(GL_FRAGMENT_SHADER, detail::kGlslPrefix, kFragBody);
+    const GLuint vs = shader::compileShader(GL_VERTEX_SHADER, detail::kGlslPrefix, kVertBody);
+    const GLuint fs = shader::compileShader(GL_FRAGMENT_SHADER, detail::kGlslPrefix, kFragBody);
     if (!vs || !fs) {
         glDeleteShader(vs);
         glDeleteShader(fs);
@@ -205,7 +201,7 @@ inline void Init() {
     std::println("[ImXkcd] initialised (program={}, uniforms: proj={} amp={} freq={} seed={} tex={} utilMaxY={})", gProgram, gLocProj, gLocAmp, gLocFreq, gLocSeed, gLocTex, gLocUtilMaxY);
 }
 
-inline void Apply(ImDrawData* drawData) {
+inline void apply(ImDrawData* drawData) {
     using namespace detail;
     if (!gProgram || !drawData || !enabled) {
         return;
@@ -243,14 +239,14 @@ inline void Apply(ImDrawData* drawData) {
     }
 }
 
-inline void Shutdown() {
+inline void shutdown() {
     if (detail::gProgram) {
         glDeleteProgram(detail::gProgram);
         detail::gProgram = 0;
     }
 }
 
-} // namespace ImXkcd
+} // namespace gr::od::xkcd
 
 #endif // IMGUI_XKCD_IMPLEMENTATION
 #endif // IMGUI_XKCD_HPP

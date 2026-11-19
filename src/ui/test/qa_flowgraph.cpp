@@ -25,7 +25,6 @@
 #include <Dashboard.hpp>
 #include <DashboardPage.hpp>
 
-// TODO: blocks are locally included/registered for this test -> should become a global feature
 #include "blocks/Arithmetic.hpp"
 #include "blocks/ImControlChoice.hpp"
 #include "blocks/ImControlNumber.hpp"
@@ -40,22 +39,24 @@
 
 #include <memory.h>
 
+using namespace gr::od;
+
 CMRC_DECLARE(ui_test_assets);
 
 using namespace boost;
 using namespace boost::ut;
 
-struct TestState : public opendigitizer::test::TestDashboardRunner {
-    DigitizerUi::FlowgraphPage flowgraphPage;
-    DigitizerUi::ToolbarView   toolbar; // need to draw the toolbar since ui control blocks only do things when drawn
+struct TestState : public test::TestDashboardRunner {
+    FlowgraphPage flowgraphPage;
+    ToolbarView   toolbar; // need to draw the toolbar since ui control blocks only do things when drawn
+
+    ~TestState() override { TestState::onDashboardAboutToBeUnloaded(); }
 
     void onDashboardLoaded() override { flowgraphPage.setDashboard(dashboard.get()); }
     void onDashboardAboutToBeUnloaded() override { flowgraphPage.setDashboard(nullptr); }
 
-    ~TestState() override { TestState::onDashboardAboutToBeUnloaded(); }
-
     void waitForScheduler(ImGuiTestContext* ctx, std::source_location location = std::source_location::current()) override {
-        opendigitizer::test::TestDashboardRunner::waitForScheduler(ctx, location);
+        test::TestDashboardRunner::waitForScheduler(ctx, location);
 
         // the default waitForScheduler waits for the scheduler to become active. we also want to wait for inspection to complete
         if (flowgraphPage.editorCount() == 0) {
@@ -70,7 +71,6 @@ struct TestState : public opendigitizer::test::TestDashboardRunner {
         flowgraphPage.pushEditor("rootBlock node editor", dashboard->session.graphModel, std::addressof(dashboard->session.graphModel.rootBlock));
     }
 
-    // for testing topology changing messages
     void waitForGraphModelUpdate(ImGuiTestContext* ctx, std::size_t expectedBlockCount) {
         waitUntil(ctx, std::format("the graph has {} blocks", expectedBlockCount), [this, expectedBlockCount] { return blocks().size() == expectedBlockCount; });
     }
@@ -85,7 +85,7 @@ struct TestState : public opendigitizer::test::TestDashboardRunner {
         return blocks()[0]->blockUniqueName;
     }
 
-    void setFilterBlock(const DigitizerUi::UiGraphBlock* block) { flowgraphPage.currentEditor().setFilterBlock(block); }
+    void setFilterBlock(const UiGraphBlock* block) { flowgraphPage.currentEditor().setFilterBlock(block); }
 
     void drawGraph() {
         // draw it here since we can't make FlowgraphPage a friend of the GuiFunc lambda
@@ -120,23 +120,36 @@ struct TestState : public opendigitizer::test::TestDashboardRunner {
     }
 };
 
-constexpr const char* simpleGraph = "connections: []\n"
-                                    "blocks:\n"
-                                    "  - parameters:\n"
-                                    "      name: \"connectSignalGenerator\"\n"
-                                    "    id: \"gr::basic::SignalGenerator<float32>\"\n"
-                                    "  - parameters:\n"
-                                    "      name: \"connectDataSink\"\n"
-                                    "    id: \"gr::basic::DataSink<float32>\"";
+constexpr const char* kSimpleGraph = "connections: []\n"
+                                     "blocks:\n"
+                                     "  - parameters:\n"
+                                     "      name: \"connectSignalGenerator\"\n"
+                                     "    id: \"gr::basic::SignalGenerator<float32>\"\n"
+                                     "  - parameters:\n"
+                                     "      name: \"connectDataSink\"\n"
+                                     "    id: \"gr::basic::DataSink<float32>\"";
 
 TestState* gState = nullptr;
 
-using namespace opendigitizer::test;
+using namespace test;
 
-struct TestApp : public DigitizerUi::test::ImGuiTestApp { // NOSONAR (more methods than authorized)
-    using DigitizerUi::test::ImGuiTestApp::ImGuiTestApp;
+struct TestApp : public test::ImGuiTestApp { // NOSONAR (more methods than authorized)
+    using test::ImGuiTestApp::ImGuiTestApp;
 
-    static void dragPinToPin(ImGuiTestContext* ctx, DigitizerUi::FlowgraphEditor& editor, const DigitizerUi::UiGraphPort* fromPort, const DigitizerUi::UiGraphPort* toPort) {
+    static constexpr std::array  kEditingButtons{"Add block...", "Add sub graph...", "Add remote signal...", "Rearrange blocks"};
+    static constexpr const char* kLocalTabRef = "//Fit Window/maintabbar/Local";
+
+    static constexpr auto fitGuiFunc = [](ImGuiTestContext*) {
+        imw::Window window("Fit Window", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoSavedSettings);
+        ImGui::SetWindowPos({0, 0});
+        ImGui::SetWindowSize(ImVec2(640, 420));
+        if (gState->dashboard) {
+            gState->flowgraphPage.draw();
+            gState->dashboard->session.receiveMessages();
+        }
+    };
+
+    static void dragPinToPin(ImGuiTestContext* ctx, FlowgraphEditor& editor, const UiGraphPort* fromPort, const UiGraphPort* toPort) {
         ctx->Yield(2); // ax::NodeEditor pin positions are not resolved until the frame after the first draw
         waitForSettledView(ctx, editor);
 
@@ -162,14 +175,14 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp { // NOSONAR (more metho
         ctx->MouseUp(ImGuiMouseButton_Left);
     }
 
-    [[nodiscard]] static bool edgeExistsIn(const DigitizerUi::UiGraphBlock& graph, std::string_view sourceBlockName, std::string_view destinationPortName) {
-        return std::ranges::any_of(graph.childEdges, [&](const DigitizerUi::UiGraphEdge& edge) {
+    [[nodiscard]] static bool edgeExistsIn(const UiGraphBlock& graph, std::string_view sourceBlockName, std::string_view destinationPortName) {
+        return std::ranges::any_of(graph.childEdges, [&](const UiGraphEdge& edge) {
             return edge.edgeSourcePort && edge.edgeSourcePort->ownerBlock && edge.edgeSourcePort->ownerBlock->blockName == sourceBlockName && //
                    edge.edgeDestinationPort && edge.edgeDestinationPort->portName == destinationPortName;
         });
     }
 
-    [[nodiscard]] static DigitizerUi::UiGraphPort* findFirstPortOfBlock(DigitizerUi::UiGraphBlock& graph, std::string_view blockName, gr::PortDirection direction) {
+    [[nodiscard]] static UiGraphPort* findFirstPortOfBlock(UiGraphBlock& graph, std::string_view blockName, gr::PortDirection direction) {
         for (auto& block : graph.childBlocks) {
             if (block->blockName != blockName) {
                 continue;
@@ -180,7 +193,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp { // NOSONAR (more metho
         return nullptr;
     }
 
-    static ImRect getBlockRegionCanvasSpace(DigitizerUi::FlowgraphEditor& editor, const DigitizerUi::UiGraphBlock* block) {
+    static ImRect getBlockRegionCanvasSpace(FlowgraphEditor& editor, const UiGraphBlock* block) {
         editor.makeCurrent();
         const auto   nodeId   = ax::NodeEditor::NodeId(block);
         const ImVec2 position = ax::NodeEditor::GetNodePosition(nodeId);
@@ -188,24 +201,22 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp { // NOSONAR (more metho
     }
 
     // do Yield(2) before calling this if the node was just created
-    static ImVec2 nodeCentreOnScreen(DigitizerUi::FlowgraphEditor& editor, const DigitizerUi::UiGraphBlock* block) {
+    static ImVec2 nodeCentreOnScreen(FlowgraphEditor& editor, const UiGraphBlock* block) {
         const ImRect node = getBlockRegionCanvasSpace(editor, block);
         expect(node.Min.x < FLT_MAX && node.Min.y < FLT_MAX) << fatal << "the node editor does not know about this block yet";
         expect(node.GetWidth() > 0.f && node.GetHeight() > 0.f) << fatal << "the node has not been laid out yet, probably do Yield(2) in the test";
         return ax::NodeEditor::CanvasToScreen(node.GetCenter());
     }
 
-    static void clickNode(ImGuiTestContext* ctx, DigitizerUi::FlowgraphEditor& editor, const DigitizerUi::UiGraphBlock* block, ImGuiMouseButton button) {
+    static void clickNode(ImGuiTestContext* ctx, FlowgraphEditor& editor, const UiGraphBlock* block, ImGuiMouseButton button) {
         ctx->MouseMoveToPos(nodeCentreOnScreen(editor, block));
         ctx->Yield();
         ctx->MouseClick(button);
         ctx->Yield();
     }
 
-    /// Moves the mouse onto the node for real, but makes the selection through the node editor's API.
-    /// TODO: figure out why imgui MouseClick and other testing mouse actions don't seem to work for
-    /// selecting nodes
-    static void selectNode(ImGuiTestContext* ctx, DigitizerUi::FlowgraphEditor& editor, const DigitizerUi::UiGraphBlock* block, bool addToSelection = false) {
+    /// moves the mouse onto the node for real, but selects through the node editor's API: the test engine's mouse actions do not select nodes
+    static void selectNode(ImGuiTestContext* ctx, FlowgraphEditor& editor, const UiGraphBlock* block, bool addToSelection = false) {
         ctx->MouseMoveToPos(nodeCentreOnScreen(editor, block));
         ctx->Yield();
         editor.makeCurrent();
@@ -218,7 +229,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp { // NOSONAR (more metho
         return g.OpenPopupStack.Size > 0 && g.OpenPopupStack.back().Window ? g.OpenPopupStack.back().Window->ID : 0;
     }
 
-    static void clickInBlockContextMenu(ImGuiTestContext* ctx, DigitizerUi::FlowgraphEditor& editor, const DigitizerUi::UiGraphBlock* block, const char* menuItem) {
+    static void clickInBlockContextMenu(ImGuiTestContext* ctx, FlowgraphEditor& editor, const UiGraphBlock* block, const char* menuItem) {
         clickNode(ctx, editor, block, ImGuiMouseButton_Right);
         ctx->Yield();
         const ImGuiID contextMenuId = frontmostPopupId();
@@ -243,43 +254,30 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp { // NOSONAR (more metho
         ctx->SetRef("Test Window");
     }
 
-    static DigitizerUi::UiGraphBlock* findRootChildByName(std::string_view blockName) {
+    static UiGraphBlock* findRootChildByName(std::string_view blockName) {
         auto& children = gState->currentRootBlock().childBlocks;
         auto  it       = std::ranges::find(children, blockName, [](const auto& child) { return std::string_view(child->blockName); });
         return it == children.end() ? nullptr : it->get();
     }
 
-    static DigitizerUi::UiGraphBlock* findRootChildByUniqueName(std::string_view uniqueName) {
+    static UiGraphBlock* findRootChildByUniqueName(std::string_view uniqueName) {
         auto& children = gState->currentRootBlock().childBlocks;
         auto  it       = std::ranges::find(children, uniqueName, [](const auto& child) { return std::string_view(child->blockUniqueName); });
         return it == children.end() ? nullptr : it->get();
     }
 
-    static DigitizerUi::UiGraphBlock* findSubgraphInCurrentRoot() {
+    static UiGraphBlock* findSubgraphInCurrentRoot() {
         auto& children = gState->currentRootBlock().childBlocks;
         auto  it       = std::ranges::find_if(children, [](const auto& child) { return child->isGraph() || child->isScheduler(); });
         return it == children.end() ? nullptr : it->get();
     }
 
-    static void requestEmplaceBlock(DigitizerUi::FlowgraphEditor& editor, std::string blockType) {
+    static void requestEmplaceBlock(FlowgraphEditor& editor, std::string blockType) {
         auto owner = editor.ownersForRoot();
         expect(owner.has_value()) << fatal;
 
         gState->dashboard->session.graphModel.send(gr::message::Command::Set, owner->scheduler, std::string(gr::scheduler::property::kEmplaceBlock), {{"type", std::move(blockType)}, {"_targetGraph", owner->graph}});
     }
-
-    static constexpr std::array  kEditingButtons{"Add block...", "Add sub graph...", "Add remote signal...", "Rearrange blocks"};
-    static constexpr const char* kLocalTabRef = "//Fit Window/maintabbar/Local";
-
-    static constexpr auto fitGuiFunc = [](ImGuiTestContext*) {
-        IMW::Window window("Fit Window", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoSavedSettings);
-        ImGui::SetWindowPos({0, 0});
-        ImGui::SetWindowSize(ImVec2(640, 420));
-        if (gState->dashboard) {
-            gState->flowgraphPage.draw();
-            gState->dashboard->session.handleMessages();
-        }
-    };
 
     // scattered pairs carry deliberately tangled stored positions (ui_constraints): loading neither arranges nor fits
     static std::string sourceSinkPairsGraph(std::size_t nPairs, bool scattered = false) {
@@ -295,13 +293,13 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp { // NOSONAR (more metho
         return std::format("blocks:\n{}connections:\n{}", blocks, connections);
     }
 
-    static bool allNodesAboveButtonBar(DigitizerUi::FlowgraphEditor& editor, float barPixels) {
+    static bool allNodesAboveButtonBar(FlowgraphEditor& editor, float barPixels) {
         const auto* context      = reinterpret_cast<ax::NodeEditor::Detail::EditorContext*>(editor._editorPtr);
         const float barTopCanvas = context->GetViewRect().Max.y - barPixels * context->GetViewRect().GetHeight() / context->GetRect().GetHeight();
         return contentBounds(editor).Max.y <= barTopCanvas;
     }
 
-    static ImRect contentBounds(DigitizerUi::FlowgraphEditor& editor) {
+    static ImRect contentBounds(FlowgraphEditor& editor) {
         editor.makeCurrent();
         ImRect bounds(ImVec2(std::numeric_limits<float>::max(), std::numeric_limits<float>::max()), ImVec2(std::numeric_limits<float>::lowest(), std::numeric_limits<float>::lowest()));
         for (const auto& block : gState->blocks()) {
@@ -312,7 +310,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp { // NOSONAR (more metho
         return bounds;
     }
 
-    static std::vector<ImVec2> nodePositions(DigitizerUi::FlowgraphEditor& editor) {
+    static std::vector<ImVec2> nodePositions(FlowgraphEditor& editor) {
         editor.makeCurrent();
         std::vector<ImVec2> positions;
         for (const auto& block : gState->blocks()) {
@@ -321,17 +319,17 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp { // NOSONAR (more metho
         return positions;
     }
 
-    static float viewZoom(DigitizerUi::FlowgraphEditor& editor) {
+    static float viewZoom(FlowgraphEditor& editor) {
         const auto* context = reinterpret_cast<ax::NodeEditor::Detail::EditorContext*>(editor._editorPtr);
         return context->GetRect().GetWidth() / context->GetViewRect().GetWidth();
     }
 
-    static bool allNodesInView(DigitizerUi::FlowgraphEditor& editor) {
+    static bool allNodesInView(FlowgraphEditor& editor) {
         const auto* context = reinterpret_cast<ax::NodeEditor::Detail::EditorContext*>(editor._editorPtr);
         return context->GetViewRect().Contains(contentBounds(editor));
     }
 
-    static void waitForSettledView(ImGuiTestContext* ctx, DigitizerUi::FlowgraphEditor& editor) {
+    static void waitForSettledView(ImGuiTestContext* ctx, FlowgraphEditor& editor) {
         const auto* context      = reinterpret_cast<ax::NodeEditor::Detail::EditorContext*>(editor._editorPtr);
         ImRect      previous     = context->GetViewRect();
         std::size_t stableFrames = 0UZ;
@@ -345,7 +343,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp { // NOSONAR (more metho
     }
 
     // the page's editor would find blocks already arranged by the root editor's: keep only the page's
-    static DigitizerUi::FlowgraphEditor& loadGraph(ImGuiTestContext* ctx, std::size_t nPairs, bool scattered = false) {
+    static FlowgraphEditor& loadGraph(ImGuiTestContext* ctx, std::size_t nPairs, bool scattered = false) {
         gState->reloadFromYamlString(sourceSinkPairsGraph(nPairs, scattered));
         gState->waitForScheduler(ctx);
         gState->waitUntil(ctx, "the graph has blocks", [] { return gState->hasBlocks(); });
@@ -355,7 +353,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp { // NOSONAR (more metho
         return gState->flowgraphPage.currentEditor();
     }
 
-    static DigitizerUi::FlowgraphEditor& loadUiControlGraph(ImGuiTestContext* ctx, const char* grc) {
+    static FlowgraphEditor& loadUiControlGraph(ImGuiTestContext* ctx, const char* grc) {
         gState->flowgraphPage.showEditorControls = false; // make sure mouse can click everything within the view rect
         gState->reload(cmrc::ui_test_assets::get_filesystem(), grc, "uicontrol");
         gState->waitForScheduler(ctx);
@@ -370,34 +368,34 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp { // NOSONAR (more metho
         return editor;
     }
 
-    static ImVec2 centerUiControlDragHandleInView(ImGuiTestContext* ctx, DigitizerUi::FlowgraphEditor& editor, const DigitizerUi::UiGraphBlock* control) {
+    static ImVec2 centerUiControlDragHandleInView(ImGuiTestContext* ctx, FlowgraphEditor& editor, const UiGraphBlock* control) {
         const ImGuiTestItemInfo info = ctx->ItemInfo(std::format("**/{}.uiDragHandle", control->blockName).c_str());
         expect(info.ID != 0u) << fatal << "no drag handle item found for " << control->blockName;
         editor.makeCurrent();
         return ax::NodeEditor::CanvasToScreen(info.RectFull.GetCenter());
     }
 
-    /// Items drawn inside of the node editor report their rectangle in canvas coordinates
+    /// items drawn inside the node editor report their rectangle in canvas coordinates
     static ImRect canvasItemRect(ImGuiTestContext* ctx, const char* itemRef) {
         const ImGuiTestItemInfo info = ctx->ItemInfo(itemRef);
         expect(info.ID != 0u) << fatal << "no item found for " << itemRef;
         return info.RectFull;
     }
 
-    static void moveMouseToCanvasItem(ImGuiTestContext* ctx, DigitizerUi::FlowgraphEditor& editor, const char* itemRef) {
+    static void moveMouseToCanvasItem(ImGuiTestContext* ctx, FlowgraphEditor& editor, const char* itemRef) {
         const ImRect rect = canvasItemRect(ctx, itemRef);
         editor.makeCurrent();
         ctx->MouseMoveToPos(ax::NodeEditor::CanvasToScreen(rect.GetCenter()));
         ctx->Yield();
     }
 
-    static void clickCanvasItem(ImGuiTestContext* ctx, DigitizerUi::FlowgraphEditor& editor, const char* itemRef) {
+    static void clickCanvasItem(ImGuiTestContext* ctx, FlowgraphEditor& editor, const char* itemRef) {
         moveMouseToCanvasItem(ctx, editor, itemRef);
         ctx->MouseClick(ImGuiMouseButton_Left);
         ctx->Yield();
     }
 
-    static void pressAndHoldUiControlDragHandle(ImGuiTestContext* ctx, DigitizerUi::FlowgraphEditor& editor, const DigitizerUi::UiGraphBlock* control) {
+    static void pressAndHoldUiControlDragHandle(ImGuiTestContext* ctx, FlowgraphEditor& editor, const UiGraphBlock* control) {
         ctx->MouseTeleportToPos(centerUiControlDragHandleInView(ctx, editor, control));
         ctx->Yield();
         ctx->MouseDown(ImGuiMouseButton_Left);
@@ -406,7 +404,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp { // NOSONAR (more metho
         ctx->MouseLiftDragThreshold(ImGuiMouseButton_Left);
     }
 
-    static void dragUiControlDragHandleToPosition(ImGuiTestContext* ctx, DigitizerUi::FlowgraphEditor& editor, const DigitizerUi::UiGraphBlock* control, ImVec2 dropScreenPos) {
+    static void dragUiControlDragHandleToPosition(ImGuiTestContext* ctx, FlowgraphEditor& editor, const UiGraphBlock* control, ImVec2 dropScreenPos) {
         // avoid the edit panel covering things which might happen depending on previous UI state, maybe there was just a drag going on and releasing caused a block to be selected
         editor._editPaneContext.setSelectedBlock(nullptr, nullptr);
         ctx->Yield();
@@ -418,7 +416,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp { // NOSONAR (more metho
         ctx->Yield(2); // one frame to handle the drop, one to open the popup
     }
 
-    static ImVec2 findEmptySpotInFlowgraph(DigitizerUi::FlowgraphEditor& editor) {
+    static ImVec2 findEmptySpotInFlowgraph(FlowgraphEditor& editor) {
         editor.makeCurrent();
         const auto*  context = reinterpret_cast<ax::NodeEditor::Detail::EditorContext*>(editor._editorPtr);
         const ImRect view    = context->GetRect();
@@ -436,7 +434,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp { // NOSONAR (more metho
         return {};
     }
 
-    static ImGuiID rightClickBackgroundAndReturnContextMenu(ImGuiTestContext* ctx, DigitizerUi::FlowgraphEditor& editor) {
+    static ImGuiID rightClickBackgroundAndReturnContextMenu(ImGuiTestContext* ctx, FlowgraphEditor& editor) {
         ctx->MouseMoveToPos(findEmptySpotInFlowgraph(editor));
         ctx->Yield();
         ctx->MouseClick(ImGuiMouseButton_Right);
@@ -455,8 +453,8 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp { // NOSONAR (more metho
 
     static std::string getTargetMapForBlock(const char* controlName) { return gState->setting(controlName, "target_map").value_or(std::string{}); }
 
-    /// Drags the selection from top left corner to bottom right. Probably only call after NavigateToContent, when the top left and bottom right are empty space and therefore clickable for selection
-    static void selectAllVisibleNodes(ImGuiTestContext* ctx, DigitizerUi::FlowgraphEditor& editor) {
+    /// drags a selection from the top-left to the bottom-right corner; after NavigateToContent, where both are empty space and therefore clickable
+    static void selectAllVisibleNodes(ImGuiTestContext* ctx, FlowgraphEditor& editor) {
         const auto*  context = reinterpret_cast<ax::NodeEditor::Detail::EditorContext*>(editor._editorPtr);
         const ImRect view    = context->GetRect();
         const ImVec2 inset{4.f, 4.f};
@@ -486,19 +484,19 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp { // NOSONAR (more metho
         expect(condition()) << what << fatal;
     }
 
-    static void setBlockPanelAlwaysOpen(DigitizerUi::FlowgraphEditor& editor) { editor._editPaneContext.closeTime = std::chrono::system_clock::now() + std::chrono::hours(1); }
+    static void setBlockPanelAlwaysOpen(FlowgraphEditor& editor) { editor._editPaneContext.closeTime = std::chrono::system_clock::now() + std::chrono::hours(1); }
 
-    static void openBlockPanel(ImGuiTestContext* ctx, DigitizerUi::FlowgraphEditor& editor, DigitizerUi::UiGraphBlock* block) {
+    static void openBlockPanel(ImGuiTestContext* ctx, FlowgraphEditor& editor, UiGraphBlock* block) {
         const auto owners = editor.ownersForRoot();
         expect(owners.has_value()) << fatal;
         editor._editPaneContext.targetGraph = owners->graph;
         editor._editPaneContext.setSelectedBlock(block, std::addressof(gState->dashboard->session.graphModel));
         setBlockPanelAlwaysOpen(editor);
-        gState->waitUntil(ctx, "the block panel has finished opening", [&editor] { return editor._splitter.anim_state == DigitizerUi::components::SplitterState::State::Shown; });
+        gState->waitUntil(ctx, "the block panel has finished opening", [&editor] { return editor._splitter.animState == components::SplitterState::State::Shown; });
     }
 
-    static void openBlockPropertyPanelWaitMetainfo(ImGuiTestContext* ctx, DigitizerUi::FlowgraphEditor& editor, std::string_view blockName) {
-        DigitizerUi::UiGraphBlock* block = findRootChildByName(blockName);
+    static void openBlockPropertyPanelWaitMetainfo(ImGuiTestContext* ctx, FlowgraphEditor& editor, std::string_view blockName) {
+        UiGraphBlock* block = findRootChildByName(blockName);
         expect(block != nullptr) << fatal << blockName << " not found";
         gState->waitUntil(ctx, "the meta information of the setting is known", [block] { return block->blockSettingsMetaInformation.contains("value"); });
         openBlockPanel(ctx, editor, block);
@@ -507,7 +505,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp { // NOSONAR (more metho
     }
 
     /// clicks one of the buttons which the block panel draws in place of the editor of a UI-controlled property, for example "**/Unlink##unlink_signal_name"
-    static void clickLockedPropertyButton(ImGuiTestContext* ctx, DigitizerUi::FlowgraphEditor& editor, const char* buttonRef) {
+    static void clickLockedPropertyButton(ImGuiTestContext* ctx, FlowgraphEditor& editor, const char* buttonRef) {
         setBlockPanelAlwaysOpen(editor);
         ctx->SetRef("//BlockControlsPanel");
         ctx->ItemClick(buttonRef);
@@ -515,9 +513,9 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp { // NOSONAR (more metho
         ctx->SetRef("Test Window");
     }
 
-    static void dragAndDropControlToTargetAndUsePopupAsRef(ImGuiTestContext* ctx, DigitizerUi::FlowgraphEditor& editor, std::string_view controlName, std::string_view targetName) {
-        const DigitizerUi::UiGraphBlock* control = findRootChildByName(controlName);
-        const DigitizerUi::UiGraphBlock* target  = findRootChildByName(targetName);
+    static void dragAndDropControlToTargetAndUsePopupAsRef(ImGuiTestContext* ctx, FlowgraphEditor& editor, std::string_view controlName, std::string_view targetName) {
+        const UiGraphBlock* control = findRootChildByName(controlName);
+        const UiGraphBlock* target  = findRootChildByName(targetName);
         expect(control != nullptr) << fatal << controlName << " not found";
         expect(target != nullptr) << fatal << targetName << " not found";
         dragUiControlDragHandleToPosition(ctx, editor, control, nodeCentreOnScreen(editor, target));
@@ -544,23 +542,23 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp { // NOSONAR (more metho
         gState->waitUntil(ctx, "escape closed the popup", [] { return frontmostPopupId() == 0u; });
     }
 
-    static bool targetMapHasExactly(const char* controlName, const std::vector<DigitizerUi::TargetEntry>& expected) {
-        const auto targets = DigitizerUi::TargetMap::fromString(getTargetMapForBlock(controlName));
-        return targets && targets->entries().size() == expected.size() && std::ranges::all_of(expected, [&targets](const DigitizerUi::TargetEntry& entry) { return targets->contains(entry); });
+    static bool targetMapHasExactly(const char* controlName, const std::vector<TargetEntry>& expected) {
+        const auto targets = TargetMap::fromString(getTargetMapForBlock(controlName));
+        return targets && targets->entries().size() == expected.size() && std::ranges::all_of(expected, [&targets](const TargetEntry& entry) { return targets->contains(entry); });
     }
 
-    static void dragAndDropConnectToTargetAndProperty(ImGuiTestContext* ctx, DigitizerUi::FlowgraphEditor& editor, const char* controlName, const char* targetName, const char* property) {
+    static void dragAndDropConnectToTargetAndProperty(ImGuiTestContext* ctx, FlowgraphEditor& editor, const char* controlName, const char* targetName, const char* property) {
         dragAndDropControlToTargetAndUsePopupAsRef(ctx, editor, controlName, targetName);
         ctx->ItemClick(std::format("**/{}", property).c_str());
         closePopupWithDone(ctx);
         gState->waitUntil(ctx, std::format("{} is connected to {}:{}", controlName, targetName, property), [controlName, targetName, property] {
-            const auto targets = DigitizerUi::TargetMap::fromString(getTargetMapForBlock(controlName));
+            const auto targets = TargetMap::fromString(getTargetMapForBlock(controlName));
             return targets && targets->contains({targetName, property});
         });
     }
 
-    static void expectBlockCenteredAtDefaultZoom(DigitizerUi::FlowgraphEditor& editor, const char* blockName, std::source_location location = std::source_location::current()) {
-        const DigitizerUi::UiGraphBlock* block = findRootChildByName(blockName);
+    static void expectBlockCenteredAtDefaultZoom(FlowgraphEditor& editor, const char* blockName, std::source_location location = std::source_location::current()) {
+        const UiGraphBlock* block = findRootChildByName(blockName);
         expect(block != nullptr) << fatal;
         expect(approx(viewZoom(editor), 1.f, 1e-3f)) << std::format("jumping shows {} at 1:1 zoom (line {})", blockName, location.line());
         editor.makeCurrent();
@@ -574,20 +572,20 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp { // NOSONAR (more metho
 
     void registerTests() override { // NOSONAR (cognitive complexity)
         constexpr auto basicGuiFunc = [](ImGuiTestContext*) {
-            IMW::Window window("Test Window", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoSavedSettings);
+            imw::Window window("Test Window", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoSavedSettings);
             ImGui::SetWindowPos({0, 0});
             ImGui::SetWindowSize(ImVec2(800, 800));
             gState->drawGraph();
-            gState->dashboard->session.handleMessages();
+            gState->dashboard->session.receiveMessages();
         };
 
         constexpr auto pageGuiFunc = [](ImGuiTestContext*) {
-            IMW::Window window("Test Window", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoSavedSettings);
+            imw::Window window("Test Window", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoSavedSettings);
             ImGui::SetWindowPos({0, 0});
             ImGui::SetWindowSize(ImVec2(1024, 800));
             if (gState->dashboard) {
                 gState->flowgraphPage.draw();
-                gState->dashboard->session.handleMessages();
+                gState->dashboard->session.receiveMessages();
             }
         };
 
@@ -602,18 +600,17 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp { // NOSONAR (more metho
 
                     gState->waitForScheduler(ctx);
                     gState->waitUntil(ctx, "the graph has blocks", [] { return gState->hasBlocks(); });
-                    opendigitizer::test::waitUntilAllSamplesDrawn(ctx, *gState->dashboard);
+                    test::waitUntilAllSamplesDrawn(ctx, *gState->dashboard);
 
                     std::string firstBlockName = gState->nameOfFirstBlock();
                     expect(that % !firstBlockName.empty()) << "There should be at least one block";
 
-                    // Delete the first block
                     const auto numBlocksBefore = gState->blocks().size();
 
                     gState->deleteBlock(firstBlockName);
-                    ctx->Yield(); // Give time for UI to update
+                    ctx->Yield();
 
-                    // deletion is async, let's wait for kBlockRemoved
+                    // deletion is asynchronous: wait for kBlockRemoved
                     const auto expectedBlockCount = numBlocksBefore - 1;
                     gState->waitForGraphModelUpdate(ctx, expectedBlockCount);
 
@@ -621,12 +618,11 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp { // NOSONAR (more metho
 
                     expect(that % (numBlocksAfter == numBlocksBefore - 1)) << "Exactly one block should be removed";
 
-                    ctx->Yield(); // Give time for UI to update
+                    ctx->Yield();
 
                     gState->stopScheduler();
                     captureScreenshot(*ctx);
 
-                    // Test filtering
                     if (!gState->blocks().empty()) {
                         gState->setFilterBlock(gState->blocks()[0].get());
                         captureScreenshot(*ctx);
@@ -650,7 +646,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp { // NOSONAR (more metho
 
                 auto& editor = gState->flowgraphPage.currentEditor();
 
-                const auto findTargetPort = []() -> DigitizerUi::UiGraphPort* {
+                const auto findTargetPort = []() -> UiGraphPort* {
                     for (auto& block : gState->currentRootBlock().childBlocks) {
                         if (!block->_outputPorts.empty()) {
                             return &block->_outputPorts.front();
@@ -658,7 +654,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp { // NOSONAR (more metho
                     }
                     return nullptr;
                 };
-                DigitizerUi::UiGraphPort* targetPort = findTargetPort();
+                UiGraphPort* targetPort = findTargetPort();
                 expect(targetPort != nullptr) << fatal;
 
                 ctx->Yield(2); // for some reason ax::NodeEditor pin positions are not resolved until after the frame after first draw
@@ -687,12 +683,10 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp { // NOSONAR (more metho
                 ctx->Yield();
                 ctx->MouseUp(ImGuiMouseButton_Left);
 
-                const bool recievedReplyAboutExport = gState->waitForReplies(ctx, gr::graph::property::kSubgraphExportedPort);
-                expect(recievedReplyAboutExport) << "Scheduler never responded about the request to export a port\n";
+                const bool receivedReplyAboutExport = gState->waitForReplies(ctx, gr::graph::property::kSubgraphExportedPort);
+                expect(receivedReplyAboutExport) << "Scheduler never responded about the request to export a port\n";
 
-                // there are two messages, one to confirm the export happened
-                // (already done, as per recievedReplyAboutExport), and then one
-                // to send a full block update, which we have to wait for
+                // a second message follows the export confirmation (receivedReplyAboutExport): the full block update to wait for
                 expect(gState->waitUntil(ctx, "the graph model follows", [&] {
                     auto* port = findTargetPort();
                     return port && port->isExportedTo(editor.exportPortTargetBlock());
@@ -708,7 +702,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp { // NOSONAR (more metho
             t->GuiFunc = basicGuiFunc;
 
             t->TestFunc = [](ImGuiTestContext* ctx) { // NOSONAR test lambda length
-                gState->reloadFromYamlString(simpleGraph);
+                gState->reloadFromYamlString(kSimpleGraph);
                 gState->waitForScheduler(ctx);
                 gState->waitUntil(ctx, "the graph has blocks", [] { return gState->hasBlocks(); });
 
@@ -716,7 +710,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp { // NOSONAR (more metho
                 requestEmplaceBlock(gState->flowgraphPage.currentEditor(), "gr::scheduler::Simple<gr::scheduler::ExecutionPolicy::singleThreaded>");
                 expect(gState->waitForReplies(ctx, gr::scheduler::property::kBlockEmplaced)) << "Scheduler never responded about the request to create the subgraph\n" << fatal;
 
-                const auto findSubgraphBlock = []() -> DigitizerUi::UiGraphBlock* {
+                const auto findSubgraphBlock = []() -> UiGraphBlock* {
                     for (auto& block : gState->currentRootBlock().childBlocks) {
                         if (block->isScheduler()) {
                             return block.get();
@@ -739,7 +733,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp { // NOSONAR (more metho
                 requestEmplaceBlock(gState->flowgraphPage.currentEditor(), "gr::basic::DataSink<float32>");
                 expect(gState->waitForReplies(ctx, gr::scheduler::property::kBlockEmplaced)) << "Scheduler never responded about the request to create the DataSink\n" << fatal;
 
-                const auto findSinkPort = []() -> DigitizerUi::UiGraphPort* {
+                const auto findSinkPort = []() -> UiGraphPort* {
                     for (auto& block : gState->currentRootBlock().childBlocks) {
                         if (block->blockTypeName.starts_with("gr::basic::DataSink") && !block->_inputPorts.empty()) {
                             return std::addressof(block->_inputPorts.front());
@@ -775,9 +769,8 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp { // NOSONAR (more metho
                 gState->flowgraphPage.popEditor();
                 expect(gState->flowgraphPage.editorCount() == 1_ul) << fatal;
 
-                // wait for the full model update triggered by popEditor() so the
-                // subgraph block in the root graph gains the exported input port
-                const auto findExportedPort = [&]() -> DigitizerUi::UiGraphPort* {
+                // the full model update triggered by popEditor() gives the subgraph block in the root graph the exported input port
+                const auto findExportedPort = [&]() -> UiGraphPort* {
                     auto* subgraphBlock = findSubgraphBlock();
                     if (!subgraphBlock) {
                         return nullptr;
@@ -805,7 +798,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp { // NOSONAR (more metho
             t->GuiFunc = basicGuiFunc;
 
             t->TestFunc = [](ImGuiTestContext* ctx) {
-                gState->reloadFromYamlString(simpleGraph);
+                gState->reloadFromYamlString(kSimpleGraph);
                 gState->waitForScheduler(ctx);
                 gState->waitUntil(ctx, "the graph has blocks", [] { return gState->hasBlocks(); });
 
@@ -901,8 +894,8 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp { // NOSONAR (more metho
                 auto& graphModel = gState->dashboard->session.graphModel;
                 auto& editor     = gState->flowgraphPage.currentEditor();
 
-                DigitizerUi::UiGraphBlock* loner1 = graphModel.recursiveFindBlockByName("loner1").block;
-                DigitizerUi::UiGraphBlock* loner2 = graphModel.recursiveFindBlockByName("loner2").block;
+                UiGraphBlock* loner1 = graphModel.recursiveFindBlockByName("loner1").block;
+                UiGraphBlock* loner2 = graphModel.recursiveFindBlockByName("loner2").block;
                 expect(loner1 != nullptr && loner2 != nullptr) << fatal;
                 const std::vector<std::string> groupedNames{loner1->blockUniqueName, loner2->blockUniqueName};
 
@@ -941,17 +934,17 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp { // NOSONAR (more metho
             ImGuiTest*              t = IM_REGISTER_TEST(engine(), "flowgraph", "Button overlay stays inside an offset host window");
 
             t->GuiFunc = [](ImGuiTestContext*) {
-                IMW::Window window("Offset Host", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
+                imw::Window window("Offset Host", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
                 ImGui::SetWindowPos(kHostPos);
                 ImGui::SetWindowSize(ImVec2(800, 600));
                 if (gState->dashboard) {
                     gState->flowgraphPage.draw();
-                    gState->dashboard->session.handleMessages();
+                    gState->dashboard->session.receiveMessages();
                 }
             };
 
             t->TestFunc = [](ImGuiTestContext* ctx) {
-                gState->reloadFromYamlString(simpleGraph);
+                gState->reloadFromYamlString(kSimpleGraph);
                 gState->waitForScheduler(ctx);
                 gState->waitUntil(ctx, "the graph has blocks", [] { return gState->hasBlocks(); });
                 ctx->Yield(2);
@@ -972,7 +965,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp { // NOSONAR (more metho
             t->GuiFunc = pageGuiFunc;
 
             t->TestFunc = [](ImGuiTestContext* ctx) {
-                gState->reloadFromYamlString(simpleGraph);
+                gState->reloadFromYamlString(kSimpleGraph);
                 gState->waitForScheduler(ctx);
                 gState->waitUntil(ctx, "the graph has blocks", [] { return gState->hasBlocks(); });
 
@@ -1013,9 +1006,9 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp { // NOSONAR (more metho
                 ax::NodeEditor::NavigateToContent(0.0f);
                 ctx->Yield(2);
 
-                DigitizerUi::UiGraphBlock* middleA = findRootChildByName("middleA");
-                DigitizerUi::UiGraphBlock* middleB = findRootChildByName("middleB");
-                DigitizerUi::UiGraphBlock* loner1  = findRootChildByName("loner1");
+                UiGraphBlock* middleA = findRootChildByName("middleA");
+                UiGraphBlock* middleB = findRootChildByName("middleB");
+                UiGraphBlock* loner1  = findRootChildByName("loner1");
                 expect(middleA != nullptr && middleB != nullptr && loner1 != nullptr) << fatal;
                 const std::string loner1UniqueName = loner1->blockUniqueName;
 
@@ -1023,7 +1016,6 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp { // NOSONAR (more metho
                 selectNode(ctx, editor, middleB, /*addToSelection*/ true);
                 expect(eq(editor.selectedBlockUniqueNames().size(), 2UZ)) << fatal << "both blocks should be selected before the deletion\n";
 
-                // test that deleting a block clears the selection
                 editor.requestBlockDeletion(loner1UniqueName);
                 expect(gState->waitForReplies(ctx, gr::scheduler::property::kBlockRemoved)) << fatal << "scheduler did not confirm the removal\n";
                 expect(gState->waitUntil(ctx, "the graph model follows", [&] { return findRootChildByUniqueName(loner1UniqueName) == nullptr; })) << fatal << "the deleted block should disappear from the graph model\n";
@@ -1050,8 +1042,8 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp { // NOSONAR (more metho
                 auto& editor = gState->flowgraphPage.currentEditor();
                 waitForSettledView(ctx, editor); // a zoom-to-fill would push blocks added by grouping under the button bar
 
-                DigitizerUi::UiGraphBlock* middleA = findRootChildByName("middleA");
-                DigitizerUi::UiGraphBlock* middleB = findRootChildByName("middleB");
+                UiGraphBlock* middleA = findRootChildByName("middleA");
+                UiGraphBlock* middleB = findRootChildByName("middleB");
                 expect(middleA != nullptr && middleB != nullptr) << fatal;
                 const std::vector<std::string> groupedNames{middleA->blockUniqueName, middleB->blockUniqueName};
 
@@ -1064,8 +1056,8 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp { // NOSONAR (more metho
 
                 expect(gState->waitUntil(ctx, "the graph model follows",
                     [&] {
-                        DigitizerUi::UiGraphBlock* subgraph = findSubgraphInCurrentRoot();
-                        DigitizerUi::UiGraphBlock* interior = subgraph && subgraph->isScheduler() ? (subgraph->childBlocks.empty() ? nullptr : subgraph->childBlocks.front().get()) : subgraph;
+                        UiGraphBlock* subgraph = findSubgraphInCurrentRoot();
+                        UiGraphBlock* interior = subgraph && subgraph->isScheduler() ? (subgraph->childBlocks.empty() ? nullptr : subgraph->childBlocks.front().get()) : subgraph;
                         return interior && std::ranges::all_of(groupedNames, [interior](const std::string& name) { //
                             return interior->findBlockByUniqueName(name) != nullptr && findRootChildByUniqueName(name) == nullptr;
                         });
@@ -1075,7 +1067,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp { // NOSONAR (more metho
                 editor.requestRelayout();
                 waitForSettledView(ctx, editor);
 
-                DigitizerUi::UiGraphBlock* subgraph = findSubgraphInCurrentRoot();
+                UiGraphBlock* subgraph = findSubgraphInCurrentRoot();
                 expect(subgraph != nullptr) << fatal;
                 clickInBlockContextMenu(ctx, editor, subgraph, "Ungroup blocks");
                 expect(gState->waitForReplies(ctx, gr::scheduler::property::kBlocksUngrouped)) << fatal << "the menu item should have asked the scheduler to ungroup\n";
@@ -1120,8 +1112,8 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp { // NOSONAR (more metho
 
                 auto& innerBlocks = gState->currentRootBlock().childBlocks;
                 expect(innerBlocks.size() >= 2UZ) << fatal << "qa_subgraph.grc should have at least two blocks inside its subgraph\n";
-                DigitizerUi::UiGraphBlock*     first  = innerBlocks[0].get();
-                DigitizerUi::UiGraphBlock*     second = innerBlocks[1].get();
+                UiGraphBlock*                  first  = innerBlocks[0].get();
+                UiGraphBlock*                  second = innerBlocks[1].get();
                 const std::vector<std::string> groupedNames{first->blockUniqueName, second->blockUniqueName};
 
                 selectNode(ctx, editor, first);
@@ -1139,16 +1131,16 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp { // NOSONAR (more metho
 
                 expect(gState->waitUntil(ctx, "the graph model follows",
                     [&] {
-                        DigitizerUi::UiGraphBlock* nested = findSubgraphInCurrentRoot();
+                        UiGraphBlock* nested = findSubgraphInCurrentRoot();
                         if (!nested) {
                             return false;
                         }
-                        DigitizerUi::UiGraphBlock* interior = nested->isScheduler() ? (nested->childBlocks.empty() ? nullptr : nested->childBlocks.front().get()) : nested;
+                        UiGraphBlock* interior = nested->isScheduler() ? (nested->childBlocks.empty() ? nullptr : nested->childBlocks.front().get()) : nested;
                         return interior && std::ranges::all_of(groupedNames, [interior](const std::string& name) { return interior->findBlockByUniqueName(name) != nullptr; });
                     }))
                     << fatal << "a nested subgraph holding both blocks should appear inside the subgraph editor\n";
 
-                DigitizerUi::UiGraphBlock* nested = findSubgraphInCurrentRoot();
+                UiGraphBlock* nested = findSubgraphInCurrentRoot();
                 expect(nested != nullptr) << fatal;
                 expect(pickInDialog ? nested->isScheduler() : nested->isGraph()) << "the type of subgraph should match what the user asked for\n";
 
@@ -1175,7 +1167,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp { // NOSONAR (more metho
 
                 auto& movedBlock = *gState->blocks().front();
                 expect(movedBlock.storedXY.has_value()) << fatal << "an arranged block has a stored position";
-                movedBlock.storedXY = DigitizerUi::UiGraphBlock::StoredXY{movedBlock.storedXY->x + 150.f, movedBlock.storedXY->y + 90.f};
+                movedBlock.storedXY = UiGraphBlock::StoredXY{movedBlock.storedXY->x + 150.f, movedBlock.storedXY->y + 90.f};
                 ctx->Yield(2);
                 expect(nodePositions(editor) != arrangedByButton) << fatal << "moving a block changes the layout";
 
@@ -1232,7 +1224,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp { // NOSONAR (more metho
 
         // ui controls have a unique gui func because we also need to draw the toolbar
         constexpr auto uiControlGuiFunc = [](ImGuiTestContext*) {
-            IMW::Window window("Test Window", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoSavedSettings);
+            imw::Window window("Test Window", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoSavedSettings);
             ImGui::SetWindowPos({0, 0});
             ImGui::SetWindowSize(ImVec2(1024, 800));
             if (gState->dashboard) {
@@ -1240,7 +1232,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp { // NOSONAR (more metho
                     gState->toolbar.draw(gState->dashboard->session, false);
                 }
                 gState->flowgraphPage.draw();
-                gState->dashboard->session.handleMessages();
+                gState->dashboard->session.receiveMessages();
             }
         };
 
@@ -1265,8 +1257,8 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp { // NOSONAR (more metho
                     {"readout", {"visible", "signal_name", "sample_rate", "line_style"}, {}},
                 };
                 for (const FilterCase& filterCase : cases) {
-                    DigitizerUi::UiGraphBlock* control = findRootChildByName(filterCase.control);
-                    DigitizerUi::UiGraphBlock* sink    = findRootChildByName("sink1");
+                    UiGraphBlock* control = findRootChildByName(filterCase.control);
+                    UiGraphBlock* sink    = findRootChildByName("sink1");
                     expect(control != nullptr && sink != nullptr) << fatal;
 
                     dragUiControlDragHandleToPosition(ctx, editor, control, nodeCentreOnScreen(editor, sink));
@@ -1285,8 +1277,8 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp { // NOSONAR (more metho
                 }
 
                 "if there are no compatible properties then the popup is empty"_test = [&] {
-                    DigitizerUi::UiGraphBlock* toggle = findRootChildByName("controlToggle");
-                    DigitizerUi::UiGraphBlock* text2  = findRootChildByName("controlText2");
+                    UiGraphBlock* toggle = findRootChildByName("controlToggle");
+                    UiGraphBlock* text2  = findRootChildByName("controlText2");
                     expect(toggle != nullptr && text2 != nullptr) << fatal;
                     dragUiControlDragHandleToPosition(ctx, editor, toggle, nodeCentreOnScreen(editor, text2));
                     const ImGuiID popupId = getFrontmostPopupID(ctx);
@@ -1533,7 +1525,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp { // NOSONAR (more metho
 
                 gState->sendSetting("controlTrigger", {{"target_map", std::string("sink1:visible")}});
                 gState->waitUntil(ctx, "controlTrigger -> sink1", [] {
-                    const DigitizerUi::UiGraphBlock* trigger = findRootChildByName("controlTrigger");
+                    const UiGraphBlock* trigger = findRootChildByName("controlTrigger");
                     return getTargetMapForBlock("controlTrigger") == "sink1:visible" && trigger != nullptr && trigger->blockSettings.value_or<std::string>("target_map", std::string{}) == "sink1:visible";
                 });
                 ctx->Yield(2); // block gets resized, imgui node editor needs time to figure it out
@@ -1594,8 +1586,8 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp { // NOSONAR (more metho
             t->GuiFunc   = uiControlGuiFunc;
 
             t->TestFunc = [](ImGuiTestContext* ctx) {
-                auto&                      editor = loadUiControlGraph(ctx, "examples/qa_uicontrol_readout.grc");
-                DigitizerUi::UiGraphBlock* sink   = findRootChildByName("sinkA");
+                auto&         editor = loadUiControlGraph(ctx, "examples/qa_uicontrol_readout.grc");
+                UiGraphBlock* sink   = findRootChildByName("sinkA");
                 expect(sink != nullptr) << fatal << "sinkA not found";
                 openBlockPanel(ctx, editor, sink);
                 ctx->SetRef("//BlockControlsPanel");
@@ -1830,7 +1822,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp { // NOSONAR (more metho
             t->TestFunc = [](ImGuiTestContext* ctx) {
                 auto& editor = loadUiControlGraph(ctx, "examples/qa_uicontrol_connections.grc");
 
-                const DigitizerUi::UiGraphBlock* control = findRootChildByName("controlA");
+                const UiGraphBlock* control = findRootChildByName("controlA");
                 expect(control != nullptr) << fatal;
 
                 "even if there are not control targets, the handle is still present"_test = [&] {
@@ -1858,8 +1850,8 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp { // NOSONAR (more metho
             t->GuiFunc   = uiControlGuiFunc;
 
             t->TestFunc = [](ImGuiTestContext* ctx) { // NOSONAR test lambda length
-                auto&                            editor = loadUiControlGraph(ctx, "examples/qa_uicontrol_connections.grc");
-                const DigitizerUi::UiGraphBlock* sink   = findRootChildByName("sinkA");
+                auto&               editor = loadUiControlGraph(ctx, "examples/qa_uicontrol_connections.grc");
+                const UiGraphBlock* sink   = findRootChildByName("sinkA");
                 expect(sink != nullptr) << fatal;
 
                 "filter a block from its context menu"_test = [&] {
@@ -1901,9 +1893,9 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp { // NOSONAR (more metho
             t->GuiFunc   = uiControlGuiFunc;
 
             t->TestFunc = [](ImGuiTestContext* ctx) {
-                auto&                            editor     = loadUiControlGraph(ctx, "examples/qa_uicontrol_connections.grc");
-                const DigitizerUi::UiGraphBlock* sink       = findRootChildByName("sinkA");
-                const char*                      menuButton = "**/sinkA.menuButton";
+                auto&               editor     = loadUiControlGraph(ctx, "examples/qa_uicontrol_connections.grc");
+                const UiGraphBlock* sink       = findRootChildByName("sinkA");
+                const char*         menuButton = "**/sinkA.menuButton";
                 expect(sink != nullptr) << fatal;
 
                 "blocks have menu button"_test = [&] {
@@ -1945,7 +1937,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp { // NOSONAR (more metho
                 const auto           uniqueNamesOf = [](const auto& blockNames) {
                     std::vector<std::string> uniqueNames;
                     for (const char* blockName : blockNames) {
-                        const DigitizerUi::UiGraphBlock* block = findRootChildByName(blockName);
+                        const UiGraphBlock* block = findRootChildByName(blockName);
                         expect(block != nullptr) << fatal << blockName << " is in the root graph before grouping";
                         uniqueNames.push_back(block->blockUniqueName);
                     }
@@ -1966,15 +1958,15 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp { // NOSONAR (more metho
                 expect(gState->waitForReplies(ctx, gr::scheduler::property::kBlocksGrouped)) << fatal << "the scheduler reports that grouping was successful";
 
                 gState->waitUntil(ctx, "non-ui blocks have been grouped normally", [&regularUniqueNames] {
-                    DigitizerUi::UiGraphBlock* subgraph = findSubgraphInCurrentRoot();
+                    UiGraphBlock* subgraph = findSubgraphInCurrentRoot();
                     return subgraph && std::ranges::all_of(regularUniqueNames, [subgraph](const std::string& uniqueName) { //
                         return subgraph->findBlockByUniqueName(uniqueName) != nullptr && findRootChildByUniqueName(uniqueName) == nullptr;
                     });
                 });
 
-                DigitizerUi::UiGraphBlock* subgraph = findSubgraphInCurrentRoot();
+                UiGraphBlock* subgraph = findSubgraphInCurrentRoot();
                 for (const std::string& uniqueName : controlUniqueNames) {
-                    const DigitizerUi::UiGraphBlock* control = findRootChildByUniqueName(uniqueName);
+                    const UiGraphBlock* control = findRootChildByUniqueName(uniqueName);
                     expect(control != nullptr) << fatal << uniqueName << " is a ui control which is a child of the root graph";
                     expect(subgraph->findBlockByUniqueName(uniqueName) == nullptr) << uniqueName << " is a ui control which is not present in the subgraph created by grouping";
                 }
@@ -2021,7 +2013,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp { // NOSONAR (more metho
         }
 
         {
-            // there used to be a bug where we would try to draw sliders even if a double value or min or max was out of the range imgui accepts for those
+            // regression: sliders drawn even when a double value, min or max was out of the range ImGui accepts
             ImGuiTest* t = IM_REGISTER_TEST(engine(), "flowgraph", "we can draw valid imgui slider for values with min/max ranges, regression test");
             t->GuiFunc   = uiControlGuiFunc;
 
@@ -2036,7 +2028,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp { // NOSONAR (more metho
         }
 
         {
-            /// regression test for undefined behavior when clamping very large doubles into the range of int64
+            /// regression: undefined behaviour when clamping very large doubles into the range of int64
             ImGuiTest* t = IM_REGISTER_TEST(engine(), "flowgraph", "valid number editor for int64 with extremely large min and max values");
             t->GuiFunc   = uiControlGuiFunc;
 
@@ -2060,20 +2052,17 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp { // NOSONAR (more metho
 
                 "typing into the text input of the keypad"_test = [&] {
                     expect(gState->blockHasBasicTypeKeyValuePair<double>("unlimitedDouble", "value", 1.)) << fatal;
-                    // avoid opening keypad popup by not clicking on the control and using tab to get there. Arguably
-                    // the behavior here could also be changed so that tabbing skips the keypad text input or finds
-                    // it disabled or auto-opens the keypad popup. But it seems nicest to support both, to avoid the
-                    // keypad popping up when tabbing through and to not unexpectedly skip the item
+                    // reached by tab, without a click, which would open the keypad popup: tabbing keeps the keypad closed and does not skip the item
                     const ImGuiID fieldId = ctx->ItemInfo("**/##parameter_value").ID;
                     ctx->NavMoveTo("**/##parameter_value");
                     // if there were other tab-navigation targets then this would take us away, but this input is the only one
                     ctx->KeyPress(ImGuiKey_Tab);
                     expect(ImGui::GetActiveID() == fieldId) << fatal << "the text input of the field is activated by tab";
                     ctx->KeyCharsReplaceEnter("5");
-                    expect(!DigitizerUi::components::InputKeypad::isVisible());
+                    expect(!components::InputKeypad::isVisible());
                     const auto changed = [] { return gState->setting("unlimitedDouble", "value").value_or(1.) == 5.; };
                     for (int frame = 0; frame < 60 && !changed(); ++frame) {
-                        gState->dashboard->session.handleMessages();
+                        gState->dashboard->session.receiveMessages();
                         ctx->Yield();
                     }
                     expect(changed()) << "the setting is " << gState->setting("unlimitedDouble", "value").value_or(1.);
@@ -2096,7 +2085,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp { // NOSONAR (more metho
                     expect(gState->blockHasBasicTypeKeyValuePair<double>("unlimitedDouble", "value", 1.)) << fatal;
                     ctx->ItemClick("**/##parameter_value", ImGuiMouseButton_Right);
                     expect(ImGui::TempInputIsActive(fieldId)) << fatal << "the editor is a text input";
-                    expect(!DigitizerUi::components::InputKeypad::isVisible());
+                    expect(!components::InputKeypad::isVisible());
                     ctx->KeyCharsReplaceEnter("5");
                     expect(!ImGui::TempInputIsActive(fieldId)) << "enter confirms changes";
                     expect(gState->waitUntil(ctx, "the value gets set on the block", [] { return gState->blockHasBasicTypeKeyValuePair<double>("unlimitedDouble", "value", 5.); }));
@@ -2124,27 +2113,27 @@ template<typename Registry>
 void registerTestBlocks(Registry& registry) {
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-variable"
-    gr::registerBlock<opendigitizer::Arithmetic, float, double>(registry);
-    gr::registerBlock<opendigitizer::ImPlotSink, float, gr::DataSet<float>>(registry);
-    gr::registerBlock<DigitizerUi::ImControlNumber>(registry);
-    gr::registerBlock<DigitizerUi::ImControlToggle>(registry);
-    gr::registerBlock<DigitizerUi::ImControlTrigger>(registry);
-    gr::registerBlock<DigitizerUi::ImControlText>(registry);
-    gr::registerBlock<DigitizerUi::ImControlChoice>(registry);
-    gr::registerBlock<DigitizerUi::ImPropertyReadout>(registry);
-    gr::registerBlock<opendigitizer::test::UiControlCompatibilityTarget>(registry);
-    gr::registerBlock<opendigitizer::test::DoubleToNumericLimitTarget>(registry);
-    gr::registerBlock<opendigitizer::test::Int64ToNumericLimitTarget>(registry);
-    gr::registerBlock<opendigitizer::test::UnlimitedDoubleTarget>(registry);
-    gr::registerBlock<opendigitizer::test::SliderDoubleTarget>(registry);
-    // TODO: fix gnuradio so the explicit alias is not needed for this block to be reachable by its own name
+    registerWithIdPrefix<Arithmetic, float, double>(registry, kOpendigitizerIdPrefix);
+    registerWithIdPrefix<ImPlotSink, float, gr::DataSet<float>>(registry, kOpendigitizerIdPrefix);
+    registerWithIdPrefix<ImControlNumber>(registry, kDigitizerUiIdPrefix);
+    registerWithIdPrefix<ImControlToggle>(registry, kDigitizerUiIdPrefix);
+    registerWithIdPrefix<ImControlTrigger>(registry, kDigitizerUiIdPrefix);
+    registerWithIdPrefix<ImControlText>(registry, kDigitizerUiIdPrefix);
+    registerWithIdPrefix<ImControlChoice>(registry, kDigitizerUiIdPrefix);
+    registerWithIdPrefix<ImPropertyReadout>(registry, kDigitizerUiIdPrefix);
+    registerWithIdPrefix<test::UiControlCompatibilityTarget>(registry, kOpendigitizerIdPrefix);
+    registerWithIdPrefix<test::DoubleToNumericLimitTarget>(registry, kOpendigitizerIdPrefix);
+    registerWithIdPrefix<test::Int64ToNumericLimitTarget>(registry, kOpendigitizerIdPrefix);
+    registerWithIdPrefix<test::UnlimitedDoubleTarget>(registry, kOpendigitizerIdPrefix);
+    registerWithIdPrefix<test::SliderDoubleTarget>(registry, kOpendigitizerIdPrefix);
+    // the explicit alias: GR4 does not register the block under its own name
     gr::registerBlock<"gr::testing::AtomicCountingSink", gr::testing::AtomicCountingSink, float>(registry);
 #pragma GCC diagnostic pop
 }
 } // namespace
 
 int main(int argc, char* argv[]) {
-    using BoundingBox = DigitizerUi::FlowgraphEditor::BoundingBox;
+    using BoundingBox = FlowgraphEditor::BoundingBox;
 
     "addRectangle()"_test = [] {
         BoundingBox bb{.minX = 50, .minY = 50, .maxX = 50, .maxY = 50};
@@ -2169,10 +2158,9 @@ int main(int argc, char* argv[]) {
         expect(!bb.contains({50, 101}));
     };
 
-    auto options             = DigitizerUi::test::TestOptions::fromArgs(argc, argv);
+    auto options             = test::TestOptions::fromArgs(argc, argv);
     options.screenshotPrefix = "flowgraph";
 
-    // This is not a globalBlockRegistry, but a copy of it
     gr::BlockRegistry&     registry          = gr::globalBlockRegistry();
     gr::SchedulerRegistry& schedulerRegistry = gr::globalSchedulerRegistry();
 
@@ -2187,13 +2175,13 @@ int main(int argc, char* argv[]) {
     options.speedMode = ImGuiTestRunSpeed_Normal;
     TestApp app(options);
 
-    // init early, as Dashboard invokes ImGui style stuff
+    // before the dashboard, which sets ImGui styles
     app.initImGui();
     TestState state;
     gState = std::addressof(state);
 
     // let the flowgraph editors draw the block properties panel, as the application does
-    state.flowgraphPage.requestBlockControlsPanel = [](DigitizerUi::components::BlockControlsPanelContext& panelContext, const ImVec2& pos, const ImVec2& size, bool verticalLayout) { DigitizerUi::components::BlockControlsPanel(panelContext, pos, size, verticalLayout); };
+    state.flowgraphPage.requestBlockControlsPanel = [](components::BlockControlsPanelContext& panelContext, const ImVec2& pos, const ImVec2& size, bool verticalLayout) { components::blockControlsPanel(panelContext, pos, size, verticalLayout); };
 
     state.reload(cmrc::ui_test_assets::get_filesystem(), "examples/qa_chart.grc");
 

@@ -11,12 +11,6 @@
 
 #include "AppState.hpp"
 
-/**
- * @brief Convert RGB color (0xRRGGBB) to ImGui's ABGR format (0xAABBGGRR).
- * @param rgb Color in RGB format (0xRRGGBB)
- * @param alpha Alpha value (default 0xFF for fully opaque)
- * @return Color in ImGui's ABGR format
- */
 constexpr std::uint32_t rgbToImGuiABGR(std::uint32_t rgb, std::uint8_t alpha = 0xFF) {
     const std::uint32_t r = (rgb >> 16) & 0xFF;
     const std::uint32_t g = (rgb >> 8) & 0xFF;
@@ -68,16 +62,15 @@ inline ImVec4 overlayTransparentOverOpaque(ImVec4 color, ImVec4 opaqueBackground
 
 struct ImFont;
 
-namespace DigitizerUi {
+namespace gr::od {
 
-/// Colors that are not obviously included in the regular ImGuiStyle
+/// colours ImGuiStyle lacks
 struct Palette {
     ImVec4 gridLines;
 
-    std::optional<ImVec4> buttonContents; // text color used by buttons and selectables and checkboxes. ImGuiCol_Text by default
+    std::optional<ImVec4> buttonContents; // text on buttons, selectables and checkboxes; unset: ImGuiCol_Text
 
-    // main window buttons, shown on top of windowBg color, bg colors can be transparent
-    std::optional<ImVec4> mainWindowButtonIcon; // ImGuiCol_Text by default
+    std::optional<ImVec4> mainWindowButtonIcon; // unset: ImGuiCol_Text
     ImVec4                mainWindowButtonBgInactive;
     ImVec4                mainWindowButtonBgHovered;
     ImVec4                mainWindowButtonBgActive;
@@ -193,6 +186,7 @@ struct ChartStyle {
     float  menuSettingWidgetWidth = 120.f;
     float  historyDepthDragWidth  = 60.f;
     float  historyDepthComboWidth = 65.f;
+    int    colormapPreviewSteps   = 32;
 
     float       imageTileGap       = .04f;          // between ImageChart tiles, as a fraction of the larger tile extent
     std::size_t imageCpuMaxCells   = 512UZ * 512UZ; // ImageChart CPU heatmap budget; larger frames are decimated
@@ -210,6 +204,15 @@ struct ChartStyle {
     float  localisationLabelOffset            = 10.f;       // px above a marker
     float  localisationTagEdgeMargin          = .1f;        // a curve's annotation keeps this fraction of the roi from its edge
     ImVec2 localisationStatusPadding          = {6.f, 6.f}; // status line, from the plot's top-left corner
+
+    float  rdsRounding          = 6.f;
+    ImVec2 rdsPillPadding       = {8.f, 2.f};
+    float  rdsLitAlpha          = .15f; // also of a warning row
+    float  rdsUnlitAlpha        = .06f;
+    float  rdsDotRadius         = 4.f;
+    float  rdsLineWidth         = 2.f;
+    float  rdsGraphHeightLines  = 3.f;
+    float  rdsTwoColumnMinWidth = 640.f; // px
 };
 
 /// dashboard look a host may set process-wide, for every DashboardView
@@ -233,6 +236,7 @@ struct DashboardStyle {
     float toolbarControlMinimumWidth     = 60.f;
     float toolbarControlSliderTrackWidth = 115.f;
     float newChartPopupWidth             = 300.f;
+    float newChartPopupMinWidth          = 200.f;
 };
 
 struct OpenDashboardPageStyle {
@@ -312,6 +316,7 @@ struct LookAndFeel {
         float uiControlRegionGap                   = 16.f; // around the UI control block region and between its blocks
         float uiControlDragHandleRadius            = 5.f;
         float uiControlDragHandleHoveredRadius     = 6.f;
+        float unplacedBlockGap                     = 32.f; // px
 
         float  previewBlockInnerPadding = 5.f; // per side
         float  previewBlockHeight       = 35.f;
@@ -333,11 +338,11 @@ struct LookAndFeel {
     };
 
 #ifdef __EMSCRIPTEN__
-    static constexpr bool isDesktop = false;
+    static constexpr bool kIsDesktop = false;
 #else
-    static constexpr bool isDesktop = true;
+    static constexpr bool kIsDesktop = true;
 #endif
-    static constexpr std::chrono::milliseconds longPressDuration{500};
+    static constexpr std::chrono::milliseconds kLongPressDuration{500};
 
     float                  compactEnterShortSide = 600.f;
     float                  compactLeaveShortSide = 640.f;
@@ -348,6 +353,7 @@ struct LookAndFeel {
     ImFont*                fontIconsSolidBig;
     ImFont*                fontIconsSolidLarge;
     std::chrono::seconds   editPaneCloseDelay{15};
+    float                  editPaneCloseBarHeight                  = 3.f;
     float                  requiredDragDistanceForWindowUndock     = 30.f;
     float                  floatingWindowMinSizeFractionOfViewport = .25f;
     float                  splitterWidth                           = 6.f;
@@ -365,7 +371,7 @@ struct LookAndFeel {
     float                  popupMenuButtonHoverLighten             = .5f; // saturation factor
     float                  popupMenuButtonActiveDarken             = .7f; // value factor
     float                  popupMenuButtonAlpha                    = 1.f;
-    ImVec2                 buttonFramePaddingMultiplier            = {2.f, 1.f}; // buttons should multiply with ImGuiStyle::FramePadding
+    ImVec2                 buttonFramePaddingMultiplier            = {2.f, 1.f}; // of ImGuiStyle::FramePadding
     float                  appHeaderMenuToLogoGap                  = 12.f;
     float                  appHeaderRightMenuStartDegrees          = 75.f;
     float                  appHeaderRightMenuStopDegrees           = 195.f;
@@ -373,6 +379,10 @@ struct LookAndFeel {
     ImVec2                 addContextPopupSize                     = {600.f, 120.f};
     ImVec2                 removeContextPopupSize                  = {600.f, 100.f};
     float                  editableStringListInputWidthEms         = 12.f;
+    float                  filterComboTextWidthScale               = 1.3f; // of the label width
+    float                  filterComboWrapScale                    = 1.2f; // of the combo width
+    ImVec2                 selectionPopupListSize                  = {280.f, 180.f};
+    float                  selectionPopupDoneWidth                 = 100.f;
     float                  sortArrowScale                          = .75f;
     float                  sliderTrackThickness                    = 4.f;
     float                  sliderKnobRadiusFrameHeightRatio        = .35f;
@@ -402,10 +412,23 @@ struct LookAndFeel {
     double                 plotTooltipDelay         = 1.;  // s
     double                 plotTooltipDuration      = 30.; // s
     float                  plotTooltipStillDistance = 10.f;
+    double                 maxFrameRate             = 60.; // Hz
     Flowgraph              flowgraph;
     ChartStyle             chartStyle;
     DashboardStyle         dashboardStyle;
     OpenDashboardPageStyle openDashboardPageStyle;
+
+    Style style = Style::Light;
+    Theme theme = Theme::Classic;
+
+    std::array<ImFont*, 2> _fontTiny   = {nullptr, nullptr}; // [0] production, [1] prototype
+    std::array<ImFont*, 2> _fontSmall  = {nullptr, nullptr}; // [0] production, [1] prototype
+    std::array<ImFont*, 2> _fontNormal = {nullptr, nullptr}; // [0] production, [1] prototype
+    std::array<ImFont*, 2> _fontBig    = {nullptr, nullptr}; // [0] production, [1] prototype
+    std::array<ImFont*, 2> _fontBigger = {nullptr, nullptr}; // [0] production, [1] prototype
+    std::array<ImFont*, 2> _fontLarge  = {nullptr, nullptr}; // [0] production, [1] prototype
+
+    LookAndFeel() {}
 
     [[nodiscard]] const Palette&                     palette() const noexcept;
     [[nodiscard]] const SpectrumSchemeKeywordColors& spectrumColours() const noexcept; // for the current style, also while theme is Classic
@@ -422,9 +445,6 @@ struct LookAndFeel {
         const ImFont* normal = fontNormal();
         return face && normal ? ImGui::GetStyle().FontSizeBase * face->LegacySize / normal->LegacySize : 0.f;
     }
-
-    Style style = Style::Light;
-    Theme theme = Theme::Classic;
 
     static LookAndFeel&       mutableInstance();
     static const LookAndFeel& instance();
@@ -443,18 +463,8 @@ struct LookAndFeel {
     void loadFonts();
     void applyTheme();
     void updateFormFactor(ImVec2 viewportSize);
-
-private:
-    std::array<ImFont*, 2> _fontTiny   = {nullptr, nullptr}; // [0] production, [1] prototype
-    std::array<ImFont*, 2> _fontSmall  = {nullptr, nullptr}; // [0] production, [1] prototype
-    std::array<ImFont*, 2> _fontNormal = {nullptr, nullptr}; // [0] production, [1] prototype
-    std::array<ImFont*, 2> _fontBig    = {nullptr, nullptr}; // [0] production, [1] prototype
-    std::array<ImFont*, 2> _fontBigger = {nullptr, nullptr}; // [0] production, [1] prototype
-    std::array<ImFont*, 2> _fontLarge  = {nullptr, nullptr}; // [0] production, [1] prototype
-
-    LookAndFeel() {}
 };
 
-} // namespace DigitizerUi
+} // namespace gr::od
 
 #endif

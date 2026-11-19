@@ -15,12 +15,14 @@
 #include <variant>
 #include <vector>
 
+using namespace gr::od;
+
 using namespace boost::ut;
-using DigitizerUi::components::SortFilterModel;
-using DigitizerUi::components::SortFilterModelParams;
-using DigitizerUi::components::SortFilterTreeModel;
-using DigitizerUi::components::SortFilterTreeModelNode;
-using DigitizerUi::components::SortFilterTreeModelParams;
+using components::SortFilterModel;
+using components::SortFilterModelParams;
+using components::SortFilterTreeModel;
+using components::SortFilterTreeModelNode;
+using components::SortFilterTreeModelParams;
 
 namespace {
 
@@ -105,12 +107,12 @@ struct TreeChild;
 using TreeChildren = std::vector<TreeChild>;
 struct TreeChild {
     std::string name;
-    // either a leaf's item index, or a branch's children. uses int so it accepts int literals in the initializer
+    // either a leaf's item index, or a branch's children; int, so that it accepts int literals in the initialiser
     std::variant<int, TreeChildren> value;
     bool                            operator==(const TreeChild&) const = default;
 };
 
-/// Convert a SortFilterTreeModel into the TreeChildren above so we can compare it with == to the expected value
+/// a SortFilterTreeModel as TreeChildren, comparable with == to the expected value
 TreeChildren resolveSortingAndReturnTree(SortFilterTreeModel& model) {
     while (!model.isComplete()) {
         model.work();
@@ -219,10 +221,10 @@ const static boost::ut::suite<"SortFilterModel"> sortFilterModelTests = [] { // 
 
     "Number of work() calls looks like the expected amount"_test = [] {
         SortFilterModel       model({.numViewedItems = sampleWords.size(), .filter = {}, .less = BadComparator{sampleWords}, .score = {}});
-        constexpr std::size_t maxWork = 3UZ;
-        model.setMaxWork(maxWork);
+        constexpr std::size_t kMaxWork = 3UZ;
+        model.setMaxWork(kMaxWork);
 
-        const std::size_t expectedWorkCalls = (sampleWords.size() + maxWork - 1UZ) / maxWork;
+        const std::size_t expectedWorkCalls = (sampleWords.size() + kMaxWork - 1UZ) / kMaxWork;
         for (std::size_t call = 0UZ; call < expectedWorkCalls; ++call) {
             expect(!model.isComplete()) << "work should not be done after " << call << " calls";
             expect(le(model.progress(), 1.f));
@@ -366,10 +368,10 @@ const static boost::ut::suite<"SortFilterTreeModel"> sortFilterTreeModelTests = 
 
     "work is spread over the expected number of calls"_test = [] {
         SortFilterTreeModel   model(paramsFor(samplePaths));
-        constexpr std::size_t maxWork = 2UZ;
-        model.setMaxWork(maxWork);
+        constexpr std::size_t kMaxWork = 2UZ;
+        model.setMaxWork(kMaxWork);
 
-        const std::size_t expectedWorkCalls = (samplePaths.size() + maxWork - 1UZ) / maxWork;
+        const std::size_t expectedWorkCalls = (samplePaths.size() + kMaxWork - 1UZ) / kMaxWork;
         for (std::size_t call = 0UZ; call < expectedWorkCalls; ++call) {
             expect(!model.isComplete()) << "work should not be done after " << call << " calls";
             expect(le(model.progress(), 1.f));

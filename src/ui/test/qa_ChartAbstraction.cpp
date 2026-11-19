@@ -1,4 +1,4 @@
-#include "Setup.hpp"
+#include "DashboardBlocks.hpp"
 #include "TestSinks.hpp"
 #include "blocks/Arithmetic.hpp"
 #include "blocks/ImPlotSink.hpp"
@@ -29,10 +29,12 @@
 #include <string_view>
 #include <thread>
 
+using namespace gr::od;
+
 int main() {
     using namespace boost::ut;
-    using namespace opendigitizer::charts;
-    using namespace opendigitizer::test;
+    using namespace charts;
+    using namespace test;
 
     "every chart mode survives the draw config, an absent mode is View"_test = [] {
         for (const ChartMode mode : {ChartMode::View, ChartMode::Interaction, ChartMode::Layout}) {
@@ -43,30 +45,29 @@ int main() {
     };
 
     "SpectrumPlot requests small default dataset capacity"_test = [] {
-        opendigitizer::ImPlotSink<gr::DataSet<float>> sink({});
-        auto                                          adapter = std::make_shared<opendigitizer::SinkAdapter<decltype(sink)>>(sink);
-        SpectrumPlot                                  chart;
+        ImPlotSink<gr::DataSet<float>> sink({});
+        auto                           adapter = std::make_shared<SinkAdapter<decltype(sink)>>(sink);
+        SpectrumPlot                   chart;
         chart.addSignalSink(adapter);
         expect(eq(sink.bufferCapacity(), 8UZ));
     };
 
     "XYChart requests dataset capacity from max_history_count"_test = [] {
-        opendigitizer::ImPlotSink<gr::DataSet<float>> sink({});
-        auto                                          adapter = std::make_shared<opendigitizer::SinkAdapter<decltype(sink)>>(sink);
-        XYChart                                       chart;
+        ImPlotSink<gr::DataSet<float>> sink({});
+        auto                           adapter = std::make_shared<SinkAdapter<decltype(sink)>>(sink);
+        XYChart                        chart;
         chart.n_history         = 30'000U; // should be ignored for DataSets
         chart.max_history_count = 16U;
         chart.addSignalSink(adapter);
         expect(eq(sink.bufferCapacity(), 16UZ));
     };
 
-    // Ground truth, arithmetic: two seconds are 96000 samples at 48 kHz and 192000 at 96 kHz, and the sink is asked to
-    // hold that many.
+    // ground truth, arithmetic: two seconds are 96000 samples at 48 kHz and 192000 at 96 kHz, and the sink is asked to hold that many
     "XYChart holds a history stated in seconds at the rate its signal arrives at"_test = [] {
         for (const auto& [rate, samples] : {std::pair{48000.0f, 96'000UZ}, std::pair{96000.0f, 192'000UZ}}) {
-            opendigitizer::ImPlotSink<float> sink({});
+            ImPlotSink<float> sink({});
             sink.sample_rate = rate; // as the stream's tags set it
-            auto    adapter  = std::make_shared<opendigitizer::SinkAdapter<decltype(sink)>>(sink);
+            auto    adapter  = std::make_shared<SinkAdapter<decltype(sink)>>(sink);
             XYChart chart;
             chart.history_seconds = 2.0f;
             chart.addSignalSink(adapter);
@@ -76,8 +77,8 @@ int main() {
         }
     };
 
-    // Ground truth by hand: 1000 points at x = index, all zero but 5 at x 150 and -3 at x 160, reduced to 10 columns of
-    // 100. The second column keeps (150, 5) then (160, -3), in that order; every column gives two points.
+    // ground truth by hand: 1000 points at x = index, all zero but 5 at x 150 and -3 at x 160, reduced to 10 columns of 100.
+    // The second column keeps (150, 5) then (160, -3), in that order; every column gives two points.
     "a trace longer than its plot is wide keeps each pixel column's extremes, in order"_test = [] {
         std::vector<double> x(1000UZ);
         std::vector<double> y(1000UZ, 0.0);
@@ -97,9 +98,9 @@ int main() {
     };
 
     "XYChart keeps n_history when no history in seconds is stated"_test = [] {
-        opendigitizer::ImPlotSink<float> sink({});
+        ImPlotSink<float> sink({});
         sink.sample_rate = 48000.0f;
-        auto    adapter  = std::make_shared<opendigitizer::SinkAdapter<decltype(sink)>>(sink);
+        auto    adapter  = std::make_shared<SinkAdapter<decltype(sink)>>(sink);
         XYChart chart;
         chart.n_history = 5000U;
         chart.addSignalSink(adapter);
@@ -109,7 +110,7 @@ int main() {
 
     "DataSet keeps custom axis labels"_test = [] {
         gr::Graph graph;
-        auto&     sink = graph.emplaceBlock<opendigitizer::ImPlotSink<gr::DataSet<float>>>({{"signal_quantity", "amplitude"}, {"signal_unit", "dB"}});
+        auto&     sink = graph.emplaceBlock<ImPlotSink<gr::DataSet<float>>>({{"signal_quantity", "amplitude"}, {"signal_unit", "dB"}});
 
         gr::DataSet<float> ds;
         ds.axis_names        = {"Frequency"};
@@ -134,7 +135,7 @@ int main() {
 
     "DataSet supplies default axis labels"_test = [] {
         gr::Graph graph;
-        auto&     sink = graph.emplaceBlock<opendigitizer::ImPlotSink<gr::DataSet<float>>>();
+        auto&     sink = graph.emplaceBlock<ImPlotSink<gr::DataSet<float>>>();
 
         gr::DataSet<float> ds;
         ds.axis_names        = {"Frequency"};
@@ -162,7 +163,7 @@ int main() {
             source._tags.push_back({i * kFftSize, std::move(trigger)});
         }
         auto& fft  = graph.emplaceBlock<gr::blocks::fft::FFT<float, gr::DataSet<float>>>({{"fft_size", kFftSize}});
-        auto& sink = graph.emplaceBlock<opendigitizer::ImPlotSink<gr::DataSet<float>>>();
+        auto& sink = graph.emplaceBlock<ImPlotSink<gr::DataSet<float>>>();
         expect(graph.connect<"out", "in">(source, fft).has_value());
         expect(graph.connect<"out", "in">(fft, sink).has_value());
 
@@ -183,7 +184,7 @@ int main() {
             gr::tag::put(trigger, gr::tag::kTriggerTime, std::uint64_t{1'000'000'000U} * (i + 1U));
             source._tags.push_back({i * 200U, std::move(trigger)});
         }
-        auto& sink = graph.emplaceBlock<opendigitizer::ImPlotSink<float>>();
+        auto& sink = graph.emplaceBlock<ImPlotSink<float>>();
         expect(graph.connect<"out", "in">(source, sink).has_value());
 
         gr::scheduler::Simple<> scheduler;
@@ -194,8 +195,8 @@ int main() {
 
     "DataSet drag keeps signal"_test = [] {
         gr::Graph graph;
-        auto&     linearBlock = graph.emplaceBlock<opendigitizer::ImPlotSink<gr::DataSet<float>>>({{"name", "linearSink"}, {"signal_name", "same signal"}});
-        auto&     dbBlock     = graph.emplaceBlock<opendigitizer::ImPlotSink<gr::DataSet<float>>>({{"name", "dbSink"}, {"signal_name", "same signal"}});
+        auto&     linearBlock = graph.emplaceBlock<ImPlotSink<gr::DataSet<float>>>({{"name", "linearSink"}, {"signal_name", "same signal"}});
+        auto&     dbBlock     = graph.emplaceBlock<ImPlotSink<gr::DataSet<float>>>({{"name", "dbSink"}, {"signal_name", "same signal"}});
         auto      linearSink  = SinkRegistry::instance().getSink(linearBlock.unique_name);
         auto      dbSink      = SinkRegistry::instance().getSink(dbBlock.unique_name);
         expect(linearSink != nullptr);
@@ -318,7 +319,7 @@ int main() {
     };
 
     "registeredChartTypes queries block registry"_test = [] {
-        DigitizerUi::registerDashboardBlocks(gr::globalBlockRegistry());
+        registerDashboardBlocks(gr::globalBlockRegistry());
         auto types = registeredChartTypes();
         expect(!types.empty()) << fatal;
         expect(std::ranges::any_of(types, [](const std::string& type) { return type.ends_with("XYChart"); })) << "XYChart is registered";
@@ -567,8 +568,8 @@ int main() {
         expect(std::isnan(x->linearThreshold)) << "absent: ImPlot's own SymLog";
     };
 
-    // Ground truth, analytic: f(v) = sign(v) log10(1 + |v|/c). At c = 1 mFS, f(±c) = ±log10 2, f(1) = log10 1001, and
-    // the decades from c to 1 are 1 m, 10 m, 100 m and 1 on each side of zero.
+    // ground truth, analytic: f(v) = sign(v) log10(1 + |v|/c).
+    // At c = 1 mFS, f(±c) = ±log10 2, f(1) = log10 1001, and the decades from c to 1 are 1 m, 10 m, 100 m and 1 on each side of zero.
     "SymLog with a linear threshold: log10(1 + |v|/c), odd, inverted exactly, ticked by decade"_test = [] {
         double c = 1e-3;
         expect(approx(axis::symLogForward(0.0, &c), 0.0, 1e-15));
@@ -587,8 +588,6 @@ int main() {
         expect(axis::symLogDecadeTicks(c, 0.5 * c) == std::vector<double>{0.0}) << "range inside the linear band";
         expect(axis::symLogDecadeTicks(c, 0.0) == std::vector<double>{0.0}) << "empty range";
     };
-
-    // --- Axis-grouping edge-case tests ---
 
     "findOrCreateCategory with 3 different groups"_test = [] {
         std::array<std::optional<AxisCategory>, 3> categories{};
@@ -657,7 +656,6 @@ int main() {
         chart->addSignalSink(sinkY2);
         chart->addSignalSink(sinkY3);
 
-        // Push one sample each so sinks have data
         for (auto& s : chart->signalSinks()) {
             auto* ts = dynamic_cast<TestStreamingSink*>(s.get());
             if (ts) {
@@ -665,8 +663,7 @@ int main() {
             }
         }
 
-        // buildMultiYCategories is private, but we can test axis::findOrCreateCategory logic
-        // which is the same underlying mechanism
+        // buildMultiYCategories is private; axis::findOrCreateCategory is the same mechanism
         std::array<std::optional<AxisCategory>, 3> yCategories{};
         std::array<std::vector<std::string>, 3>    yAxisGroups{};
         std::vector<std::size_t>                   overflowSinkIndices;
@@ -720,7 +717,7 @@ int main() {
     "capacity request expiry reduces capacity"_test = [] {
         auto sink = makeTestStreamingSink("expiry_test", 1000);
 
-        const auto now = opendigitizer::CapacityRequests::clock::now();
+        const auto now = CapacityRequests::clock::now();
         sink->requestCapacity("chart1", 3000, std::chrono::seconds{60}, now);
         sink->requestCapacity("chart2", 5000, std::chrono::seconds{0}, now);
         expect(eq(sink->bufferCapacity(), 5000UZ));
@@ -730,8 +727,6 @@ int main() {
     };
 
     "SignalKind bitwise operators"_test = [] {
-        using opendigitizer::SignalKind;
-
         expect((SignalKind::Streaming | SignalKind::Dataset1D) == SignalKind::All);
         expect((SignalKind::All & SignalKind::Streaming) == SignalKind::Streaming);
         expect((SignalKind::All & SignalKind::Dataset1D) == SignalKind::Dataset1D);
@@ -741,8 +736,7 @@ int main() {
     };
 
     "detail::isCompatible truth table"_test = [] {
-        using opendigitizer::SignalKind;
-        using opendigitizer::charts::detail::isCompatible;
+        using charts::detail::isCompatible;
 
         expect(isCompatible(SignalKind::Streaming, SignalKind::Streaming)) << "streaming vs streaming";
         expect(!isCompatible(SignalKind::Streaming, SignalKind::Dataset1D)) << "streaming vs dataset-only";
@@ -762,48 +756,47 @@ int main() {
     "TestDataSetSink and TestStreamingSink return correct signalKind"_test = [] {
         auto streamingSink = makeTestStreamingSink("streaming_kind_test");
         auto datasetSink   = makeTestDataSetSink("dataset_kind_test");
-        expect(streamingSink->signalKind() == opendigitizer::SignalKind::Streaming);
-        expect(datasetSink->signalKind() == opendigitizer::SignalKind::Dataset1D);
+        expect(streamingSink->signalKind() == SignalKind::Streaming);
+        expect(datasetSink->signalKind() == SignalKind::Dataset1D);
     };
 
-    "minimumSinkCompatibility empty chart returns None"_test = [] {
+    "displayedSignalKinds empty chart returns None"_test = [] {
         auto chart = makeXYChart("compat_empty");
-        expect(chart->minimumSinkCompatibility() == opendigitizer::SignalKind::None);
+        expect(chart->displayedSignalKinds() == SignalKind::None);
     };
 
-    "minimumSinkCompatibility with streaming sink"_test = [] {
+    "displayedSignalKinds with streaming sink"_test = [] {
         auto chart = makeXYChart("compat_streaming");
         chart->addSignalSink(makeTestStreamingSink("s1"));
-        expect(chart->minimumSinkCompatibility() == opendigitizer::SignalKind::Streaming);
+        expect(chart->displayedSignalKinds() == SignalKind::Streaming);
     };
 
-    "minimumSinkCompatibility with dataset sink"_test = [] {
+    "displayedSignalKinds with dataset sink"_test = [] {
         auto chart = makeXYChart("compat_dataset");
         chart->addSignalSink(makeTestDataSetSink("d1"));
-        expect(chart->minimumSinkCompatibility() == opendigitizer::SignalKind::Dataset1D);
+        expect(chart->displayedSignalKinds() == SignalKind::Dataset1D);
     };
 
-    "minimumSinkCompatibility with mixed sinks returns All"_test = [] {
+    "displayedSignalKinds with mixed sinks returns All"_test = [] {
         auto chart = makeXYChart("compat_mixed");
         chart->addSignalSink(makeTestStreamingSink("s1"));
         chart->addSignalSink(makeTestDataSetSink("d1"));
-        expect(chart->minimumSinkCompatibility() == opendigitizer::SignalKind::All);
+        expect(chart->displayedSignalKinds() == SignalKind::All);
     };
 
     "chartSignalCompatibilityRegistry contains registered chart types"_test = [] {
-        using opendigitizer::SignalKind;
-        using namespace opendigitizer::charts;
+        using namespace charts;
 
         gr::BlockRegistry blockRegistry;
-        DigitizerUi::registerDashboardBlocks(blockRegistry);
+        registerDashboardBlocks(blockRegistry);
         auto expectEntry = []<typename T>() {
-            const auto&      registry = opendigitizer::charts::chartTypes();
-            std::string_view name     = gr::refl::type_name<T>;
-            auto             iterator = std::ranges::find_if(registry, [name](const auto& pair) { return pair.first.find(name) != std::string::npos; });
+            const auto&      registry = charts::chartTypes();
+            std::string_view name     = registeredId<T>();
+            auto             iterator = registry.find(name);
             if (iterator == registry.end()) {
                 expect(false) << name << " should be registered";
             } else {
-                expect(iterator->second == T::supportedSignals);
+                expect(iterator->second == T::kSupportedSignals);
             }
         };
 
@@ -838,7 +831,7 @@ int main() {
         const auto framesThrough = [](gr::Size_t backlog, std::vector<std::vector<std::size_t>> shapes, auto check) {
             gr::Graph graph;
             auto&     source = graph.emplaceBlock<gr::testing::TensorSource<float>>();
-            auto&     sink   = graph.emplaceBlock<opendigitizer::ImPlotSink<gr::Tensor<float>>>({{"max_backlog", backlog}});
+            auto&     sink   = graph.emplaceBlock<ImPlotSink<gr::Tensor<float>>>({{"max_backlog", backlog}});
             for (std::size_t k = 0UZ; k < shapes.size(); ++k) {
                 const std::size_t n = std::ranges::fold_left(shapes[k], 1UZ, std::multiplies{});
                 source._frames.push_back({.extents = shapes[k], .elements = std::vector<float>(n, static_cast<float>(k + 1UZ))});
@@ -874,7 +867,7 @@ int main() {
             std::ignore = block.settings().activateContext();
             std::ignore = block.settings().applyStagedParameters();
         };
-        opendigitizer::Arithmetic<double> block;
+        Arithmetic<double> block;
         block.init(std::make_shared<gr::Sequence>());
         expect(eq(block.processOne(6.0, 3.0), 9.0)) << "the default +";
         for (const auto& [symbol, expected] : {std::pair{"-", 3.0}, std::pair{"*", 18.0}, std::pair{"/", 2.0}, std::pair{"+", 9.0}}) {
@@ -884,7 +877,7 @@ int main() {
         apply(block, "*");
         apply(block, "%");
         expect(eq(block.processOne(6.0, 3.0), 18.0) && block.operation.value == "*") << "an unknown symbol keeps the previous operation";
-        opendigitizer::Arithmetic<float> single;
+        Arithmetic<float> single;
         single.init(std::make_shared<gr::Sequence>());
         apply(single, "-");
         expect(eq(single.processOne(1.f, 3.f), -2.f));
@@ -892,7 +885,7 @@ int main() {
 
     "the dashboard registry provides ImPlotSink for float64, DataSet<float64> and events, Arithmetic for both float types, and the localisation blocks"_test = [] {
         gr::BlockRegistry registry;
-        DigitizerUi::registerDashboardBlocks(registry);
+        registerDashboardBlocks(registry);
         for (const std::string_view name : {"opendigitizer::ImPlotSink<float32>", "opendigitizer::ImPlotSink<float64>", "opendigitizer::ImPlotSink<gr::DataSet<float32>>", "opendigitizer::ImPlotSink<gr::DataSet<float64>>"}) {
             expect(registry.contains(name)) << name;
         }
@@ -903,27 +896,27 @@ int main() {
     };
 
     "TensorRowsChart places and names traces by the frame's axis coordinates, else by index"_test = [] {
-        const opendigitizer::ImageAxis none{};
-        const opendigitizer::ImageAxis lag{.origin = -0.001, .step = 1.0 / 48000.0, .name = "lag", .unit = "s"};
-        const opendigitizer::ImageAxis pair{.origin = 0.0, .step = 1.0, .name = "pair", .unit = ""};
-        expect(eq(opendigitizer::axisCoordinate(none, 7UZ), 7.0) && lt(std::abs(opendigitizer::axisCoordinate(lag, 48UZ)), 1e-12)) << "lag 0 in the middle of 97 columns";
+        const ImageAxis none{};
+        const ImageAxis lag{.origin = -0.001, .step = 1.0 / 48000.0, .name = "lag", .unit = "s"};
+        const ImageAxis pair{.origin = 0.0, .step = 1.0, .name = "pair", .unit = ""};
+        expect(eq(axisCoordinate(none, 7UZ), 7.0) && lt(std::abs(axisCoordinate(lag, 48UZ)), 1e-12)) << "lag 0 in the middle of 97 columns";
         expect(axisTitle(none, "column") == "column" && axisTitle(lag, "column") == "lag [s]" && axisTitle(pair, "column") == "pair");
         expect(rowLabel(none, 3UZ) == "row 3" && rowLabel(pair, 3UZ) == "pair 3");
     };
 
     "TensorRowsChart with lag_columns draws a cross-correlation frame against the lag in s"_test = [] {
-        const opendigitizer::ImageAxis lag = opendigitizer::charts::lagAxis(65UZ, 48000.0);
+        const ImageAxis lag = charts::lagAxis(65UZ, 48000.0);
         expect(eq(lag.origin, -32.0 / 48000.0) && eq(lag.step, 1.0 / 48000.0) && lag.name == "lag" && lag.unit == "s");
-        expect(lt(std::abs(opendigitizer::axisCoordinate(lag, 32UZ)), 1e-12)) << "lag 0 in the middle of 2 * 32 + 1 columns";
+        expect(lt(std::abs(axisCoordinate(lag, 32UZ)), 1e-12)) << "lag 0 in the middle of 2 * 32 + 1 columns";
 
-        opendigitizer::charts::TensorRowsChart chart;
-        opendigitizer::ImageFrame              untagged{.pixels = {}, .rows = 3UZ, .columns = 65UZ};
+        charts::TensorRowsChart chart;
+        ImageFrame              untagged{.pixels = {}, .rows = 3UZ, .columns = 65UZ};
         expect(chart.columnAxis(untagged, 48000.f).name.empty()) << "off by default: the column index";
         chart.lag_columns = true;
         expect(chart.columnAxis(untagged, 48000.f).name == "lag" && eq(chart.columnAxis(untagged, 48000.f).step, 1.0 / 48000.0));
         expect(chart.columnAxis(untagged, 0.f).name.empty()) << "no sample rate: the column index";
-        opendigitizer::ImageFrame tagged = untagged;
-        tagged.axes[1]                   = {.origin = -0.5, .step = 0.25, .name = "delay", .unit = "ms"};
+        ImageFrame tagged = untagged;
+        tagged.axes[1]    = {.origin = -0.5, .step = 0.25, .name = "delay", .unit = "ms"};
         expect(chart.columnAxis(tagged, 48000.f).name == "delay" && eq(chart.columnAxis(tagged, 48000.f).step, 0.25)) << "a gr:axis_* tag wins over lag_columns";
     };
 
@@ -935,7 +928,7 @@ int main() {
         gr::Graph            graph;
         auto&                source      = graph.emplaceBlock<gr::testing::TensorSource<float>>();
         auto&                correlation = graph.emplaceBlock<gr::localisation::PairCrossCorrelation<float>>({{"max_lag", kMaxLag}});
-        auto&                sink        = graph.emplaceBlock<opendigitizer::ImPlotSink<gr::Tensor<float>>>();
+        auto&                sink        = graph.emplaceBlock<ImPlotSink<gr::Tensor<float>>>();
         std::vector<float>   rows(3UZ * 256UZ);
         for (std::size_t i = 0UZ; i < rows.size(); ++i) {
             rows[i] = std::sin(0.37f * static_cast<float>(i)) + std::cos(1.3f * static_cast<float>(i % 256UZ));
@@ -947,8 +940,8 @@ int main() {
         gr::scheduler::Simple sched;
         expect(sched.exchange(std::move(graph)).has_value());
         expect(sched.runAndWait().has_value());
-        const auto                     frame = sink.imageFrame();
-        const opendigitizer::ImageAxis ours  = opendigitizer::charts::lagAxis(2UZ * kMaxLag + 1UZ, static_cast<double>(kRate));
+        const auto      frame = sink.imageFrame();
+        const ImageAxis ours  = charts::lagAxis(2UZ * kMaxLag + 1UZ, static_cast<double>(kRate));
         expect(eq(frame.columns, 2UZ * kMaxLag + 1UZ) && frame.axes[1].name == "lag" && frame.axes[1].unit == "s") << frame.axes[1].name;
         expect(lt(std::abs(frame.axes[1].origin - ours.origin), 1e-12) && lt(std::abs(frame.axes[1].step - ours.step), 1e-15)) << std::format("tag {} + {}, lagAxis {} + {}", frame.axes[1].origin, frame.axes[1].step, ours.origin, ours.step);
     };
@@ -958,7 +951,7 @@ int main() {
         using namespace std::string_literals;
         gr::Graph                  graph;
         auto&                      source = graph.emplaceBlock<gr::testing::TensorSource<float>>();
-        auto&                      sink   = graph.emplaceBlock<opendigitizer::ImPlotSink<gr::Tensor<float>>>();
+        auto&                      sink   = graph.emplaceBlock<ImPlotSink<gr::Tensor<float>>>();
         gr::Tensor<gr::pmt::Value> names(gr::extents_from, {2UZ});
         gr::Tensor<gr::pmt::Value> units(gr::extents_from, {2UZ});
         names[0]         = gr::pmt::Value{"pair"};
@@ -981,7 +974,7 @@ int main() {
 #if defined(OD_TRIGGER_BLOCKS)
     "GR4's float level and Schmitt triggers, coincidence and EventToTag are available to dashboards under GR4's names"_test = [] {
         gr::BlockRegistry registry;
-        DigitizerUi::registerDashboardBlocks(registry);
+        registerDashboardBlocks(registry);
         for (const std::string_view key : {"gr::blocks::trigger::LevelTrigger<float32, gr::blocks::trigger::ValueCondition::level>", "gr::blocks::trigger::SchmittTrigger<float32, gr::trigger::InterpolationMethod::LINEAR_INTERPOLATION>", "gr::blocks::trigger::Coincidence", "gr::blocks::trigger::EventToTag<float32>"}) {
             expect(registry.contains(key)) << key;
         }
@@ -997,14 +990,14 @@ int main() {
         source._tags.push_back({20UZ, gr::property_map{{"other_key", 1.f}}});
         source._tags.push_back({30UZ, station("second")});
         source._tags.push_back({40UZ, gr::property_map{{RDSDecoder::kTrafficEventKey, std::uint16_t{101U}}}});
-        auto& sink = graph.emplaceBlock<opendigitizer::TagSink<std::uint8_t>>({{"tag_keys", gr::pmt::Value{std::vector{std::string(RDSDecoder::kProgrammeIdentificationKey), std::string(RDSDecoder::kTrafficEventKey)}}}});
+        auto& sink = graph.emplaceBlock<TagSink<std::uint8_t>>({{"tag_keys", gr::pmt::Value{std::vector{std::string(RDSDecoder::kProgrammeIdentificationKey), std::string(RDSDecoder::kTrafficEventKey)}}}});
         expect(graph.connect<"out", "in">(source, sink).has_value());
         gr::scheduler::Simple<> scheduler;
         expect(scheduler.exchange(std::move(graph)).has_value());
         expect(scheduler.runAndWait().has_value());
 
-        opendigitizer::charts::RDSView::Reception reception;
-        std::size_t                               kept = 0UZ;
+        charts::RDSView::Reception reception;
+        std::size_t                kept = 0UZ;
         sink.forEachTag([&](double utcSeconds, const gr::property_map& tagMap) {
             reception.add(utcSeconds, tagMap);
             ++kept;
@@ -1018,7 +1011,7 @@ int main() {
     };
 
     "RDSView tunes the tuner centre"_test = [] {
-        opendigitizer::charts::RDSView view(gr::property_map{{"tuner", std::string("RTLSDR:frequency")}, {"station_frequency", 89.3e6}, {"channel_frequency", -250e3}});
+        charts::RDSView view(gr::property_map{{"tuner", std::string("RTLSDR:frequency")}, {"station_frequency", 89.3e6}, {"channel_frequency", -250e3}});
         view.init(view.progress);
         gr::MsgPortIn in;
         expect(fatal(view.msgOut.connect(in).has_value()));

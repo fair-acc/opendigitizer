@@ -25,7 +25,7 @@
 #include <implot.h>
 #include <implot_internal.h>
 
-namespace opendigitizer::charts {
+namespace gr::od::charts {
 
 /// llvmpipe, softpipe or SwiftShader (headless browsers, CI): there one quad per segment costs more than ImPlot's CPU path
 [[nodiscard]] inline bool softwareRasteriser() {
@@ -58,8 +58,8 @@ struct GpuLineProgram {
     };
 
     Handles handles;
-    bool    _compileAttempted       = false;
     bool    allowSoftwareRasteriser = false; // true: the GPU path even where softwareRasteriser(), e.g. to compare both paths
+    bool    _compileAttempted       = false;
 
     GpuLineProgram()                                 = default;
     GpuLineProgram(const GpuLineProgram&)            = delete;
@@ -239,6 +239,9 @@ struct GpuLineRenderer {
         float                    framebufferHeight = 0.0f;
     };
 
+    int  lastDrawnFrame = -1;
+    bool outOfMemory    = false;
+
     GLuint               _vao         = 0;
     GLuint               _vbo         = 0;
     std::size_t          _capacity    = 0UZ; // ring slots, plus one repeating slot 0 for the segment across the wrap
@@ -251,8 +254,6 @@ struct GpuLineRenderer {
     Extents              _windowExtents;
     std::vector<Extents> _blocks;
     std::vector<Vertex>  _staging;
-    int                  lastDrawnFrame = -1;
-    bool                 outOfMemory    = false;
 
     GpuLineRenderer()                                  = default;
     GpuLineRenderer(const GpuLineRenderer&)            = delete;
@@ -535,6 +536,6 @@ struct GpuLineRenderer {
     }
 };
 
-} // namespace opendigitizer::charts
+} // namespace gr::od::charts
 
 #endif // OPENDIGITIZER_CHARTS_GPULINERENDERER_HPP

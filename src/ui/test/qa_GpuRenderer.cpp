@@ -15,11 +15,13 @@
 #include <utility>
 #include <vector>
 
+using namespace gr::od;
+
 using namespace boost::ut;
 
 namespace {
-using opendigitizer::charts::XYChart;
-using opendigitizer::test::TestStreamingSink;
+using charts::XYChart;
+using test::TestStreamingSink;
 
 constexpr ImVec2 kGpuPos{50.f, 50.f};
 constexpr ImVec2 kCpuPos{750.f, 50.f};
@@ -48,8 +50,8 @@ std::unique_ptr<XYChart> makeChart(std::string name, bool gpuAcceleration) {
 void drawChart(const char* name, ImVec2 pos, XYChart& chart) {
     ImGui::SetNextWindowPos(pos);
     ImGui::SetNextWindowSize(kChartSize);
-    IMW::Window window(name, nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
-    std::ignore = chart.draw(opendigitizer::charts::chartDrawConfig(opendigitizer::charts::ChartMode::View));
+    imw::Window window(name, nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
+    std::ignore = chart.draw(charts::chartDrawConfig(charts::ChartMode::View));
 }
 
 void push(std::size_t to) {
@@ -61,7 +63,7 @@ void push(std::size_t to) {
 
 using Rows = std::vector<std::optional<std::pair<int, int>>>;
 
-Rows lineRows(const DigitizerUi::test::ImGuiTestApp::CapturedPixels& image, int left) {
+Rows lineRows(const test::ImGuiTestApp::CapturedPixels& image, int left) {
     Rows rows(static_cast<std::size_t>(kChartSize.x));
     for (int y = 0; y < image.height; ++y) {
         for (std::size_t column = 0UZ; column < rows.size(); ++column) {
@@ -74,8 +76,8 @@ Rows lineRows(const DigitizerUi::test::ImGuiTestApp::CapturedPixels& image, int 
     return rows;
 }
 
-DigitizerUi::test::ImGuiTestApp::CapturedPixels settledCapture(ImGuiTestContext* ctx) {
-    const auto capture = [ctx] { return DigitizerUi::test::ImGuiTestApp::capturePixels(*ctx, ImRect(kGpuPos, kCpuPos + kChartSize)); };
+test::ImGuiTestApp::CapturedPixels settledCapture(ImGuiTestContext* ctx) {
+    const auto capture = [ctx] { return test::ImGuiTestApp::capturePixels(*ctx, ImRect(kGpuPos, kCpuPos + kChartSize)); };
     auto       image   = capture();
     for (auto next = capture(); next.rgba != image.rgba; next = capture()) {
         image = std::move(next);
@@ -101,15 +103,15 @@ void expectMatch(ImGuiTestContext* ctx, std::size_t total) {
         }
     }
     if (compared <= 300UZ || !differences.empty()) {
-        DigitizerUi::test::ImGuiTestApp::captureScreenshot(*ctx, ImRect(kGpuPos, kCpuPos + kChartSize));
+        test::ImGuiTestApp::captureScreenshot(*ctx, ImRect(kGpuPos, kCpuPos + kChartSize));
     }
     expect(differences.empty()) << std::format("{} samples: {} columns differ, first: {}", total, differences.size(), differences.empty() ? std::string() : differences.front());
     expect(compared > 300UZ) << std::format("{} samples: {} columns with a line", total, compared) << fatal;
 }
 } // namespace
 
-struct TestApp : public DigitizerUi::test::ImGuiTestApp {
-    using DigitizerUi::test::ImGuiTestApp::ImGuiTestApp;
+struct TestApp : public test::ImGuiTestApp {
+    using test::ImGuiTestApp::ImGuiTestApp;
 
     void registerTests() override {
         ImGuiTest* t = IM_REGISTER_TEST(engine(), "gpurenderer", "gpu_vs_cpu_render");
@@ -126,7 +128,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 const XYChart& gpu = *gState->gpu;
                 for (const std::size_t total : {300UZ, 700UZ, 1100UZ}) {
                     push(total);
-                    opendigitizer::test::waitUntil(ctx, "the GPU lines are uploaded or the line shader is unavailable", [&] { return (gpu._gpuLineProgram._compileAttempted && gpu._gpuLineProgram.handles.program == 0) || (!gpu._gpuLines.empty() && gpu._gpuLines.begin()->second._uploadedEnd == total); });
+                    test::waitUntil(ctx, "the GPU lines are uploaded or the line shader is unavailable", [&] { return (gpu._gpuLineProgram._compileAttempted && gpu._gpuLineProgram.handles.program == 0) || (!gpu._gpuLines.empty() && gpu._gpuLines.begin()->second._uploadedEnd == total); });
                     expect(!gpu._gpuLines.empty()) << "the GPU path draws" << fatal;
                     expectMatch(ctx, total);
                 }
@@ -139,21 +141,21 @@ int main(int argc, char* argv[]) {
     TestState state;
     gState = std::addressof(state);
 
-    auto options             = DigitizerUi::test::TestOptions::fromArgs(argc, argv);
+    auto options             = test::TestOptions::fromArgs(argc, argv);
     options.screenshotPrefix = "gpu_vs_cpu_render";
     TestApp app(options);
     app.initImGui();
 
     state.sink = std::make_shared<TestStreamingSink>("gpu_line", 1024UZ);
     state.sink->setColor(0x00C000);
-    std::ignore = opendigitizer::charts::SinkRegistry::instance().registerSink(state.sink);
+    std::ignore = charts::SinkRegistry::instance().registerSink(state.sink);
     state.gpu   = makeChart("gpu", true);
     state.cpu   = makeChart("cpu", false);
 
     const bool result = app.runTests();
     state.gpu.reset();
     state.cpu.reset();
-    std::ignore = opendigitizer::charts::SinkRegistry::instance().unregisterSink("gpu_line");
+    std::ignore = charts::SinkRegistry::instance().unregisterSink("gpu_line");
     gState      = nullptr;
     return result ? 0 : 1;
 }

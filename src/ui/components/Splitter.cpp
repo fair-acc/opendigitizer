@@ -1,21 +1,21 @@
 #include "Splitter.hpp"
 
-#include "StyledStandardWidgets.hpp"
+#include "StyledWidgets.hpp"
 
-namespace DigitizerUi::components {
+namespace gr::od::components {
 
-float Splitter(SplitterState& splitter_state, ImVec2 space, bool vertical, float size, float defaultRatio, bool reset) {
-    IMW::PushCursorPosition _;
+float splitter(SplitterState& state, ImVec2 space, bool vertical, float size, float defaultRatio, bool reset) {
+    imw::PushCursorPosition _;
 
-    float startRatio = splitter_state.start_ratio;
+    float startRatio = state.startRatio;
 
-    splitter_state.move(defaultRatio, !reset);
-    if (splitter_state.is_hidden()) {
+    state.move(defaultRatio, !reset);
+    if (state.isHidden()) {
         return 0.0f;
     }
 
     float s = vertical ? space.x : space.y;
-    auto  w = s * splitter_state.ratio;
+    auto  w = s * state.ratio;
     if (vertical) {
         ImGui::SetCursorPosX(ImGui::GetCursorPosX() + s - w - size / 2.f);
     } else {
@@ -23,8 +23,8 @@ float Splitter(SplitterState& splitter_state, ImVec2 space, bool vertical, float
     }
 
     {
-        IMW::Child child("##c", ImVec2(0, 0), 0, 0);
-        DigitizerUi::Button("##sep", vertical ? ImVec2{size, space.y} : ImVec2{space.x, size});
+        imw::Child child("##c", ImVec2(0, 0), 0, 0);
+        button("##sep", vertical ? ImVec2{size, space.y} : ImVec2{space.x, size});
 
         const auto cursor = vertical ? ImGuiMouseCursor_ResizeEW : ImGuiMouseCursor_ResizeNS;
         if (ImGui::IsItemHovered()) {
@@ -33,14 +33,14 @@ float Splitter(SplitterState& splitter_state, ImVec2 space, bool vertical, float
 
         if (ImGui::IsItemActive()) {
             ImGui::SetMouseCursor(cursor);
-            const auto delta     = ImGui::GetMouseDragDelta();
-            splitter_state.ratio = startRatio - (vertical ? delta.x : delta.y) / s;
+            const auto delta = ImGui::GetMouseDragDelta();
+            state.ratio      = startRatio - (vertical ? delta.x : delta.y) / s;
         } else {
-            splitter_state.start_ratio = splitter_state.ratio;
+            state.startRatio = state.ratio;
         }
     }
 
-    return splitter_state.ratio;
+    return state.ratio;
 }
 
-} // namespace DigitizerUi::components
+} // namespace gr::od::components

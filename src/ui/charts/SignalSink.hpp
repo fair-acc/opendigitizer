@@ -24,7 +24,7 @@
 #include <variant>
 #include <vector>
 
-namespace opendigitizer {
+namespace gr::od {
 
 /// minimum history capacities requested by named consumers, each until its expiry
 struct CapacityRequests {
@@ -56,50 +56,16 @@ struct CapacityRequests {
     }
 };
 
-/**
- * @brief Line drawing style for signal rendering.
- *
- * Controls how the signal line is rendered in charts.
- */
 enum class LineStyle : std::uint8_t {
-    Solid,   ///< Continuous solid line (default)
-    Dashed,  ///< Dashed line pattern (e.g., "- - - -")
-    Dotted,  ///< Dotted line pattern (e.g., ". . . .")
-    DashDot, ///< Alternating dash-dot pattern (e.g., "- . - .")
-    None     ///< No line drawn (markers only)
+    Solid,
+    Dashed,
+    Dotted,
+    DashDot,
+    None // markers only
 };
 
-/**
- * @brief RAII guard for thread-safe data access to signal sink buffers.
- *
- * Holds a lock on the sink's data mutex for the duration of its lifetime.
- * Data access methods on SignalSink are only safe to call while holding this guard.
- *
- * Usage:
- * @code
- * {
- *     auto guard = sink->dataGuard();
- *     // Safe to access sink data here
- *     for (std::size_t i = 0; i < sink->size(); ++i) {
- *         double x = sink->xAt(i);
- *         float y = sink->yAt(i);
- *     }
- * } // Lock released when guard goes out of scope
- * @endcode
- */
-class DataGuard {
-    std::unique_lock<std::mutex> _lock;
-
-public:
-    DataGuard() = default; // empty guard (no mutex locked)
-    explicit DataGuard(std::mutex& mutex) : _lock(mutex) {}
-
-    // Move-only (like unique_lock)
-    DataGuard(DataGuard&&) noexcept            = default;
-    DataGuard& operator=(DataGuard&&) noexcept = default;
-    DataGuard(const DataGuard&)                = delete;
-    DataGuard& operator=(const DataGuard&)     = delete;
-};
+/// held while reading a sink's data
+using DataGuard = std::unique_lock<std::mutex>;
 
 /// one tensor dimension's coordinates, from the producer's gr:axis_* tags; without them, the cell index
 struct ImageAxis {
@@ -120,18 +86,8 @@ struct ImageFrame {
     std::array<ImageAxis, 2>                                                                                      axes{};          // {rows, columns}
 };
 
-/**
- * @brief Abstract interface for signal sink data access.
- *
- * This is a pure interface - it does NOT extend BlockModel.
- * Concrete implementations (like SinkAdapter<T>) hold a non-owning
- * pointer to the underlying block and delegate calls.
- *
- * Signal sinks are flowgraph endpoints that:
- * - Receive data via processBulk() (implemented in concrete Block<T>)
- * - Store data in internal buffers with mutex protection
- * - Provide thread-safe data access for rendering
- */
+/// the charts' read access to a sink block's data, not a BlockModel: implementations such as SinkAdapter<T> delegate to the block;
+/// the block receives on the scheduler thread, readers hold dataGuard()
 struct SignalSink {
     virtual ~SignalSink() = default;
 
@@ -163,18 +119,17 @@ struct SignalSink {
 
     [[nodiscard]] virtual double timeLast() const noexcept = 0;
 
-    /// total number of samples received since creation (not just those in current buffer)
+    /// since creation, not only those in the buffer
     [[nodiscard]] virtual std::size_t totalSampleCount() const noexcept = 0;
 
     [[nodiscard]] virtual std::size_t bufferCapacity() const noexcept = 0;
 
-    /// request minimum history capacity from a named source (auto-expires after timeout)
+    /// a named consumer's minimum history, held until `timeout` passes without a new request
     virtual void requestCapacity(std::string_view source, std::size_t capacity, std::chrono::seconds timeout = std::chrono::seconds{60}, CapacityRequests::clock::time_point now = CapacityRequests::clock::now()) = 0;
 
-    /// expire old capacity requests and resize buffer if needed
+    /// drops expired requests and resizes the history to the largest one left
     virtual void expireCapacityRequests(CapacityRequests::clock::time_point now = CapacityRequests::clock::now()) = 0;
 
-    /// acquire a guard for thread-safe data access
     [[nodiscard]] virtual DataGuard dataGuard() const = 0;
 
     virtual gr::work::Status draw(const gr::property_map& config = {}) = 0;
@@ -200,29 +155,19 @@ template<std::ranges::range TSinks>
     return guards;
 }
 
-/**
- * @brief Non-owning adapter that implements SignalSink for a concrete sink Block<T>.
- *
- * This adapter holds a pointer to an existing block (owned by the graph) and
- * delegates all SignalSink calls to the block's methods.
- *
- * The underlying block T must provide the following methods for full functionality:
- * - signalName(), color(), sampleRate()
- * - signalQuantity(), signalUnit(), abscissaQuantity(), abscissaUnit()
- * - size(), xAt(index), yAt(index)
- * - dataMutex() returning std::mutex& for thread-safe access
- * - requestCapacity(consumer, capacity), releaseCapacity(consumer), bufferCapacity()
- */
+/// non-owning SignalSink over a sink block that the graph owns
 template<gr::BlockLike T>
 struct SinkAdapter : public SignalSink {
-    std::atomic<T*> _block; // non-owning pointer to the underlying block (nulled on invalidation)
+    std::atomic<T*> _block; // nullptr after invalidate()
 
-    // cached identity (stable after invalidation)
+    // valid after invalidate()
     std::string _cachedName;
     std::string _cachedUniqueName;
 
-    // shared mutex that outlives the block — prevents TOCTOU between blockPtr() and dataMutex()
+    // outlives the block: no TOCTOU between blockPtr() and dataMutex()
     std::shared_ptr<std::mutex> _sharedMutex;
+
+    mutable std::mutex _fallbackMutex; // for a block without sharedDataMutex()
 
     explicit SinkAdapter(T& block) : _block(&block), _cachedName(block.name.value), _cachedUniqueName(block.unique_name) {
         if constexpr (requires { block.sharedDataMutex(); }) {
@@ -232,7 +177,6 @@ struct SinkAdapter : public SignalSink {
 
     ~SinkAdapter() override = default;
 
-    // Non-copyable, non-movable (pointer to external block)
     SinkAdapter(const SinkAdapter&)            = delete;
     SinkAdapter& operator=(const SinkAdapter&) = delete;
     SinkAdapter(SinkAdapter&&)                 = delete;
@@ -483,8 +427,8 @@ struct SinkAdapter : public SignalSink {
         }
         if constexpr (requires { b->totalSampleCount(); }) {
             return b->totalSampleCount();
-        } else if constexpr (requires { b->_sample_count; }) {
-            return b->_sample_count;
+        } else if constexpr (requires { b->_sampleCount; }) {
+            return b->_sampleCount;
         }
         return 0;
     }
@@ -548,11 +492,8 @@ struct SinkAdapter : public SignalSink {
         }
         return true;
     }
-
-private:
-    mutable std::mutex _fallbackMutex; // per-instance fallback (replaces former static dummy)
 };
 
-} // namespace opendigitizer
+} // namespace gr::od
 
 #endif // OPENDIGITIZER_SIGNALSINK_HPP

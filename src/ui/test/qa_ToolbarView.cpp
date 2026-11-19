@@ -22,6 +22,8 @@
 #include <memory>
 #include <vector>
 
+using namespace gr::od;
+
 CMRC_DECLARE(ui_test_assets);
 
 using namespace boost;
@@ -46,9 +48,9 @@ namespace {
 constexpr ImVec2 kHostPos{100.f, 80.f};
 constexpr ImVec2 kHostSize{800.f, 200.f};
 
-struct TestState : opendigitizer::test::TestDashboardRunner {
-    std::string              grc;
-    DigitizerUi::ToolbarView view;
+struct TestState : test::TestDashboardRunner {
+    std::string grc;
+    ToolbarView view;
 };
 
 TestState* gState = nullptr;
@@ -60,11 +62,9 @@ bool waitForSetting(ImGuiTestContext* ctx, std::string_view blockName, std::stri
 } // namespace
 
 const boost::ut::suite<"planToolbar"> planTests = [] {
-    using DigitizerUi::planToolbar;
-    using DigitizerUi::ToolbarSlot;
-    constexpr DigitizerUi::toolbar::ItemWidths          kSlider{.natural = 200.f, .minimum = 100.f, .label = 30.f};
-    const std::vector<DigitizerUi::toolbar::ItemWidths> sliders(3UZ, kSlider);
-    const auto                                          slotIs = [](const ToolbarSlot& slot, std::size_t row, float width, bool label) { return slot.row == row && std::abs(slot.width - width) < 1e-3f && slot.showLabel == label; };
+    constexpr toolbar::ItemWidths          kSlider{.natural = 200.f, .minimum = 100.f, .label = 30.f};
+    const std::vector<toolbar::ItemWidths> sliders(3UZ, kSlider);
+    const auto                             slotIs = [](const ToolbarSlot& slot, std::size_t row, float width, bool label) { return slot.row == row && std::abs(slot.width - width) < 1e-3f && slot.showLabel == label; };
 
     "a row wide enough keeps the natural widths"_test = [&] { // 3·200 + 2·10 = 620 ≤ 700
         const auto slots = planToolbar(sliders, 700.f, 10.f);
@@ -94,15 +94,15 @@ const boost::ut::suite<"planToolbar"> planTests = [] {
     };
 
     "a fixed item keeps its width while the others shrink"_test = [&] { // free 500 - 30 - 340 = 130 of 300
-        std::vector<DigitizerUi::toolbar::ItemWidths> items{{.natural = 40.f, .minimum = 40.f, .label = 0.f}};
+        std::vector<toolbar::ItemWidths> items{{.natural = 40.f, .minimum = 40.f, .label = 0.f}};
         items.insert(items.end(), sliders.begin(), sliders.end());
         const auto slots = planToolbar(items, 500.f, 10.f);
         expect(slotIs(slots[0], 0UZ, 40.f, true) && slotIs(slots[1], 0UZ, 100.f + 130.f / 3.f, true));
     };
 };
 
-struct TestApp : public DigitizerUi::test::ImGuiTestApp {
-    using DigitizerUi::test::ImGuiTestApp::ImGuiTestApp;
+struct TestApp : public test::ImGuiTestApp {
+    using test::ImGuiTestApp::ImGuiTestApp;
 
     void registerTests() override {
         ImGuiTest* t = IM_REGISTER_TEST(engine(), "toolbarview", "toolbar blocks of the flowgraph");
@@ -110,9 +110,9 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
         t->GuiFunc = [](ImGuiTestContext*) {
             ImGui::SetNextWindowPos(kHostPos);
             ImGui::SetNextWindowSize(kHostSize);
-            IMW::Window window("Host", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
+            imw::Window window("Host", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
             auto&       state = *gState;
-            state.dashboard->session.handleMessages();
+            state.dashboard->session.receiveMessages();
             if (state.dashboard->isInitialised) {
                 state.view.draw(state.dashboard->session, state.dashboard->schedulerUi);
             }
@@ -197,7 +197,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
 
                 std::string withControls = state.grc;
                 withControls.replace(withControls.find("  layout: Free"), std::string_view("  layout: Free").size(), "  layout: Free\n  scheduler_ui: true");
-                auto loaded = std::make_unique<DigitizerUi::Dashboard>(state.restClient, DigitizerUi::DashboardDescription::createEmpty("with controls"));
+                auto loaded = std::make_unique<Dashboard>(state.restClient, DashboardDescription::createEmpty("with controls"));
                 loaded->loadAndThen(withControls, [](gr::Graph&&) {});
                 expect(loaded->schedulerUi) << "read from the .grc";
             };
@@ -216,7 +216,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
 };
 
 int main(int argc, char* argv[]) {
-    auto options             = DigitizerUi::test::TestOptions::fromArgs(argc, argv);
+    auto options             = test::TestOptions::fromArgs(argc, argv);
     options.screenshotPrefix = "toolbar_view";
     TestApp app(options);
 
@@ -228,7 +228,7 @@ int main(int argc, char* argv[]) {
     gr::blocklib::initGrBasicBlocks(registry);
     gr::blocklib::initGrTestingBlocks(registry);
     std::ignore = gr::registerBlock<ForeignToolbarBlock>(registry);
-    std::ignore = gr::registerBlock<opendigitizer::test::TestPropertySetterButton>(registry);
+    registerWithIdPrefix<test::TestPropertySetterButton>(registry, kOpendigitizerIdPrefix);
 
     auto grcFile = cmrc::ui_test_assets::get_filesystem().open("examples/qa_toolbar.grc");
     state.grc    = std::string(grcFile.begin(), grcFile.end());

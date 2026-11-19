@@ -8,10 +8,12 @@
 #include <string_view>
 #include <utility>
 
+using namespace gr::od;
+
 namespace {
 
 using namespace boost::ut;
-using namespace DigitizerUi::components;
+using namespace components;
 
 struct HeapText { // exact-size heap copy, so that a read outside the input trips the sanitizers
     std::unique_ptr<char[]> buffer;
@@ -23,7 +25,7 @@ struct HeapText { // exact-size heap copy, so that a read outside the input trip
 
 [[nodiscard]] std::optional<float> evaluated(std::string_view text) { return evaluate(HeapText(text).view()); }
 
-const suite<"keypad expression parser"> _parser = [] {
+const suite<"keypad expression parser"> parserTests = [] {
     "keypad input evaluates as before"_test = [] {
         // results of the previous parser, bit-exact
         constexpr std::pair<std::string_view, float> kExpected[] = {
@@ -99,26 +101,26 @@ const suite<"keypad expression parser"> _parser = [] {
     };
 
     "tokens"_test = [] {
-        expect(lastToken("").type == TType::tt_none);
-        expect(lastToken("1 + ").type == TType::tt_plus);
+        expect(lastToken("").type == TType::None);
+        expect(lastToken("1 + ").type == TType::Plus);
         expect(eq(lastToken("1 + ").range, std::string_view(" + "))) << "binary operators span their spaces, which Backspace removes";
-        expect(lastToken("1 - ").type == TType::tt_minus);
-        expect(lastToken("1 -").type == TType::tt_minus);
-        expect(lastToken("2 * -").type == TType::tt_minus);
-        expect(lastToken("-").type == TType::tt_minus);
-        expect(lastToken("-5").type == TType::tt_const);
-        expect(lastToken("sinh(").type == TType::tt_sinh);
+        expect(lastToken("1 - ").type == TType::Minus);
+        expect(lastToken("1 -").type == TType::Minus);
+        expect(lastToken("2 * -").type == TType::Minus);
+        expect(lastToken("-").type == TType::Minus);
+        expect(lastToken("-5").type == TType::Const);
+        expect(lastToken("sinh(").type == TType::Sinh);
         expect(eq(lastToken("2 * sin(").range, std::string_view("sin(")));
-        expect(lastToken("(1)").type == TType::tt_pclose);
-        expect(lastToken("+").type == TType::tt_plus) << "a leading operator stays inside the input";
+        expect(lastToken("(1)").type == TType::PClose);
+        expect(lastToken("+").type == TType::Plus) << "a leading operator stays inside the input";
         expect(eq(lastToken("+").range, std::string_view("+")));
 
         const HeapText text("  12.5e-1 ^ 2");
         const auto     tokens = tokenize(text.view());
         expect(eq(tokens.size(), 4UZ));
         expect(eq(tokens[0].range, std::string_view("12.5e-1"))) << "leading spaces are skipped once";
-        expect(tokens[1].type == TType::tt_power);
-        expect(tokens.back().type == TType::tt_end);
+        expect(tokens[1].type == TType::Power);
+        expect(tokens.back().type == TType::End);
     };
 
     "only a single, optionally negated, constant is accepted as is"_test = [] {

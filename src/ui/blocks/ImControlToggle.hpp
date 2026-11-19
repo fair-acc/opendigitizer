@@ -3,14 +3,14 @@
 
 #include "ImControl.hpp"
 
-#include "../components/StyledStandardWidgets.hpp"
+#include "../components/StyledWidgets.hpp"
 
 #include <gnuradio-4.0/Block.hpp>
 
 #include <string>
 #include <utility>
 
-namespace DigitizerUi {
+namespace gr::od {
 
 struct ImControlToggle : ImControl<ImControlToggle> {
     using Description = gr::Doc<"UI control that edits a boolean and sets it on the block and property determined by target_map">;
@@ -24,12 +24,12 @@ struct ImControlToggle : ImControl<ImControlToggle> {
 
     gr::work::Status draw(const gr::property_map& config = {}) noexcept {
         const auto          parsedConfig = DrawableBlockConfig::fromMap(config);
-        const float         toggleWidth  = DigitizerUi::toggleSwitchWidth();
+        const float         toggleWidth  = toggleSwitchWidth();
         const SizeAndLayout layout       = prepareDraw(parsedConfig, toggleWidth, toggleWidth, labelWidth());
         loadValueIfConnectionChanged(value, parsedConfig);
         drawWithLabel(layout, [this](float) {
             const std::string id = widgetId();
-            if (DigitizerUi::Checkbox(id.c_str(), &value)) {
+            if (checkbox(id.c_str(), &value)) {
                 commitValue(value);
             }
         });
@@ -37,6 +37,6 @@ struct ImControlToggle : ImControl<ImControlToggle> {
     }
 };
 
-} // namespace DigitizerUi
+} // namespace gr::od
 
 #endif

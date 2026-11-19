@@ -3,7 +3,7 @@
 
 #include "ImControl.hpp"
 
-#include "../components/StyledStandardWidgets.hpp"
+#include "../components/StyledWidgets.hpp"
 
 #include <gnuradio-4.0/Block.hpp>
 
@@ -17,7 +17,7 @@
 #include <utility>
 #include <vector>
 
-namespace DigitizerUi {
+namespace gr::od {
 
 struct ImControlChoice : ImControl<ImControlChoice> {
     using Description = gr::Doc<R""(UI control that picks one of `choices`, or of the controlled property's enum values, and sets it on the settings target_map determines.
@@ -62,14 +62,14 @@ A choice's `choice_values` entry is sent instead: to target_map, or without targ
         }
         drawWithLabel(layout, [&](float width) {
             const std::string id = widgetId();
-            // we have to disable the dropdown while inside the flowgraph editor because imgui node editor can't handle combo boxes being drawn in nodes.
-            // to fix this we would need to set up a two-pass draw, one in node editor space and one normally. See <https://github.com/thedmd/imgui-node-editor/issues/48>
+            // disabled inside the flowgraph editor: the node editor cannot draw combo boxes in nodes;
+            // a fix would need a two-pass draw, in node editor space and normally, see https://github.com/thedmd/imgui-node-editor/issues/48
             const bool    insideNodeEditor = parsedConfig.drawingContext == DrawableBlockConfig::DrawingContext::FlowgraphView;
-            IMW::Disabled nothingToChooseOrCannotOpen(offered.empty() || insideNodeEditor);
+            imw::Disabled nothingToChooseOrCannotOpen(offered.empty() || insideNodeEditor);
             ImGui::SetNextItemWidth(width);
-            if (auto combo = DigitizerUi::ComboBox(id.c_str(), value.c_str(), 0)) {
+            if (auto combo = ComboBox(id.c_str(), value.c_str(), 0)) {
                 for (const std::string& choice : offered) {
-                    if (DigitizerUi::Selectable(choice.c_str(), choice == value)) {
+                    if (selectable(choice.c_str(), choice == value)) {
                         value = choice;
                         stageValue(value);
                         apply(value);
@@ -80,7 +80,6 @@ A choice's `choice_values` entry is sent instead: to target_map, or without targ
         return gr::work::Status::OK;
     }
 
-private:
     void apply(const std::string& choice) {
         if (choices.empty()) {
             sendToTargets(choice);
@@ -131,6 +130,6 @@ private:
     }
 };
 
-} // namespace DigitizerUi
+} // namespace gr::od
 
 #endif

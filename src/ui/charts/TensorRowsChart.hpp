@@ -17,7 +17,7 @@
 
 #include <implot.h>
 
-namespace opendigitizer::charts {
+namespace gr::od::charts {
 
 [[nodiscard]] inline std::string axisTitle(const ImageAxis& axis, std::string_view fallback) { return axis.name.empty() ? std::string(fallback) : labelWithUnit(axis.name, axis.unit); }
 
@@ -33,7 +33,8 @@ The x axis and the trace names are the frame's gr:axis_* coordinates, else the x
     template<typename T, gr::meta::fixed_string description = "", typename... Arguments>
     using A = gr::Annotated<T, description, Arguments...>;
 
-    static constexpr std::string_view kChartTypeName = "TensorRowsChart";
+    static constexpr std::string_view kChartTypeName    = "TensorRowsChart";
+    static constexpr SignalKind       kSupportedSignals = SignalKind::Image2D;
 
     A<std::string, "chart name", gr::Visible>                                                                        chart_name;
     A<std::string, "chart title">                                                                                    chart_title;
@@ -43,8 +44,6 @@ The x axis and the trace names are the frame's gr:axis_* coordinates, else the x
     A<bool, "X auto-scale">                                                                                          x_auto_scale = true;
     A<bool, "Y auto-scale">                                                                                          y_auto_scale = true;
     A<bool, "lag columns", gr::Doc<"columns are lags, lag 0 in the middle, drawn in s from the sink's sample rate">> lag_columns  = false;
-
-    static constexpr SignalKind supportedSignals = SignalKind::Image2D;
 
     GR_MAKE_REFLECTABLE(TensorRowsChart, chart_name, chart_title, data_sinks, show_legend, show_grid, x_auto_scale, y_auto_scale, lag_columns);
 
@@ -61,7 +60,7 @@ The x axis and the trace names are the frame's gr:axis_* coordinates, else the x
 
     gr::work::Result work(std::size_t = std::numeric_limits<std::size_t>::max(), gr::device::DeviceContext& = gr::device::hostBackend()) noexcept { return {0UZ, 0UZ, gr::work::Status::OK}; }
 
-    void settingsChanged(const gr::property_map& /*oldSettings*/, const gr::property_map& newSettings) { handleSettingsChanged(newSettings); }
+    void settingsChanged(const gr::property_map& /*oldSettings*/, const gr::property_map& newSettings) { applyChartSettings(newSettings); }
 
     gr::work::Status draw(const gr::property_map& config = {}) {
         [[maybe_unused]] auto [plotFlags, plotSize, showLegend, chartMode, showGrid, chartStyle] = prepareDrawPrologue(config);
@@ -69,7 +68,7 @@ The x axis and the trace names are the frame's gr:axis_* coordinates, else the x
             drawEmptyPlot("No signals", plotFlags, plotSize, chartMode);
             return gr::work::Status::OK;
         }
-        if (!DigitizerUi::TouchHandler<>::BeginZoomablePlot(chart_name.value, plotSize, plotFlags)) {
+        if (!TouchHandler<>::beginZoomablePlot(chart_name.value, plotSize, plotFlags)) {
             return gr::work::Status::OK;
         }
         const std::vector<DataGuard> guards = lockAll(_signalSinks); // the frames' pixels are the sinks' storage
@@ -97,8 +96,8 @@ The x axis and the trace names are the frame's gr:axis_* coordinates, else the x
         }
 
         tooltip::showPlotMouseTooltip();
-        handleCommonInteractions(chartMode);
-        DigitizerUi::TouchHandler<>::EndZoomablePlot();
+        updateInteractions(chartMode);
+        TouchHandler<>::endZoomablePlot();
         return gr::work::Status::OK;
     }
 
@@ -124,6 +123,6 @@ The x axis and the trace names are the frame's gr:axis_* coordinates, else the x
     }
 };
 
-} // namespace opendigitizer::charts
+} // namespace gr::od::charts
 
 #endif // OPENDIGITIZER_CHARTS_TENSORROWSCHART_HPP

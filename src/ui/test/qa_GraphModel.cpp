@@ -4,7 +4,7 @@
 #include <Dashboard.hpp>
 #include <GraphModel.hpp>
 #include <MapUtils.hpp>
-#include <common/ImguiWrap.hpp>
+#include <common/Imw.hpp>
 #include <components/ImGuiNotify.hpp>
 
 #include <blocks/Arithmetic.hpp>
@@ -24,13 +24,15 @@
 
 #include <array>
 
+using namespace gr::od;
+
 CMRC_DECLARE(ui_test_assets);
 
 using namespace boost;
 using namespace boost::ut;
 using namespace std::string_literals;
 
-opendigitizer::test::TestDashboardRunner* gState = nullptr;
+test::TestDashboardRunner* gState = nullptr;
 
 void reloadSubgraph() { gState->reloadSubgraph(); }
 void reloadGrouping() { gState->reloadGrouping(); }
@@ -45,8 +47,14 @@ constexpr std::array kSubgraphBlockTypenameAndDescriptions{
     SubgraphBlockTypenameAndDescription{"managed subgraph", "gr::scheduler::Simple<gr::scheduler::ExecutionPolicy::singleThreaded>"},
 };
 
-struct TestApp : public DigitizerUi::test::ImGuiTestApp {
-    using DigitizerUi::test::ImGuiTestApp::ImGuiTestApp;
+struct TestApp : public test::ImGuiTestApp {
+    using test::ImGuiTestApp::ImGuiTestApp;
+    using CountingSink = gr::testing::AtomicCountingSink<float>;
+
+    struct Owners {
+        std::string scheduler;
+        std::string graph;
+    };
 
     static UiGraphBlock* rootGraph() {
         auto& rootChildren = gState->dashboard->session.graphModel.rootBlock.childBlocks;
@@ -79,11 +87,6 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
     }
 
     // like FlowgraphEditor::ownersForRoot()
-    struct Owners {
-        std::string scheduler;
-        std::string graph;
-    };
-
     static Owners ownersFor(UiGraphBlock* graphOrScheduler) {
         expect(graphOrScheduler != nullptr) << fatal;
         if (graphOrScheduler->isScheduler()) {
@@ -129,29 +132,25 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
         return it == graph->childEdges.end() ? nullptr : std::to_address(it);
     }
 
-    // get unique name given regular name
     static std::string uniqueNameOf(std::string_view name) {
         UiGraphBlock* block = findByName(name);
         expect(block != nullptr) << fatal << std::format("expected a block named {}", name);
         return block->blockUniqueName;
     }
 
-    // does a block with the given name exist, and is it a child of the root graph
     static bool isRootChild(std::string_view name) {
         const auto found = gState->dashboard->session.graphModel.recursiveFindBlockByName(name);
         return found.block != nullptr && found.parentGraph == rootGraph();
     }
 
     // the normal configuration for qa_grouping, which is useful to verify that the graph is in (or has returned to) its normal state
-    static void expectEdges_qa_grouping() {
+    static void expectEdgesOfQaGrouping() {
         for (const auto& [from, to] : {std::pair{"source", "middleA"}, {"middleA", "middleB"}, {"middleB", "sink"}}) {
             const UiGraphEdge* edge = findEdge(rootGraph(), uniqueNameOf(from), uniqueNameOf(to));
             expect(edge != nullptr) << std::format("edge {} -> {} should be present in the root graph", from, to);
             expect(edge == nullptr || (edge->edgeSourcePort != nullptr && edge->edgeDestinationPort != nullptr)) << "the edge should resolve its ports";
         }
     }
-
-    using CountingSink = gr::testing::AtomicCountingSink<float>;
 
     // qa_grouping.grc has a counting sink in it, find the actual BlockModel so we can read the # of samples processed
     static CountingSink* findCountingSink(std::string_view uniqueName) {
@@ -167,7 +166,6 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
         return gState->waitUntil(ctx, "the graph model follows", [sink, baseline] { return sampleCount(sink) > baseline; });
     }
 
-    /// Returns true if any edges are pointing to blocks that don't exist
     [[nodiscard]] static bool hasInvalidEdges() {
         bool hasInvalid = false;
         gState->dashboard->session.graphModel.recursiveForEachBlock([&hasInvalid](const UiGraphModel::FindBlockResult& element) {
@@ -227,10 +225,10 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             ImGuiTest* t = IM_REGISTER_TEST(engine(), "flowgraph", "port exporting from subgraphs");
 
             t->GuiFunc = [](ImGuiTestContext*) {
-                IMW::Window window("Test Window", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoSavedSettings);
+                imw::Window window("Test Window", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoSavedSettings);
                 ImGui::SetWindowPos({0, 0});
                 ImGui::SetWindowSize(ImVec2(800, 800));
-                gState->dashboard->session.handleMessages();
+                gState->dashboard->session.receiveMessages();
             };
 
             t->TestFunc = [](ImGuiTestContext* ctx) { // NOSONAR test lambda length
@@ -240,7 +238,6 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 UiGraphBlock* rootBlock = gState->dashboard->session.graphModel.recursiveFindBlockByName("simpleScheduler").block;
                 expect(rootBlock) << fatal;
 
-                // block with outputs
                 UiGraphBlock* outputsBlock = gState->dashboard->session.graphModel.recursiveFindBlockByName("subgraphSignalGenerator").block;
                 expect(outputsBlock) << fatal;
 
@@ -250,7 +247,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 };
 
                 "returns not-exported for null ownerBlock"_test = [rootBlock] {
-                    DigitizerUi::UiGraphPort orphanPort(nullptr);
+                    UiGraphPort orphanPort(nullptr);
                     orphanPort.portName      = "orphan";
                     orphanPort.portDirection = gr::PortDirection::OUTPUT;
 
@@ -258,7 +255,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 };
 
                 "transparent subgraph exposes exported ports after emplace data"_test = [] {
-                    DigitizerUi::UiGraphModel model;
+                    UiGraphModel model;
 
                     const auto makePortData        = [](std::string_view portType) { return gr::property_map{{"type", std::string(portType)}}; };
                     const auto makeNormalBlockData = [&](const std::string& uniqueName, gr::property_map inputPorts, gr::property_map outputPorts) {
@@ -326,7 +323,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
 
             const auto subgraphHasExportedPort = [uniqueName = subgraph->blockUniqueName] {
                 UiGraphBlock* block = gState->dashboard->session.graphModel.recursiveFindBlockByUniqueName(uniqueName).block;
-                return block && std::ranges::count(block->outputPorts(), "sigOut", &DigitizerUi::UiGraphPort::portName) == 1;
+                return block && std::ranges::count(block->outputPorts(), "sigOut", &UiGraphPort::portName) == 1;
             };
             expect(gState->waitUntil(ctx, "the graph model follows", subgraphHasExportedPort)) << "exported port did not show up on the subgraph block";
 
@@ -448,7 +445,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             ungroupAndWait(ctx, subgraphUniqueName);
 
             expect(gState->waitUntil(ctx, "the graph model follows", [] { return isRootChild("middleA") && rootGraph()->childEdges.size() == 3UZ; })) << fatal << "middleA and the original chain should be restored";
-            expectEdges_qa_grouping();
+            expectEdgesOfQaGrouping();
             expectGraphRunningAndConnected(ctx, sink, "after ungrouping a single block");
 
             gState->stopScheduler();
@@ -482,7 +479,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             ungroupAndWait(ctx, subgraphUniqueName);
 
             expect(gState->waitUntil(ctx, "the graph model follows", [] { return isRootChild("loner1") && isRootChild("loner2"); })) << "ungrouped blocks should return to the root graph";
-            expectEdges_qa_grouping();
+            expectEdgesOfQaGrouping();
             expectGraphRunningAndConnected(ctx, sink, "after ungrouping unconnected blocks");
 
             gState->stopScheduler();
@@ -499,7 +496,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             ungroupAndWait(ctx, subgraph->blockUniqueName);
 
             expect(gState->waitUntil(ctx, "the graph model follows", [] { return isRootChild("middleA") && rootGraph()->childEdges.size() == 3UZ; })) << fatal << "chain was not restored in the root graph";
-            expectEdges_qa_grouping();
+            expectEdgesOfQaGrouping();
             expectGraphRunningAndConnected(ctx, sink, "after ungrouping");
 
             gState->stopScheduler();
@@ -669,7 +666,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
 
     static bool isManagedVariant(ImGuiTestContext* ctx) { return !graphTypeFor(ctx).starts_with("gr::Graph"); }
 
-    // group some blocks and return the ui graphmodel representation of the resulting subgraph. which type of scheduler/graph is determined by the test params
+    // groups the blocks and returns the UI graph model's subgraph; the test parameters decide its scheduler or graph type
     static UiGraphBlock* groupAndWait(ImGuiTestContext* ctx, const std::vector<std::string>& uniqueNames, UiGraphBlock* parentGraph = nullptr) {
         const std::string parentUniqueName = (parentGraph ? parentGraph : rootGraph())->blockUniqueName;
         const auto        reFindParent     = [parentUniqueName] { return gState->dashboard->session.graphModel.recursiveFindBlockByUniqueName(parentUniqueName).block; };
@@ -705,10 +702,10 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
     }
 
     static void messageTestGuiFunc(ImGuiTestContext*) {
-        IMW::Window window("Test Window", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoSavedSettings);
+        imw::Window window("Test Window", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoSavedSettings);
         ImGui::SetWindowPos({0, 0});
         ImGui::SetWindowSize(ImVec2(800, 800));
-        gState->dashboard->session.handleMessages();
+        gState->dashboard->session.receiveMessages();
     }
 
     void registerMessageTest(const char* name, ImGuiTestTestFunc testFunc) {
@@ -717,7 +714,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
         t->TestFunc  = testFunc;
     }
 
-    /// run test foreach item in kSubgraphBlockTypenameAndDescriptions
+    /// for each item of kSubgraphBlockTypenameAndDescriptions
     void registerGroupingTest(const char* name, ImGuiTestTestFunc testFunc) {
         for (std::size_t variant = 0UZ; variant < kSubgraphBlockTypenameAndDescriptions.size(); ++variant) {
             ImGuiTest* t = IM_REGISTER_TEST(engine(), "graphmodel", name);
@@ -734,19 +731,18 @@ template<typename Registry>
 void registerTestBlocks(Registry& registry) {
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-variable"
-    gr::registerBlock<opendigitizer::Arithmetic, float>(registry);
-    gr::registerBlock<opendigitizer::ImPlotSink, float, gr::DataSet<float>>(registry);
-    // TODO: fix gnuradio having this keyed under CountingSinkImpl
+    registerWithIdPrefix<Arithmetic, float>(registry, kOpendigitizerIdPrefix);
+    registerWithIdPrefix<ImPlotSink, float, gr::DataSet<float>>(registry, kOpendigitizerIdPrefix);
+    // the explicit alias: GR4 does not register the block under its own name
     gr::registerBlock<"gr::testing::AtomicCountingSink", gr::testing::AtomicCountingSink, float>(registry);
 #pragma GCC diagnostic pop
 }
 } // namespace
 
 int main(int argc, char* argv[]) {
-    auto options             = DigitizerUi::test::TestOptions::fromArgs(argc, argv);
+    auto options             = test::TestOptions::fromArgs(argc, argv);
     options.screenshotPrefix = "GraphModel";
 
-    // This is not a globalBlockRegistry, but a copy of it
     gr::BlockRegistry&     registry          = gr::globalBlockRegistry();
     gr::SchedulerRegistry& schedulerRegistry = gr::globalSchedulerRegistry();
 
@@ -761,9 +757,9 @@ int main(int argc, char* argv[]) {
     options.speedMode = ImGuiTestRunSpeed_Normal;
     TestApp app(options);
 
-    // init early, as Dashboard invokes ImGui style stuff
+    // before the dashboard, which sets ImGui styles
     app.initImGui();
-    opendigitizer::test::TestDashboardRunner state;
+    test::TestDashboardRunner state;
     gState = std::addressof(state);
 
     state.reload(cmrc::sample_dashboards::get_filesystem(), "assets/sampleDashboards/DemoDashboard.grc");

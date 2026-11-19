@@ -1,11 +1,11 @@
-#include "Setup.hpp"
+#include "DashboardBlocks.hpp"
 
 #include <opendigitizer/video/AcousticImage.hpp>
 #include <opendigitizer/video/BrowserMicrophonePairs.hpp>
 #include <opendigitizer/video/CameraSource.hpp>
 #include <opendigitizer/video/ImageTransforms.hpp>
 
-namespace DigitizerUi {
+namespace gr::od {
 
 void registerVideoBlocks(gr::BlockRegistry& registry) {
     std::ignore = gr::registerBlock<opendigitizer::video::CameraSource>(registry);
@@ -19,4 +19,4 @@ void registerVideoBlocks(gr::BlockRegistry& registry) {
 #endif
 }
 
-} // namespace DigitizerUi
+} // namespace gr::od

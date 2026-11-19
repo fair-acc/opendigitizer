@@ -12,11 +12,18 @@
 #include <mutex>
 #include <string>
 
-namespace opendigitizer {
+namespace gr::od {
 
 template<typename T>
 struct ImControlValue : gr::Block<ImControlValue<T>, gr::Drawable<gr::UICategory::Toolbar, "ImGui">> {
     using Description = gr::Doc<"UI display of the last value its asynchronous input received: 'label: value unit', the number right-aligned in `width` digits">;
+
+    struct Shown { // the settings as draw() uses them: set on the scheduler thread, read on the UI thread
+        std::string label = "value";
+        std::string unit;
+        gr::Size_t  width     = 8U;
+        gr::Size_t  precision = 1U;
+    };
 
     gr::PortIn<T, gr::Async> in;
 
@@ -27,23 +34,12 @@ struct ImControlValue : gr::Block<ImControlValue<T>, gr::Drawable<gr::UICategory
 
     GR_MAKE_REFLECTABLE(ImControlValue, in, label, unit, width, precision);
 
-    struct Shown { // the settings as draw() uses them: set on the scheduler thread, read on the UI thread
-        std::string label = "value";
-        std::string unit;
-        gr::Size_t  width     = 8U;
-        gr::Size_t  precision = 1U;
-    };
     std::mutex        _shownMutex;
     Shown             _shown;
     std::atomic<T>    _last{};
     std::atomic<bool> _received{false};
     std::string       _drawnNumber;         // in the last draw, for tests
     float             _drawnRightGap = 0.f; // px between the number's right edge and its field's, in the last draw
-
-    void settingsChanged(const gr::property_map& /*oldSettings*/, const gr::property_map& /*newSettings*/) {
-        std::lock_guard lock(_shownMutex);
-        _shown = {.label = label, .unit = unit, .width = width.value, .precision = precision.value};
-    }
 
     gr::work::Status processBulk(gr::InputSpanLike auto& inSpan) {
         if (inSpan.empty()) {
@@ -53,6 +49,11 @@ struct ImControlValue : gr::Block<ImControlValue<T>, gr::Drawable<gr::UICategory
         _received.store(true, std::memory_order_release);
         std::ignore = inSpan.consume(inSpan.size());
         return gr::work::Status::OK;
+    }
+
+    void settingsChanged(const gr::property_map& /*oldSettings*/, const gr::property_map& /*newSettings*/) {
+        std::lock_guard lock(_shownMutex);
+        _shown = {.label = label, .unit = unit, .width = width.value, .precision = precision.value};
     }
 
     gr::work::Status draw(const gr::property_map& /*config*/ = {}) {
@@ -79,6 +80,6 @@ struct ImControlValue : gr::Block<ImControlValue<T>, gr::Drawable<gr::UICategory
     }
 };
 
-} // namespace opendigitizer
+} // namespace gr::od
 
 #endif // OPENDIGITIZER_UI_BLOCKS_IMCONTROLVALUE_HPP

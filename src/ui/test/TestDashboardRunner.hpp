@@ -23,11 +23,11 @@
 
 CMRC_DECLARE(ui_test_assets);
 
-namespace opendigitizer::test {
+namespace gr::od::test {
 inline const auto     defaultGRCFilesystem = cmrc::sample_dashboards::get_filesystem();
-constexpr const char* defaultGRCPath       = "assets/sampleDashboards/DemoDashboard.grc";
+constexpr const char* kDefaultGrcPath      = "assets/sampleDashboards/DemoDashboard.grc";
 
-inline std::vector<const ImGuiWindow*> chartWindows(const DigitizerUi::Dashboard& dashboard) {
+inline std::vector<const ImGuiWindow*> chartWindows(const Dashboard& dashboard) {
     std::vector<const ImGuiWindow*> windows;
     for (const auto& uiWindow : dashboard.uiWindows) {
         if (uiWindow.block) {
@@ -37,7 +37,7 @@ inline std::vector<const ImGuiWindow*> chartWindows(const DigitizerUi::Dashboard
     return windows;
 }
 
-inline void waitForStableCharts(ImGuiTestContext* ctx, const DigitizerUi::Dashboard& dashboard) {
+inline void waitForStableCharts(ImGuiTestContext* ctx, const Dashboard& dashboard) {
     constexpr std::size_t kStableFrames = 5UZ;
     std::vector<ImRect>   previous;
     for (std::size_t stableFrames = 0UZ; stableFrames < kStableFrames;) {
@@ -52,8 +52,8 @@ inline void waitForStableCharts(ImGuiTestContext* ctx, const DigitizerUi::Dashbo
     }
 }
 
-inline void waitUntilAllSamplesDrawn(ImGuiTestContext* ctx, const DigitizerUi::Dashboard& dashboard) {
-    const auto isChart     = [&dashboard](const auto& block) { return std::ranges::contains(dashboard.uiWindows, block, &DigitizerUi::Dashboard::UIWindow::block); };
+inline void waitUntilAllSamplesDrawn(ImGuiTestContext* ctx, const Dashboard& dashboard) {
+    const auto isChart     = [&dashboard](const auto& block) { return std::ranges::contains(dashboard.uiWindows, block, &Dashboard::UIWindow::block); };
     const auto hasFinished = [&isChart](const auto& block) { return isChart(block) || block->state() == gr::lifecycle::State::STOPPED; }; // chart blocks run until the scheduler stops
     while (!std::ranges::all_of(dashboard.session.graph().blocks(), hasFinished)) {
         ctx->Yield();
@@ -61,8 +61,7 @@ inline void waitUntilAllSamplesDrawn(ImGuiTestContext* ctx, const DigitizerUi::D
     waitForStableCharts(ctx, dashboard);
 }
 
-/// an item of an ImControl drawn in `windowRef`; ImGui::BeginCombo does not report its label to the test engine, so
-/// "**/##Label" does not find a control's dropdown
+/// an item of an ImControl drawn in `windowRef`; ImGui::BeginCombo does not report its label to the test engine, so "**/##Label" does not find a control's dropdown
 inline ImGuiID controlItemId(ImGuiTestContext* ctx, const char* windowRef, std::string_view controlUniqueName, const char* itemLabel) {
     const ImGuiWindow* window = ctx->WindowInfo(windowRef).Window;
     IM_CHECK_RETV(window != nullptr, 0U);
@@ -71,15 +70,12 @@ inline ImGuiID controlItemId(ImGuiTestContext* ctx, const char* windowRef, std::
 
 struct TestDashboardRunner {
     std::shared_ptr<opencmw::client::RestClient> restClient = std::make_shared<opencmw::client::RestClient>();
-    std::unique_ptr<DigitizerUi::Dashboard>      dashboard;
+    std::unique_ptr<Dashboard>                   dashboard;
 
     cmrc::embedded_filesystem previousReloadFilesystem = defaultGRCFilesystem;
-    std::string               previousReloadGRCPath    = defaultGRCPath;
+    std::string               previousReloadGRCPath    = kDefaultGrcPath;
 
-    // sometimes, a UI testing interaction such as MouseClick will both cause a
-    // message to be sent and then some frames to be processed, resulting in a
-    // missed message. For this reason, we listen to all messages since the last
-    // wait-for-reply (which clears the collection), or the start of the test case
+    // since the last wait-for-reply (which clears them) or the test start: an interaction such as MouseClick may send a message and process frames before the wait
     std::vector<gr::Message> collectedMessages;
     std::size_t              _sentinelCount = 0UZ;
 
@@ -87,13 +83,13 @@ struct TestDashboardRunner {
 
     template<typename Condition>
     bool waitUntil(ImGuiTestContext* ctx, std::string_view what, Condition&& condition, std::source_location location = std::source_location::current()) {
-        return opendigitizer::test::waitUntil(
+        return gr::od::test::waitUntil(
             ctx, what,
             [this, &condition] {
                 if (condition()) {
                     return true;
                 }
-                dashboard->session.handleMessages();
+                dashboard->session.receiveMessages();
                 return false;
             },
             location);
@@ -106,21 +102,20 @@ struct TestDashboardRunner {
         return true;
     }
 
-    // every setting sent to `blockName` before the call has been applied: a Get of its staged settings, which queues
-    // behind them, replies with none left; a second round covers the settings control blocks send via the UI, which
-    // forwards them before the first reply
+    // every setting sent to `blockName` before the call has been applied: a Get of its staged settings, which queues behind them, replies with none left;
+    // a second round covers the settings that control blocks send via the UI, which forwards them before the first reply
     void waitUntilApplied(ImGuiTestContext* ctx, std::string_view blockName, std::source_location location = std::source_location::current()) {
         bool applied = false;
         for (std::size_t round = 0UZ; round < 2UZ || !applied; ++round) {
             const std::string requestId = std::format("applied-{}-{}", blockName, ++_sentinelCount);
-            dashboard->session.sendMessage(DigitizerUi::makeMessage(gr::message::Command::Get, std::string(blockName), std::string(gr::block::property::kStagedSetting), {}, requestId));
+            dashboard->session.sendMessage(makeMessage(gr::message::Command::Get, std::string(blockName), std::string(gr::block::property::kStagedSetting), {}, requestId));
             const auto reply = [this, &requestId] { return std::ranges::find(collectedMessages, requestId, &gr::Message::clientRequestID); };
             waitUntil(ctx, std::format("{} replies with its staged settings", blockName), [&] { return reply() != collectedMessages.end(); }, location);
             applied = reply()->data.has_value() && reply()->data->empty();
         }
     }
 
-    void sendSetting(std::string blockName, gr::property_map data) { dashboard->session.sendMessage(DigitizerUi::makeMessage(gr::message::Command::Set, std::move(blockName), std::string(gr::block::property::kSetting), std::move(data))); }
+    void sendSetting(std::string blockName, gr::property_map data) { dashboard->session.sendMessage(makeMessage(gr::message::Command::Set, std::move(blockName), std::string(gr::block::property::kSetting), std::move(data))); }
 
     // the chart block of the first dashboard window whose block type contains `type`
     template<typename TChart>
@@ -130,9 +125,7 @@ struct TestDashboardRunner {
     }
 
     virtual void waitForScheduler(ImGuiTestContext* ctx, std::source_location location = std::source_location::current()) {
-        // this is a bit weird to put here semantically, but we need to remember to call it at the start of each test
-        // case and in practice any test that needs to listen for messages will be calling waitForScheduler once at
-        // start of test anyways, so just put this here
+        // every test that listens for messages waits for the scheduler first
         clearMessages();
 
         if (!dashboard || !dashboard->session || dashboard->session.state() == gr::lifecycle::State::STOPPED) {
@@ -166,13 +159,13 @@ struct TestDashboardRunner {
         }
     }
 
-    virtual void onDashboardLoaded() { /* Handler, for qa_flowgraph and potentially other tests, which need to set the flowgraph's Dashboard* every time a reload occurs */ }
-    virtual void onDashboardAboutToBeUnloaded() { /* Handler where qa_flowgraph should unregister connections/pointers to dashboard */ }
+    virtual void onDashboardLoaded() {}            // e.g. qa_flowgraph sets its Dashboard* at every reload
+    virtual void onDashboardAboutToBeUnloaded() {} // e.g. qa_flowgraph drops its pointers into the dashboard
 
     void reloadFromYamlString(const std::string& yamlContents, const char* dashboardName = "empty") {
-        auto dashBoardDescription = DigitizerUi::DashboardDescription::createEmpty(dashboardName);
+        auto dashBoardDescription = DashboardDescription::createEmpty(dashboardName);
         onDashboardAboutToBeUnloaded();
-        dashboard = std::make_unique<DigitizerUi::Dashboard>(restClient, dashBoardDescription);
+        dashboard = std::make_unique<Dashboard>(restClient, dashBoardDescription);
 
         dashboard->loadAndThen(yamlContents, [this](gr::Graph&& grGraph) { //
             dashboard->session.emplaceGraph(std::move(grGraph));
@@ -182,16 +175,14 @@ struct TestDashboardRunner {
 
         onDashboardLoaded();
 
-        // loading a new dashboard, listen to messages sent to it. the
-        // subscription will stick around until the dashboard is destroyed,
-        // that's okay because we only have one dashboard at a time.
+        // the subscription to the new dashboard's messages lasts until the dashboard is destroyed: one dashboard at a time
         clearMessages();
         std::ignore = this->dashboard->session.graphModel.subscribeToResponses( //
             [this](const gr::Message& reply) { collectedMessages.push_back(reply); });
     }
 
-    /// Creates a fresh Scheduler and Graph so that tests are more individual and deterministics (i.e. not influenced by previous test runs)
-    void reload(const cmrc::embedded_filesystem& fs = defaultGRCFilesystem, const char* grc = defaultGRCPath, const char* dashboardName = "empty") {
+    /// a fresh scheduler and graph, so that tests do not depend on earlier runs
+    void reload(const cmrc::embedded_filesystem& fs = defaultGRCFilesystem, const char* grc = kDefaultGrcPath, const char* dashboardName = "empty") {
         previousReloadFilesystem = fs;
         previousReloadGRCPath    = grc;
 
@@ -254,6 +245,6 @@ struct TestDashboardRunner {
         return typed != nullptr && std::abs(*typed - expected) < 1e-9;
     }
 };
-} // namespace opendigitizer::test
+} // namespace gr::od::test
 
 #endif

@@ -10,7 +10,7 @@
 
 #include "common/Events.hpp"
 #include "common/FramePacer.hpp"
-#include "common/ImguiWrap.hpp"
+#include "common/Imw.hpp"
 #include "common/LookAndFeel.hpp"
 
 #include "components/AppHeader.hpp"
@@ -18,15 +18,15 @@
 #include "components/YesNoPopup.hpp"
 
 #include "Dashboard.hpp"
+#include "DashboardBlocks.hpp"
 #include "DashboardPage.hpp"
 #include "FlowgraphPage.hpp"
 #include "OpenDashboardPage.hpp"
-#include "Setup.hpp"
 #include "StatusBarView.hpp"
 #include "ToolbarView.hpp"
 
 #include "settings.hpp"
-#include "utils/EmscriptenHelper.hpp"
+#include "utils/Browser.hpp"
 
 #include <IoSerialiserYaS.hpp>
 #include <LoadTest.hpp>
@@ -37,14 +37,13 @@
 #include <gnuradio-4.0/CircularBuffer.hpp>
 #include <gnuradio-4.0/Message.hpp>
 
-#include "common/AppDefinitions.hpp"
+#include "common/ViewMode.hpp"
 
-namespace DigitizerUi {
+namespace gr::od {
 
 struct SDLState;
 
-class App {
-public:
+struct App {
     static constexpr std::string_view kBuiltinSamplesSource = "example://builtin-samples";
 
     std::unique_ptr<Dashboard>                   dashboard;
@@ -62,18 +61,15 @@ public:
     ViewMode          mainViewMode     = ViewMode::INTERACTION;
     ViewMode          previousViewMode = ViewMode::INTERACTION;
 
-    // Since loading a dashboard blocks the main thread,
-    // we want to have two steps, one which will prepare the
-    // window to show the "Loading..." status, and the
-    // next step to load the dashboard will hapen in the
-    // next frame.
+    // loading a dashboard blocks the main thread: one frame shows "Loading...", the next loads
     bool                                  prepareForANewDashboardToLoad = false;
     std::shared_ptr<DashboardDescription> dashboardToLoad;
     std::optional<std::string>            deferredDashboardUrl;
 
     components::AppHeader header;
 
-public:
+    std::optional<bool> _forcedEditable; // Settings::deprecatedEditable until the user locks or unlocks; never saved to the .grc
+
     App() : openDashboardPage(restClient) {
         LookAndFeel::mutableInstance().theme = magic_enum::enum_cast<LookAndFeel::Theme>(Digitizer::Settings::instance().theme, magic_enum::case_insensitive).value_or(LookAndFeel::Theme::Classic);
         setStyle(Digitizer::Settings::instance().darkMode ? LookAndFeel::Style::Dark : LookAndFeel::Style::Light);
@@ -157,7 +153,6 @@ public:
     void init(int argc, char** argv) {
         Digitizer::Settings& settings = Digitizer::Settings::instance();
 
-        // Init openDashboardPage
         openDashboardPage.requestCloseDashboard = [&] { closeDashboard(); };
         openDashboardPage.requestLoadDashboard  = [&](const auto& desc) {
             if (!desc) {
@@ -172,13 +167,8 @@ public:
         openDashboardPage.addDashboard(kBuiltinSamplesSource);
 #endif
 
-        // Flowgraph page
-        flowgraphPage.requestBlockControlsPanel = [&](components::BlockControlsPanelContext& panelContext, const ImVec2& pos, const ImVec2& size, bool horizontalSplit) {
-            components::BlockControlsPanel(panelContext, pos, size, horizontalSplit);
-            //
-        };
+        flowgraphPage.requestBlockControlsPanel = [&](components::BlockControlsPanelContext& panelContext, const ImVec2& pos, const ImVec2& size, bool horizontalSplit) { components::blockControlsPanel(panelContext, pos, size, horizontalSplit); };
 
-        // Init header
         header.requestApplicationSwitchMode = [this](ViewMode mode) { mainViewMode = mode; };
         // use executeLater to avoid a potential bug where the style gets set in the scope of a push/restore of a style var from a different theme
         header.requestApplicationSwitchStyle = [this](LookAndFeel::Style style) {
@@ -197,9 +187,8 @@ public:
         header.loadAssets();
 
         auto resolveDefaultDashboardPath = [&settings]() -> std::string {
-            // TODO: add subscription to remote dashboard worker if needed
             std::string dashboardPath = settings.defaultDashboard;
-            if (!isRemotePath(dashboardPath)) {                                            // if the default dashboard does not contain a host, use the default
+            if (!isRemotePath(dashboardPath)) {
                 std::string basePath = settings.basePath.empty() ? "" : settings.basePath; // needed in case the dashboard page is loaded via a redirect
                 if (!basePath.empty() && !basePath.ends_with("/")) {
                     basePath += "/";
@@ -225,9 +214,8 @@ public:
             return std::nullopt;
         };
 
-        // Defer argv / #dashboard= loads until after the first ImGui frame so SIDE_MODULE
-        // dlopen (~60MB) does not race the first paint. Skip stock RemoteDemo auto-load
-        // against the static file server (404 → noisy fetch); open the built-in demo instead.
+        // argv and #dashboard= load after the first ImGui frame, so the SIDE_MODULE dlopen (~60 MB) does not race the first paint.
+        // The stock RemoteDemo is not auto-loaded against the static file server (404, a noisy fetch): the built-in demo opens instead.
         if (argc > 1) {
             const char* url = argv[1];
             if (strlen(url) > 0) {
@@ -247,7 +235,7 @@ public:
             mainViewMode = ViewMode::OPEN_SAVE_DASHBOARD;
         }
 #else
-        if (argc > 1) { // load dashboard if specified on the command line/query parameter
+        if (argc > 1) {
             const char* url = argv[1];
             if (strlen(url) > 0) {
                 std::print("Loading dashboard from '{}'\n", url);
@@ -256,7 +244,7 @@ public:
         } else if (!settings.defaultDashboard.empty()) {
             loadDashboard(resolveDefaultDashboardPath());
         }
-        if (auto firstDashboard = openDashboardPage.get(0); dashboard == nullptr && firstDashboard != nullptr) { // load first dashboard if there is a dashboard available
+        if (auto firstDashboard = openDashboardPage.get(0); dashboard == nullptr && firstDashboard != nullptr) {
             loadDashboard(firstDashboard);
         }
 #endif
@@ -267,13 +255,11 @@ public:
         return components::drawViewModeBlocker(ImRect({0.f, startHeight}, {viewportSize.x, viewportSize.y - StatusBarView::height()}));
     }
 
-    std::optional<bool> _forcedEditable; // Settings::deprecatedEditable until the user locks or unlocks; never saved to the .grc
-
     [[nodiscard]] bool locked() const noexcept { return dashboard != nullptr && !_forcedEditable.value_or(dashboard->editable); }
 
-    void processAndRender() {
+    void drawFrame() {
         {
-            IMW::Window window("Main Window", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoScrollWithMouse);
+            imw::Window window("Main Window", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoScrollWithMouse);
 
             const char* title = prepareForANewDashboardToLoad ? "Loading..." : dashboard ? dashboard->description->name.data() : "OpenDigitizer";
             header.editable   = !locked();
@@ -286,7 +272,7 @@ public:
             const float lockedModeBlockerStart = ImGui::GetCursorScreenPos().y;
 
             {
-                IMW::Child pageArea("##pageArea", ImVec2(0.f, -StatusBarView::height()), false, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoBackground);
+                imw::Child pageArea("##pageArea", ImVec2(0.f, -StatusBarView::height()), false, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoBackground);
                 drawPage(lockedModeBlockerStart);
             }
             const bool withGraph = dashboard && dashboard->isInitialised;
@@ -314,9 +300,8 @@ public:
         }
 
         if (dashboard != nullptr) {
-            dashboard->session.handleMessages();
+            dashboard->session.receiveMessages();
             if (loadedDashboard != dashboard.get() && dashboard->isInitialised) {
-                // Are we in the process of changing the dashboard?
                 loadedDashboard = dashboard.get();
                 dashboardPage   = std::make_unique<DashboardPage>();
                 dashboardPage->setDashboard(*dashboard.get());
@@ -366,6 +351,6 @@ public:
     }
 };
 
-} // namespace DigitizerUi
+} // namespace gr::od
 
 #endif

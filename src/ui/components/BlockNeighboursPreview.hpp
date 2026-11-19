@@ -3,14 +3,12 @@
 
 #include <imgui.h>
 
-struct UiGraphBlock;
-
-namespace DigitizerUi::components {
+namespace gr::od::components {
 
 struct BlockControlsPanelContext;
 
-void BlockNeighboursPreview(BlockControlsPanelContext&, ImVec2 availableSize);
+void blockNeighboursPreview(BlockControlsPanelContext&, ImVec2 availableSize);
 
-} // namespace DigitizerUi::components
+} // namespace gr::od::components
 
 #endif

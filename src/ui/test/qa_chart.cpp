@@ -22,7 +22,6 @@
 #include <DashboardPage.hpp>
 #include <ToolbarView.hpp>
 
-// TODO: blocks are locally included/registered for this test -> should become a global feature
 #include "blocks/Arithmetic.hpp"
 #include "blocks/ImControlValue.hpp"
 #include "blocks/ImPlotSink.hpp"
@@ -46,37 +45,39 @@
 #include <string>
 #include <vector>
 
+using namespace gr::od;
+
 CMRC_DECLARE(sample_dashboards);
 CMRC_DECLARE(ui_test_assets);
 
 using namespace boost;
 using namespace boost::ut;
 
-struct TestState : public opendigitizer::test::TestDashboardRunner {
-    std::shared_ptr<DigitizerUi::DashboardPage> dashboardPage;
+struct TestState : public test::TestDashboardRunner {
+    std::shared_ptr<DashboardPage> dashboardPage;
 };
 
 TestState* gState = nullptr;
 
-struct TestApp : public DigitizerUi::test::ImGuiTestApp {
-    using DigitizerUi::test::ImGuiTestApp::ImGuiTestApp;
+struct TestApp : public test::ImGuiTestApp {
+    using test::ImGuiTestApp::ImGuiTestApp;
 
     void registerTests() override {
         ImGuiTest* t = IM_REGISTER_TEST(engine(), "chart_dashboard", "DashboardPage::drawPlot");
 
         t->GuiFunc = [](ImGuiTestContext*) {
-            IMW::Window window("Test Window", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoSavedSettings);
+            imw::Window window("Test Window", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoSavedSettings);
 
             ImGui::SetWindowPos({0, 0});
             ImGui::SetWindowSize(ImVec2(800, 800));
 
             if (gState->dashboard) {
                 if (gState->dashboard->isInitialised) {
-                    static DigitizerUi::ToolbarView toolbar;
+                    static ToolbarView toolbar;
                     toolbar.draw(gState->dashboard->session, false);
                 }
                 if (!gState->dashboardPage) {
-                    gState->dashboardPage = std::make_shared<DigitizerUi::DashboardPage>();
+                    gState->dashboardPage = std::make_shared<DashboardPage>();
                     gState->dashboardPage->setDashboard(*gState->dashboard);
                 }
                 gState->dashboardPage->draw();
@@ -92,10 +93,10 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             "DashboardPage::drawPlot"_test = [ctx] {
                 ctx->SetRef("Test Window");
 
-                auto sinkPtr = opendigitizer::charts::SinkRegistry::instance().findSink([](const auto& sink) { return sink.name() == "sinesSink"; });
+                auto sinkPtr = charts::SinkRegistry::instance().findSink([](const auto& sink) { return sink.name() == "sinesSink"; });
                 ut::expect(sinkPtr != nullptr);
 
-                opendigitizer::test::waitUntilAllSamplesDrawn(ctx, *gState->dashboard);
+                test::waitUntilAllSamplesDrawn(ctx, *gState->dashboard);
                 ut::expect(ut::eq(sinkPtr->size(), 2000UZ)) << "n_samples_max of SineClock in qa_chart.grc";
 
                 captureScreenshot(*ctx);
@@ -106,7 +107,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 gState->reload(cmrc::ui_test_assets::get_filesystem(), "examples/qa_yy_scatter.grc");
                 gState->waitForScheduler(ctx);
                 expect(gState->waitUntil(ctx, "200 markers drawn", [] {
-                    const auto* yy = gState->chart<const opendigitizer::charts::YYChart>("YYChart");
+                    const auto* yy = gState->chart<const charts::YYChart>("YYChart");
                     return yy != nullptr && yy->drawnMarkers() == 200UZ;
                 }));
                 captureScreenshot(*ctx);
@@ -116,8 +117,8 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 gState->dashboardPage.reset();
                 gState->reload(cmrc::sample_dashboards::get_filesystem(), "assets/sampleDashboards/SpectrumRangeDemo.grc");
                 gState->waitForScheduler(ctx);
-                const auto spectrum     = [] { return gState->chart<opendigitizer::charts::SpectrumView>("SpectrumView"); };
-                const auto spectrumPlot = [] { return gState->chart<opendigitizer::charts::SpectrumPlot>("SpectrumPlot"); };
+                const auto spectrum     = [] { return gState->chart<charts::SpectrumView>("SpectrumView"); };
+                const auto spectrumPlot = [] { return gState->chart<charts::SpectrumPlot>("SpectrumPlot"); };
                 const auto block        = [](std::string_view name) { return gState->findBlockInRootGraph(name); };
                 const auto onScreen     = [](const ImVec2& p) { return p.x > 0.f && p.x < ImGui::GetIO().DisplaySize.x && p.y > 0.f && p.y < ImGui::GetIO().DisplaySize.y; };
                 const auto drawn        = [&](const auto* c) { return c != nullptr && c->drawnHandles().transform([&](const auto& h) { return onScreen(h[0]) && onScreen(h[1]) && onScreen(h[2]); }).value_or(false); };
@@ -146,9 +147,9 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 for (const std::string_view name : {"fmaxDisplay", "fmaxSink", "f0Display"}) {
                     expect(block(name) != nullptr) << fatal << name;
                 }
-                auto*      display   = static_cast<opendigitizer::ImControlValue<double>*>(block("fmaxDisplay")->raw());
-                auto*      f0Display = static_cast<opendigitizer::ImControlValue<double>*>(block("f0Display")->raw());
-                auto*      sink      = static_cast<opendigitizer::ImPlotSink<double>*>(block("fmaxSink")->raw());
+                auto*      display   = static_cast<ImControlValue<double>*>(block("fmaxDisplay")->raw());
+                auto*      f0Display = static_cast<ImControlValue<double>*>(block("f0Display")->raw());
+                auto*      sink      = static_cast<ImPlotSink<double>*>(block("fmaxSink")->raw());
                 const auto received  = [](const auto* shown) { return shown->_received.load() ? std::optional(shown->_last.load()) : std::nullopt; };
                 const auto onBin     = [&](double f) {
                     bool found = false;
@@ -189,7 +190,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 const double draggedF0 = *received(f0Display);
                 expect(gt(draggedF0, 100.0e6) && eq(draggedF0, chart->shownF0()) && onBin(draggedF0));
 
-                DigitizerUi::UiGraphBlock* chartBlock = gState->dashboard->session.graphModel.recursiveFindBlockByName("spectrum").block;
+                UiGraphBlock* chartBlock = gState->dashboard->session.graphModel.recursiveFindBlockByName("spectrum").block;
                 expect(chartBlock != nullptr) << fatal;
                 const double draggedMax = chart->shownRange()[1];
                 chartBlock->setSetting("range_max", gr::pmt::Value(100.3e6));
@@ -204,7 +205,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 gState->dashboardPage.reset();
                 gState->reload(cmrc::ui_test_assets::get_filesystem(), "examples/qa_localisation.grc");
                 gState->waitForScheduler(ctx);
-                const auto chart = [] { return gState->chart<opendigitizer::charts::LocalisationChart>("LocalisationChart"); };
+                const auto chart = [] { return gState->chart<charts::LocalisationChart>("LocalisationChart"); };
                 expect(gState->waitUntil(ctx, "three sequential-pair hyperbolas and the published position drawn", [&] { return chart() != nullptr && chart()->drawn().curves == 3UZ && chart()->drawnPosition().has_value(); }));
                 if (chart() == nullptr || !chart()->drawnPosition()) {
                     return;
@@ -258,7 +259,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                     gState->dashboardPage.reset();
                     gState->reload(cmrc::sample_dashboards::get_filesystem(), std::format("assets/sampleDashboards/XtraLocalisation{}.grc", array).c_str());
                     gState->waitForScheduler(ctx);
-                    const auto                     chart  = [] { return gState->chart<const opendigitizer::charts::LocalisationChart>("LocalisationChart"); };
+                    const auto                     chart  = [] { return gState->chart<const charts::LocalisationChart>("LocalisationChart"); };
                     const bool                     stereo = array == "Stereo";
                     const std::vector<std::size_t> shown  = array == "Stereo" ? std::vector<std::size_t>{0UZ, 1UZ} : array == "Uma16" ? std::vector<std::size_t>{1UZ, 14UZ, 7UZ, 8UZ} : std::vector<std::size_t>{0UZ};
                     std::array<bool, 4UZ>          layerSeen{};
@@ -277,14 +278,14 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                         if (block == nullptr) {
                             return std::nullopt;
                         }
-                        const auto*     sink = static_cast<const opendigitizer::ImPlotSink<gr::DataSet<float>>*>(block->raw());
+                        const auto*     sink = static_cast<const ImPlotSink<gr::DataSet<float>>*>(block->raw());
                         std::lock_guard lock(sink->dataMutex());
                         return sink->dataSets().empty() ? std::nullopt : std::optional(sink->dataSets().back());
                     };
                     expect(gState->waitUntil(ctx, std::format("{}: a triggered snapshot and a spectrum", array), [&] { return newest(std::format("snapshotSink{}", shown.front())) && newest("spectrum"); })) << array;
                     if (array != "Square") { // the fork arrays: the first two band-passed channels against each other
                         expect(gState->waitUntil(ctx, std::format("{}: the Lissajous view draws its markers", array), [] {
-                            const auto* yy = gState->chart<const opendigitizer::charts::YYChart>("YYChart");
+                            const auto* yy = gState->chart<const charts::YYChart>("YYChart");
                             return yy != nullptr && yy->drawnMarkers() > 0UZ;
                         })) << array;
                     }
@@ -314,20 +315,19 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 }
             };
 
-            // disabled until the switchable dashboard's channel routing keeps its outputs aligned under load: under software
-            // rendering (CI's llvmpipe) its Selectors (back_pressure false) drop samples per output, and the "line" preset's
-            // envelope layer never locates; passes on a GPU
+            // disabled until the switchable dashboard's channel routing keeps its outputs aligned under load:
+            // under software rendering (CI's llvmpipe) its Selectors (back_pressure false) drop samples per output, and the "line" preset's envelope layer never locates; passes on a GPU
             skip / "the array choice switches geometry, simulation and plotted channels live; every array locates its source"_test = [ctx] {
                 gState->dashboardPage.reset();
                 gState->reload(cmrc::sample_dashboards::get_filesystem(), "assets/sampleDashboards/XtraLocalisation.grc");
                 gState->waitForScheduler(ctx);
-                const auto chart        = [] { return gState->chart<const opendigitizer::charts::LocalisationChart>("LocalisationChart"); };
+                const auto chart        = [] { return gState->chart<const charts::LocalisationChart>("LocalisationChart"); };
                 const auto onsetFromCut = [](std::size_t slot, std::size_t channel) -> std::optional<std::ptrdiff_t> {
                     const auto block = gState->findBlockInRootGraph(std::format("snapshotSink{}", slot));
                     if (block == nullptr) {
                         return std::nullopt;
                     }
-                    const auto*     sink = static_cast<const opendigitizer::ImPlotSink<gr::DataSet<float>>*>(block->raw());
+                    const auto*     sink = static_cast<const ImPlotSink<gr::DataSet<float>>*>(block->raw());
                     std::lock_guard lock(sink->dataMutex());
                     if (sink->dataSets().empty()) {
                         return std::nullopt;
@@ -347,9 +347,9 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 };
                 for (const auto& [name, receivers, shown, aperture] : {Preset{"square", 4UZ, {0UZ, 1UZ, 2UZ, 3UZ}, 1.7}, Preset{"stereo", 2UZ, {0UZ, 1UZ}, 0.3}, Preset{"line", 4UZ, {0UZ, 1UZ, 2UZ, 3UZ}, 9.0}, Preset{"line 0.3 m", 4UZ, {0UZ, 1UZ, 2UZ, 3UZ}, 0.3}, Preset{"tetrahedron", 4UZ, {0UZ, 1UZ, 2UZ, 3UZ}, 0.3}, Preset{"UMA16", 16UZ, {1UZ, 14UZ, 7UZ, 8UZ}, 0.18}}) {
                     if (name != "square") { // the default, applied at start
-                        const DigitizerUi::UiGraphBlock* control = gState->dashboard->session.graphModel.recursiveFindBlockByName("array").block;
+                        const UiGraphBlock* control = gState->dashboard->session.graphModel.recursiveFindBlockByName("array").block;
                         expect(control != nullptr) << fatal;
-                        ctx->ItemClick(opendigitizer::test::controlItemId(ctx, "//Test Window/##Toolbar", control->blockUniqueName, "##array"));
+                        ctx->ItemClick(test::controlItemId(ctx, "//Test Window/##Toolbar", control->blockUniqueName, "##array"));
                         ctx->ItemClick(std::format("//$FOCUSED/{}", name).c_str());
                     }
                     const bool            stereo = name == "stereo";
@@ -378,10 +378,10 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 gState->dashboardPage.reset();
                 gState->reload(cmrc::sample_dashboards::get_filesystem(), "assets/sampleDashboards/XtraLocalisationLine.grc");
                 gState->waitForScheduler(ctx);
-                const auto                       chart   = [] { return gState->chart<const opendigitizer::charts::LocalisationChart>("LocalisationChart"); };
-                const DigitizerUi::UiGraphBlock* control = gState->dashboard->session.graphModel.recursiveFindBlockByName("band").block;
+                const auto          chart   = [] { return gState->chart<const charts::LocalisationChart>("LocalisationChart"); };
+                const UiGraphBlock* control = gState->dashboard->session.graphModel.recursiveFindBlockByName("band").block;
                 expect(control != nullptr) << fatal;
-                ctx->ItemClick(opendigitizer::test::controlItemId(ctx, "//Test Window/##Toolbar", control->blockUniqueName, "##band"));
+                ctx->ItemClick(test::controlItemId(ctx, "//Test Window/##Toolbar", control->blockUniqueName, "##band"));
                 ctx->ItemClick("//$FOCUSED/fork 440 Hz");
                 constexpr double kOrbitRadius   = 0.2;  // m, LINE_FORK's orbit around (0.2, 0.5)
                 constexpr double kForkTolerance = 0.05; // m, the fork's bound in qa_DelayLocalisation
@@ -407,18 +407,17 @@ template<typename Registry>
 void registerTestBlocks(Registry& registry) {
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-variable"
-    gr::registerBlock<opendigitizer::Arithmetic, float>(registry);
-    gr::registerBlock<opendigitizer::ImPlotSink, float, gr::DataSet<float>>(registry);
-    gr::registerBlock<opendigitizer::TestSpectrumGenerator, float>(registry); // the spectrum range demo's, as in the application
+    registerWithIdPrefix<Arithmetic, float>(registry, kOpendigitizerIdPrefix);
+    registerWithIdPrefix<ImPlotSink, float, gr::DataSet<float>>(registry, kOpendigitizerIdPrefix);
+    registerWithIdPrefix<TestSpectrumGenerator, float>(registry, kOpendigitizerIdPrefix); // the spectrum range demo's, as in the application
 #pragma GCC diagnostic pop
 }
 } // namespace
 
 int main(int argc, char* argv[]) {
-    auto options             = DigitizerUi::test::TestOptions::fromArgs(argc, argv);
+    auto options             = test::TestOptions::fromArgs(argc, argv);
     options.screenshotPrefix = "chart";
 
-    // This is not a globalBlockRegistry, but a copy of it
     auto& registry = gr::globalBlockRegistry();
 
     gr::blocklib::initGrBasicBlocks(registry);
@@ -434,7 +433,7 @@ int main(int argc, char* argv[]) {
     options.speedMode = ImGuiTestRunSpeed_Fast;
     TestApp app(options);
 
-    // init early, as Dashboard invokes ImGui style stuff
+    // before the dashboard, which sets ImGui styles
     app.initImGui();
     TestState state;
     gState = std::addressof(state);
