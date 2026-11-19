@@ -66,7 +66,7 @@ std::set<UiGraphPort*> portsForBlock(UiGraphBlock& block, UiGraphModel& model, g
     }) | std::ranges::to<std::set>();
 }
 
-void BlockNeighboursPreview(const BlockControlsPanelContext& context, ImVec2 availableSize) {
+void BlockNeighboursPreview(BlockControlsPanelContext& context, ImVec2 availableSize) {
     // Here we draw the current block and its neighbours, for navigation purposes. Clicking a neighbour will change the panel properties.
     // Reuses styling from the main flowgraph.
     // Rendering with ax::NodeEditor for  would be overkill and introduce complications:
@@ -270,7 +270,7 @@ void BlockNeighboursPreview(const BlockControlsPanelContext& context, ImVec2 ava
         // Button and callback
         std::string buttonId = (isLeft ? "left_block_" : "right_block_") + std::to_string(index);
         if (ImGui::InvisibleButton(buttonId.c_str(), ImVec2(blockWidth, blockHeight))) {
-            context.blockClickedCallback(&block);
+            context.blockClicked(&block);
         }
 
         // Block title

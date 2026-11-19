@@ -968,7 +968,7 @@ std::string Dashboard::resolveChartTypeName(std::string_view chartTypeName) cons
     const std::string requested = lowerCase(std::string(chartTypeName));
     for (const auto& registeredType : registeredChartTypes()) {
         const std::string registered = lowerCase(registeredType);
-        if (registered.ends_with(requested) || requested.ends_with(registered.substr(registered.rfind("::") + 2))) {
+        if (registered.ends_with(requested) || requested.ends_with(registered.substr(registered.find_last_of(':') + 1))) {
             return registeredType;
         }
     }

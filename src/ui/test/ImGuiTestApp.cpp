@@ -68,6 +68,7 @@ inline static bool ImGuiApp_NewFrame(ImGuiApp* /*app*/) {
         std::println("[TestApp] requested close");
         return false;
     }
+    DigitizerUi::EventLoop::instance().fireCallbacks();
     return imgui_helper::newFrame();
 }
 

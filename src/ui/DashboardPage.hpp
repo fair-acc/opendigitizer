@@ -44,6 +44,7 @@ private:
         std::string sourceBlockName;
     };
     std::unordered_map<std::string, SourceBlockInWaiting> _addedSourceBlocksWaitingForSink;
+    std::shared_ptr<bool>                                 _alive = std::make_shared<bool>(true);
 
     components::BlockControlsPanelContext _editPane;
     components::AutoHide                  _barAutoHide;
@@ -89,7 +90,7 @@ private:
         return clicked;
     }
     void drawToolbarLayoutButtons(float plotButtonSize) noexcept;
-    void addSelectedRemoteSignal(const SignalData& selectedRemoteSignal) noexcept;
+    void addSinkForRemoteSource(const SignalData& selectedRemoteSignal, const std::string& sourceUniqueName, const std::string& remoteSourceType);
 
     [[nodiscard]] LegendItemClickResult drawChartsLegendAndEditPane(Mode mode, std::vector<std::size_t>& windowRemoveList);
 
@@ -120,6 +121,7 @@ public:
     ~DashboardPage();
 
     void draw(Mode mode = Mode::View) noexcept;
+    void addSelectedRemoteSignal(const SignalData& selectedRemoteSignal) noexcept;
 
     void setRequestViewOnlyModeHandler(std::function<void()>&& function) { _requestViewOnlyMode = std::move(function); }
     void setRequestSetLayoutModeHandler(std::function<void(bool)>&& function) { _requestSetLayoutMode = std::move(function); }

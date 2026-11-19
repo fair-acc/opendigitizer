@@ -52,14 +52,9 @@ struct TagData {
 };
 
 template<typename T>
-T getValueOrDefault(const gr::property_map& map, std::string_view key, const T& defaultValue, std::source_location location = std::source_location::current()) {
+T getValueOrDefault(const gr::property_map& map, std::string_view key, const T& defaultValue) noexcept {
     if (auto it = map.find(key); it != map.end()) {
-        constexpr bool                strictChecks   = false;
-        std::expected<T, std::string> convertedValue = gr::pmt::convert_safely<T, strictChecks>(it->second);
-        if (!convertedValue) {
-            throw gr::exception(std::format("failed to convert value for key {} - error: {}", key, convertedValue.error()), location);
-        }
-        return convertedValue.value_or(defaultValue);
+        return gr::pmt::convert_safely<T, false>(it->second).value_or(defaultValue);
     }
     return defaultValue;
 }

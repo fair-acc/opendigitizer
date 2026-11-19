@@ -355,7 +355,7 @@ void BlockControlsPanel(BlockControlsPanelContext& panelContext, const ImVec2& p
 
     auto size = frameSize;
     if (panelContext.closeTime < std::chrono::system_clock::now()) {
-        panelContext = {};
+        panelContext.close();
         return;
     }
 
@@ -630,14 +630,19 @@ void BlockSettingsControls(BlockControlsPanelContext& panelContext, UiGraphBlock
     }
 }
 
-BlockControlsPanelContext::BlockControlsPanelContext() {
-    blockClickedCallback = [this](UiGraphBlock* clickedBlock) {
-        // Guaranteed by the caller
-        assert(clickedBlock && clickedBlock != selectedBlock());
+void BlockControlsPanelContext::blockClicked(UiGraphBlock* block) {
+    assert(block && block != selectedBlock());
+    graphModel->selectedBlock = block;
+    resetTime();
+}
 
-        this->graphModel->selectedBlock = clickedBlock;
-        resetTime();
-    };
+void BlockControlsPanelContext::close() {
+    graphModel = nullptr;
+    targetGraph.clear();
+    mode                  = Mode::None;
+    wantsSelectedBlockTab = true;
+    modifyConnectionsDialog.reset();
+    jumpToControlPopup.reset();
 }
 
 void BlockControlsPanelContext::resetTime() { closeTime = std::chrono::system_clock::now() + LookAndFeel::instance().editPaneCloseDelay; }

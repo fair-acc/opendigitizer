@@ -13,7 +13,6 @@ struct EventLoop {
     }
 
     std::vector<std::function<void()>> _activeCallbacks;
-    std::vector<std::function<void()>> _garbageCallbacks; // TODO: Cleaning up callbacks
     std::mutex                         _callbacksMutex;
 
     // schedule a function to be called at the next opportunity on the main thread
@@ -30,7 +29,6 @@ struct EventLoop {
         }
         for (auto& cb : callbacks) {
             cb();
-            _garbageCallbacks.push_back(std::move(cb));
         }
     }
 };

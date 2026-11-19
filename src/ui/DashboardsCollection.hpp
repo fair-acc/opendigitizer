@@ -115,7 +115,7 @@ struct DashboardsCollection {
     }
 
     void loadDashboard(const std::shared_ptr<DashboardStorageInfo>& storageInfo, const std::string& filename) {
-        DashboardDescription::loadAndThen(_restClient, storageInfo, filename, [&](std::shared_ptr<const DashboardDescription>&& desc) {
+        DashboardDescription::loadAndThen(_restClient, storageInfo, filename, [this, storageInfo](std::shared_ptr<const DashboardDescription>&& desc) {
             if (desc) {
                 auto it = std::ranges::find_if(_dashboards, [&](const auto& d) { return d->storageInfo.get() == storageInfo.get() && d->name == desc->name; });
                 if (it == _dashboards.end()) {

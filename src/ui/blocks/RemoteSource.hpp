@@ -1,7 +1,9 @@
 #ifndef OPENDIGITIZER_REMOTESOURCE_HPP
 #define OPENDIGITIZER_REMOTESOURCE_HPP
 
+#include <algorithm>
 #include <format>
+#include <mutex>
 #include <shared_mutex>
 #include <string_view>
 #include <type_traits>
@@ -195,10 +197,10 @@ private:
     opencmw::client::RestClient                                                                            _client = opencmw::client::RestClient(opencmw::client::VerifyServerCertificates(Digitizer::Settings::instance().checkCertificates));
 };
 
-namespace detail {
-inline static RemoteSubscriptionManager remoteSubscriptionManager;
+inline RemoteSubscriptionManager& RemoteSubscriptionManager::instance() {
+    static RemoteSubscriptionManager manager;
+    return manager;
 }
-inline RemoteSubscriptionManager& RemoteSubscriptionManager::instance() { return detail::remoteSubscriptionManager; }
 
 inline opencmw::client::Command detail::RemoteSourceSubscription::buildSubscribeCommand() {
     opencmw::client::Command result;
@@ -268,6 +270,7 @@ private:
     RemoteSourceManager(const RemoteSourceManager&)            = delete;
     RemoteSourceManager& operator=(const RemoteSourceManager&) = delete;
 
+    std::mutex                                                               _mutex;
     std::unordered_map<std::string, std::unique_ptr<RemoteSourceModel>>      _knownRemoteSources;
     std::unordered_map<std::string, std::function<void(RemoteSourceModel&)>> _addingSourcesCallbacks;
 
@@ -293,29 +296,32 @@ public:
 
     template<typename TBlock>
     void registerRemoteSource(TBlock* block) {
+        std::lock_guard lock(_mutex);
         _knownRemoteSources[block->unique_name] = std::make_unique<RemoteSourceWrapper<TBlock>>(block);
     }
 
     template<typename TBlock>
     void unregisterRemoteSource(TBlock* block) {
+        std::lock_guard lock(_mutex);
         _knownRemoteSources.erase(block->unique_name);
     }
 
-    void setRemoteSourceAddedCallback(std::string remoteUri, std::function<void(RemoteSourceModel&)> callback) { _addingSourcesCallbacks[std::move(remoteUri)] = callback; }
+    void setRemoteSourceAddedCallback(std::string remoteUri, std::function<void(RemoteSourceModel&)> callback) {
+        std::lock_guard lock(_mutex);
+        _addingSourcesCallbacks[std::move(remoteUri)] = std::move(callback);
+    }
 
     void notifyOfRemoteSource(const std::string& remoteUri, void* remoteSourceRaw) {
-        auto it = _addingSourcesCallbacks.find(remoteUri);
-        if (it == _addingSourcesCallbacks.end()) {
+        std::lock_guard lock(_mutex);
+        auto            callback = _addingSourcesCallbacks.find(remoteUri);
+        if (callback == _addingSourcesCallbacks.end()) {
             return;
         }
-
-        auto& callback = it->second;
-        for (const auto& [_, sourceModel] : _knownRemoteSources) {
-            if (sourceModel->raw() == remoteSourceRaw) {
-                callback(*sourceModel);
-            }
+        auto source = std::ranges::find_if(_knownRemoteSources, [remoteSourceRaw](const auto& known) { return known.second->raw() == remoteSourceRaw; });
+        if (source != _knownRemoteSources.end()) {
+            callback->second(*source->second);
+            _addingSourcesCallbacks.erase(callback);
         }
-        _addingSourcesCallbacks.erase(it);
     }
 };
 
@@ -344,7 +350,7 @@ void RemoteSourceCommon<Derived, QueueContents>::settingsChanged(const gr::prope
     // }
     auto* self = static_cast<RemoteSourceBase*>(static_cast<Derived*>(this));
     if ((new_settings.contains("host") || new_settings.contains("remote_uri")) && !self->host.empty() && !self->remote_uri.empty()) {
-        RemoteSourceManager::instance().notifyOfRemoteSource(self->remote_uri, this);
+        RemoteSourceManager::instance().notifyOfRemoteSource(self->remote_uri, static_cast<Derived*>(this));
         stopSubscription();
         startSubscription();
     }
@@ -583,7 +589,11 @@ struct RemoteDataSetSource : RemoteSourceBase, RemoteSourceCommon<RemoteDataSetS
 
     using Queue = RemoteSourceCommon<RemoteDataSetSource, gr::DataSet<T>>::Queue;
 
-    explicit RemoteDataSetSource(gr::property_map props) : Parent(std::move(props)) { this->disconnect_on_done = false; }
+    explicit RemoteDataSetSource(gr::property_map props) : Parent(std::move(props)) {
+        RemoteSourceManager::instance().registerRemoteSource(this);
+        this->disconnect_on_done = false;
+    }
+    ~RemoteDataSetSource() { RemoteSourceManager::instance().unregisterRemoteSource(this); }
 
     auto processBulk(gr::OutputSpanLike auto& output) noexcept {
         this->maybeReconnect();

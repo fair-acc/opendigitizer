@@ -49,9 +49,10 @@ struct JumpToControlPopup {
 };
 
 struct BlockControlsPanelContext {
-    BlockControlsPanelContext();
     UiGraphBlock* selectedBlock() const;
     void          setSelectedBlock(UiGraphBlock* block, UiGraphModel* model);
+    void          blockClicked(UiGraphBlock* block);
+    void          close();
 
     UiGraphModel* graphModel = nullptr;
     std::string   targetGraph;
@@ -63,7 +64,6 @@ struct BlockControlsPanelContext {
     bool showNeighboursPreview = false;
 
     std::chrono::time_point<std::chrono::system_clock> closeTime;
-    std::function<void(UiGraphBlock* block)>           blockClickedCallback;
 
     std::optional<ModifyUiConnectionsPopup> modifyConnectionsDialog;
     std::optional<JumpToControlPopup>       jumpToControlPopup;

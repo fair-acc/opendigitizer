@@ -12,7 +12,9 @@
 #include <Dashboard.hpp>
 #include <DashboardPage.hpp>
 #include <DashboardView.hpp>
+#include <charts/XYChart.hpp>
 #include <components/AutoHide.hpp>
+#include <components/SignalSelector.hpp>
 
 #include <cmrc/cmrc.hpp>
 
@@ -378,6 +380,50 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 const ImRect panelRect(panel->Pos, panel->Pos + panel->Size);
                 expect(hostRect.Contains(panelRect)) << std::format("edit pane at ({}, {}) size ({}, {}) inside the host at ({}, {})", panelRect.Min.x, panelRect.Min.y, panelRect.GetWidth(), panelRect.GetHeight(), hostRect.Min.x, hostRect.Min.y);
                 captureScreenshot(*ctx, hostRect);
+            };
+            g_state->page.reset();
+        };
+
+        ImGuiTest* remoteTest = IM_REGISTER_TEST(engine(), "dashboardview", "adding a remote signal adds its source, sink, edge and chart");
+        remoteTest->GuiFunc   = pageTest->GuiFunc;
+        remoteTest->TestFunc  = [](ImGuiTestContext* ctx) {
+            "a remote signal gets a source, a sink fed by it, and a chart showing the sink"_test = [ctx] {
+                auto& graphModel = g_state->dashboard->session.graphModel;
+                while (graphModel.recursiveGatherPlotSinks().size() < 6UZ) {
+                    ctx->Yield();
+                }
+                DigitizerUi::SignalData signal{};
+                signal.signalName  = "qa_remote_signal";
+                signal.unit        = "V";
+                signal.hostname    = "localhost";
+                signal.protocol    = "http";
+                signal.serviceName = "/GnuRadio/Acquisition";
+                signal.port        = 1;
+                g_state->page->addSelectedRemoteSignal(signal);
+
+                const auto findBlock = [&graphModel](auto&& predicate) {
+                    DigitizerUi::UiGraphBlock* found = nullptr;
+                    graphModel.recursiveForEachBlock([&](const DigitizerUi::UiGraphModel::FindBlockResult& result) {
+                        if (result.block && predicate(*result.block)) {
+                            found = result.block;
+                        }
+                        return DigitizerUi::UiGraphModel::VisitorResult::Recurse;
+                    });
+                    return found;
+                };
+                const auto chartFor = [](std::string_view sinkName) {
+                    return std::ranges::any_of(g_state->dashboard->uiWindows, [sinkName](const auto& w) { //
+                        return w.block && w.block->typeName() == "opendigitizer::charts::XYChart" && std::ranges::contains(static_cast<const opendigitizer::charts::XYChart*>(w.block->raw())->data_sinks.value, sinkName);
+                    });
+                };
+                DigitizerUi::UiGraphBlock* source = nullptr;
+                DigitizerUi::UiGraphBlock* sink   = nullptr;
+                while (!source || !sink || !chartFor(sink->blockName) || std::ranges::none_of(graphModel.rootBlock.childBlocks[0]->childEdges, [&](const DigitizerUi::UiGraphEdge& edge) { return edge.edgeSourcePort && edge.edgeDestinationPort && edge.edgeSourcePort->ownerBlock == source && edge.edgeDestinationPort->ownerBlock == sink; })) {
+                    ctx->Yield();
+                    source = findBlock([](const DigitizerUi::UiGraphBlock& block) { return block.blockTypeName.starts_with("opendigitizer::RemoteStreamSource"); });
+                    sink   = source ? findBlock([source](const DigitizerUi::UiGraphBlock& block) { return block.isPlotSink() && block.blockName == source->blockUniqueName + "_sink"; }) : nullptr;
+                }
+                expect(sink->blockTypeName == "opendigitizer::ImPlotSink<float32>") << sink->blockTypeName;
             };
             g_state->page.reset();
         };

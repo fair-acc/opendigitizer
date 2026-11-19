@@ -107,7 +107,7 @@ private:
     SignalsIndexMap acceleratorIndex;
     SignalsIndexMap deviceClassIndex;
 
-    std::array<SignalsIndexMap*, CategoriesCount> categoryIndices{&acceleratorIndex, &deviceClassIndex, &subDevicePropertyIndex, &unitIndex, &quantityIndex};
+    std::array<SignalsIndexMap*, CategoriesCount> categoryIndices{&acceleratorIndex, &deviceClassIndex, &frontendIndex, &sampleRateIndex, &quantityIndex};
 
     // Filtering state
     std::string              m_shownSearchString;

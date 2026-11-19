@@ -237,46 +237,6 @@ struct SurfaceGpuRenderer {
 
     ~SurfaceGpuRenderer() { destroy(); }
 
-    SurfaceGpuRenderer(SurfaceGpuRenderer&& o) noexcept { swap(o); }
-
-    SurfaceGpuRenderer& operator=(SurfaceGpuRenderer&& o) noexcept {
-        if (this != &o) {
-            destroy();
-            swap(o);
-        }
-        return *this;
-    }
-
-    SurfaceGpuRenderer(const SurfaceGpuRenderer&)            = delete;
-    SurfaceGpuRenderer& operator=(const SurfaceGpuRenderer&) = delete;
-
-    void swap(SurfaceGpuRenderer& o) noexcept {
-        using std::swap;
-        swap(_program, o._program);
-        swap(_vao, o._vao);
-        swap(_vbo, o._vbo);
-        swap(_ibo, o._ibo);
-        swap(_colormapLutTexture, o._colormapLutTexture);
-        swap(_activeColormap, o._activeColormap);
-        swap(_locAxisMin, o._locAxisMin);
-        swap(_locAxisMax, o._locAxisMax);
-        swap(_locAxisInvRange, o._locAxisInvRange);
-        swap(_locNdcScale, o._locNdcScale);
-        swap(_locRotation, o._locRotation);
-        swap(_locViewScale, o._locViewScale);
-        swap(_locScreenCenter, o._locScreenCenter);
-        swap(_locInvScreenSize, o._locInvScreenSize);
-        swap(_locColormapRange, o._locColormapRange);
-        swap(_locColormapLut, o._locColormapLut);
-        swap(_locGridOrigin, o._locGridOrigin);
-        swap(_locGridSpacing, o._locGridSpacing);
-        swap(_locGridEnabled, o._locGridEnabled);
-        swap(_indexCount, o._indexCount);
-        swap(_initAttempted, o._initAttempted);
-        swap(_gpuAvailable, o._gpuAvailable);
-        swap(_frame, o._frame);
-    }
-
     void init() {
         if (_initAttempted) {
             return;

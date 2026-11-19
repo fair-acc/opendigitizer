@@ -9,7 +9,7 @@ namespace DigitizerUi::components {
 
 struct BlockControlsPanelContext;
 
-void BlockNeighboursPreview(const BlockControlsPanelContext&, ImVec2 availableSize);
+void BlockNeighboursPreview(BlockControlsPanelContext&, ImVec2 availableSize);
 
 } // namespace DigitizerUi::components
 

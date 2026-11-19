@@ -338,53 +338,6 @@ struct DensityHistogram {
 
     ~DensityHistogram() { destroyAllResources(); }
 
-    DensityHistogram(DensityHistogram&& o) noexcept { swap(o); }
-
-    DensityHistogram& operator=(DensityHistogram&& o) noexcept {
-        if (this != &o) {
-            destroyAllResources();
-            swap(o);
-        }
-        return *this;
-    }
-
-    void swap(DensityHistogram& o) noexcept {
-        using std::swap;
-        swap(_specBins, o._specBins);
-        swap(_ampBins, o._ampBins);
-        swap(_binningYMin, o._binningYMin);
-        swap(_binningYMax, o._binningYMax);
-        swap(_preferGpu, o._preferGpu);
-        swap(_initAttempted, o._initAttempted);
-        swap(_gpuAvailable, o._gpuAvailable);
-        swap(_histogramTextures, o._histogramTextures);
-        swap(_histogramFBOs, o._histogramFBOs);
-        swap(_pingPongIndex, o._pingPongIndex);
-        swap(_colormapTexture, o._colormapTexture);
-        swap(_colormapFBO, o._colormapFBO);
-        swap(_spectrumTexture, o._spectrumTexture);
-        swap(_colormapLutTexture, o._colormapLutTexture);
-        swap(_activeColormap, o._activeColormap);
-        swap(_emptyVAO, o._emptyVAO);
-        swap(_accumulateProgram, o._accumulateProgram);
-        swap(_colormapProgram, o._colormapProgram);
-        swap(_locAccPrevHist, o._locAccPrevHist);
-        swap(_locAccSpecLine, o._locAccSpecLine);
-        swap(_locAccDecay, o._locAccDecay);
-        swap(_locAccAmpBins, o._locAccAmpBins);
-        swap(_locCmHist, o._locCmHist);
-        swap(_locCmLut, o._locCmLut);
-        swap(_locCmMaxDensity, o._locCmMaxDensity);
-        swap(_peakDensity, o._peakDensity);
-        swap(_scratchBuffer, o._scratchBuffer);
-        swap(_cpuHistogram, o._cpuHistogram);
-        swap(_cpuPixels, o._cpuPixels);
-        swap(_cpuTexture, o._cpuTexture);
-        swap(_cpuActiveColormap, o._cpuActiveColormap);
-        swap(_cpuColormapLut, o._cpuColormapLut);
-        swap(_cpuNeedsRecolour, o._cpuNeedsRecolour);
-    }
-
     DensityHistogram(const DensityHistogram&)            = delete;
     DensityHistogram& operator=(const DensityHistogram&) = delete;
 
@@ -867,36 +820,6 @@ struct WaterfallBuffer {
     WaterfallBuffer() = default;
 
     ~WaterfallBuffer() { destroy(); }
-
-    WaterfallBuffer(WaterfallBuffer&& o) noexcept { swap(o); }
-
-    WaterfallBuffer& operator=(WaterfallBuffer&& o) noexcept {
-        if (this != &o) {
-            destroy();
-            swap(o);
-        }
-        return *this;
-    }
-
-    void swap(WaterfallBuffer& o) noexcept {
-        using std::swap;
-        swap(_width, o._width);
-        swap(_height, o._height);
-        swap(_writeRow, o._writeRow);
-        swap(_filledRows, o._filledRows);
-        swap(_pixels, o._pixels);
-        swap(_timestamps, o._timestamps);
-        swap(_texture, o._texture);
-        swap(_activeColormap, o._activeColormap);
-        swap(_colormapLut, o._colormapLut);
-        swap(_scaleMin, o._scaleMin);
-        swap(_scaleMax, o._scaleMax);
-        swap(_preferGpu, o._preferGpu);
-        swap(_rawMagnitudes, o._rawMagnitudes);
-        swap(_linearized, o._linearized);
-        swap(_effectiveScaleMin, o._effectiveScaleMin);
-        swap(_effectiveScaleMax, o._effectiveScaleMax);
-    }
 
     WaterfallBuffer(const WaterfallBuffer&)            = delete;
     WaterfallBuffer& operator=(const WaterfallBuffer&) = delete;

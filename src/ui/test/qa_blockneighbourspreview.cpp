@@ -104,7 +104,6 @@ int main(int argc, char* argv[]) {
     graphModel.rootBlock.childEdges.push_back(outEdge);
 
     g_context.setSelectedBlock(mainBlock, &graphModel);
-    g_context.blockClickedCallback = [](DigitizerUi::UiGraphBlock*) { std::print("Block clicked.\n"); };
 
     TestApp app(options);
     return app.runTests() ? 0 : 1;
