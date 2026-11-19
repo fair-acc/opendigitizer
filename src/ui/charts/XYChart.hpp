@@ -27,7 +27,6 @@ namespace opendigitizer::charts {
 
 struct DataSetPlotContext {
     const gr::DataSet<float>* data_set;
-    std::size_t               signal_index{0}; // which signal within the DataSet to plot
 };
 
 /// XYChart - standard X-Y line/scatter chart as a GR4 block.
@@ -83,9 +82,6 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
     std::unordered_map<std::string, GpuLineRenderer, opendigitizer::TransparentStringHash, std::equal_to<>> _gpuLines;
 
     static constexpr std::string_view kChartTypeName = "XYChart";
-
-    [[nodiscard]] static constexpr std::string_view chartTypeName() noexcept { return kChartTypeName; }
-    [[nodiscard]] std::string_view                  uniqueId() const noexcept { return this->unique_name; }
 
     explicit XYChart(gr::property_map initParameters = {}) : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui">>(std::move(initParameters)) {}
 
@@ -154,14 +150,7 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
         for (std::size_t i = 0; i < _xCategories.size(); ++i) {
             const auto dashCfg = parseAxisConfig(this->ui_constraints.value, true, i);
 
-            double minLimit, maxLimit;
-            if (!x_auto_scale.value[i]) {
-                minLimit = x_min.value[i];
-                maxLimit = x_max.value[i];
-            } else {
-                minLimit = dashCfg ? static_cast<double>(dashCfg->min) : std::numeric_limits<double>::quiet_NaN();
-                maxLimit = dashCfg ? static_cast<double>(dashCfg->max) : std::numeric_limits<double>::quiet_NaN();
-            }
+            const auto [minLimit, maxLimit] = axisLimits(x_auto_scale.value[i], x_min.value[i], x_max.value[i], dashCfg);
 
             const LabelFormat format = dashCfg ? dashCfg->format : LabelFormat::Auto;
             const auto        axisId = ImAxis_X1 + static_cast<int>(i);
@@ -180,14 +169,7 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
         for (std::size_t i = 0; i < _yCategories.size(); ++i) {
             const auto dashCfg = parseAxisConfig(this->ui_constraints.value, false, i);
 
-            double minLimit, maxLimit;
-            if (!y_auto_scale.value[i]) {
-                minLimit = y_min.value[i];
-                maxLimit = y_max.value[i];
-            } else {
-                minLimit = dashCfg ? static_cast<double>(dashCfg->min) : std::numeric_limits<double>::quiet_NaN();
-                maxLimit = dashCfg ? static_cast<double>(dashCfg->max) : std::numeric_limits<double>::quiet_NaN();
-            }
+            const auto [minLimit, maxLimit] = axisLimits(y_auto_scale.value[i], y_min.value[i], y_max.value[i], dashCfg);
 
             const LabelFormat format = dashCfg ? dashCfg->format : LabelFormat::Auto;
             const auto        axisId = ImAxis_Y1 + static_cast<int>(i);
@@ -229,7 +211,7 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
                     if (show_tags.value && (tags_of_every_signal.value || !tagsDrawnForFirstSink)) {
                         auto allDataSets = sink->dataSets();
                         if (!allDataSets.empty()) {
-                            tags::drawDataSetTimingEvents(allDataSets.back(), _xCategories[xAxisIdx].has_value() ? _xCategories[xAxisIdx]->scale : AxisScale::Linear, baseColor);
+                            tags::drawDataSetTimingEvents(allDataSets.back(), baseColor);
                         }
                         tagsDrawnForFirstSink = true;
                     }
@@ -311,18 +293,11 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
             }
         }
         if (refreshDue || snap.x.empty()) {
-            const double xMin = sink.xAt(offset);
-            const double xMax = sink.xAt(offset + dataCount - 1);
+            const double shift = xOffset(xAxisScale, sink.xAt(offset), sink.xAt(offset + dataCount - 1));
             snap.x.resize(dataCount);
             snap.y.resize(dataCount);
             for (std::size_t i = 0; i < dataCount; ++i) {
-                double xVal = sink.xAt(offset + i);
-                switch (xAxisScale) {
-                case AxisScale::Time: break;
-                case AxisScale::LinearReverse: xVal -= xMax; break;
-                default: xVal -= xMin; break;
-                }
-                snap.x[i] = xVal;
+                snap.x[i] = sink.xAt(offset + i) - shift;
                 snap.y[i] = static_cast<double>(sink.yAt(offset + i));
             }
             axis::reduceToColumns(snap.x, snap.y, static_cast<std::size_t>(std::max(ImPlot::GetPlotSize().x, 0.0f)));
@@ -352,7 +327,7 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
         const std::size_t offset   = spanSize - historySize; // skip older entries
         for (std::size_t i = 0; i < historySize; ++i) {
             const auto&        ds = allDataSets[offset + i]; // i=0 is oldest of selected, i=historySize-1 is newest
-            DataSetPlotContext ctx{&ds, 0};
+            DataSetPlotContext ctx{&ds};
 
             const bool isNewest = (i == historySize - 1);
             float      opacity  = isNewest ? 1.0f : (0.2f + (static_cast<float>(i) / static_cast<float>(std::max(historySize, std::size_t{2}) - 1)) * 0.8f);
@@ -374,7 +349,7 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
                 const auto& data_set = *context->data_set;
                 double      xVal     = static_cast<double>(data_set.axis_values[0][static_cast<std::size_t>(idx)]);
                 double      yVal     = 0.0;
-                auto        sigVals  = data_set.signalValues(context->signal_index);
+                auto        sigVals  = data_set.signalValues(0UZ);
                 if (static_cast<std::size_t>(idx) < sigVals.size()) {
                     yVal = static_cast<double>(sigVals[static_cast<std::size_t>(idx)]);
                 }
@@ -392,7 +367,5 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
 } // namespace opendigitizer::charts
 
 // register XYChart with the GR4 block registry
-GR_REGISTER_BLOCK("opendigitizer::charts::XYChart", opendigitizer::charts::XYChart)
-inline auto registerXYChartCompatibilities = opendigitizer::charts::registerChartSignalCompatibility<opendigitizer::charts::XYChart>();
 
 #endif // OPENDIGITIZER_CHARTS_XYCHART_HPP

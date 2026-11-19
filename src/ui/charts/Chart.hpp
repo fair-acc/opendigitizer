@@ -33,6 +33,7 @@
 #include <functional>
 #include <iterator>
 #include <limits>
+#include <map>
 #include <memory>
 #include <optional>
 #include <ranges>
@@ -73,6 +74,14 @@ enum class AxisScale {
     Log10,         // logarithmic base 10
     SymLog         // symmetric log (handles negative values)
 };
+
+[[nodiscard]] inline double xOffset(AxisScale scale, double xFirst, double xLast) noexcept {
+    switch (scale) {
+    case AxisScale::Time: return 0.0;
+    case AxisScale::LinearReverse: return xLast;
+    default: return xFirst;
+    }
+}
 
 enum class LabelFormat {
     Auto = 0,     // automatic based on range
@@ -216,6 +225,22 @@ struct LogFreqRange {
 
 [[nodiscard]] inline std::optional<AxisConfig> parseAxisConfig(const gr::property_map& constraints, bool isX, std::size_t index = 0) { return parseAxisConfig(constraints, isX ? AxisKind::X : AxisKind::Y, index); }
 
+enum class ConstrainedWhen : std::uint8_t { autoScaled, always };
+
+/// [min, max] of an axis: NaN (auto-fit) when auto-scaled, else the settings; the finite ui_constraints limits replace them when `constrainedWhen` holds
+[[nodiscard]] inline std::array<double, 2> axisLimits(bool autoScaled, double settingMin, double settingMax, const std::optional<AxisConfig>& constraints, ConstrainedWhen constrainedWhen = ConstrainedWhen::autoScaled) {
+    std::array<double, 2> limits = autoScaled ? std::array{std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()} : std::array{settingMin, settingMax};
+    if (constraints && (autoScaled || constrainedWhen == ConstrainedWhen::always)) {
+        if (std::isfinite(constraints->min)) {
+            limits[0] = static_cast<double>(constraints->min);
+        }
+        if (std::isfinite(constraints->max)) {
+            limits[1] = static_cast<double>(constraints->max);
+        }
+    }
+    return limits;
+}
+
 [[nodiscard]] inline std::pair<double, double> effectiveColourRange(const gr::property_map& uiConstraints, double autoScaleMin, double autoScaleMax) {
     auto zCfg = parseAxisConfig(uiConstraints, AxisKind::Z);
     if (zCfg) {
@@ -231,6 +256,8 @@ struct LogFreqRange {
     return {autoScaleMin, autoScaleMax};
 }
 
+[[nodiscard]] inline std::string labelWithUnit(std::string_view name, std::string_view unit) { return unit.empty() ? std::string(name) : std::format("{} [{}]", name, unit); }
+
 struct AxisCategory {
     std::string   quantity;              // Physical quantity (e.g., "voltage", "frequency")
     std::string   unit;                  // Unit of measurement (e.g., "V", "Hz")
@@ -240,18 +267,7 @@ struct AxisCategory {
 
     [[nodiscard]] bool matches(std::string_view q, std::string_view u) const noexcept { return quantity == q && unit == u; }
 
-    [[nodiscard]] std::string buildLabel() const {
-        if (!quantity.empty() && !unit.empty()) {
-            return std::format("{} [{}]", quantity, unit);
-        }
-        if (!quantity.empty()) {
-            return quantity;
-        }
-        if (!unit.empty()) {
-            return unit;
-        }
-        return "";
-    }
+    [[nodiscard]] std::string buildLabel() const { return quantity.empty() ? unit : labelWithUnit(quantity, unit); }
 };
 
 namespace axis {
@@ -368,7 +384,7 @@ inline std::string truncateLabel(std::string_view original, float availableWidth
     if (textWidth <= availableWidth) {
         return std::string(original);
     }
-    static const float ellipsisWidth = ImGui::CalcTextSize("...").x;
+    const float ellipsisWidth = ImGui::CalcTextSize("...").x;
     if (availableWidth <= ellipsisWidth + 1.f) {
         return "...";
     }
@@ -615,15 +631,13 @@ namespace tags {
 /// Marker key for tags that appear out-of-order or have suspicious timestamps.
 inline constexpr std::string_view kFishyTagKey = "ui_fishy_tag";
 
-inline double transformX(double xVal, AxisScale axisScale, double xMin, double xMax, bool isDataSet = false) {
-    if (isDataSet) {
-        return xVal;
+[[nodiscard]] inline std::string tagText(const gr::property_map& properties, std::string_view key, std::string_view fallback = {}) {
+    if (const auto it = properties.find(key); it != properties.end()) {
+        if (const auto str = it->second.value_or(std::string_view{}); str.data() != nullptr) {
+            return std::string(str);
+        }
     }
-    switch (axisScale) {
-    case AxisScale::Time: return xVal;
-    case AxisScale::LinearReverse: return xVal - xMax;
-    default: return xVal - xMin;
-    }
+    return std::string(fallback);
 }
 
 inline ImVec2 plotVerticalTagLabel(std::string_view label, double xData, const ImPlotRect& plotLimits, bool plotLeft, double fractionBelowTop = 0.02, double sizeRatioLimit = 0.75) {
@@ -646,6 +660,18 @@ inline ImVec2 plotVerticalTagLabel(std::string_view label, double xData, const I
     return {pixelPos.x + pixOffset.x + textSize.y, pixelPos.y};
 }
 
+[[nodiscard]] inline float plotTriggerLabels(const gr::property_map& properties, double xTagPosition, const ImPlotRect& plotLimits, float yPixelRange, float lastTextPixelX) {
+    const std::string triggerLabel = tagText(properties, gr::tag::kTriggerName, "TRIGGER");
+    if (ImGui::CalcTextSize(triggerLabel.c_str()).x < 0.75f * yPixelRange) {
+        lastTextPixelX               = plotVerticalTagLabel(triggerLabel, xTagPosition, plotLimits, true).x;
+        const std::string triggerCtx = tagText(properties, gr::tag::kContext);
+        if (!triggerCtx.empty() && triggerCtx != triggerLabel && ImGui::CalcTextSize(triggerCtx.c_str()).x < 0.75f * yPixelRange) {
+            lastTextPixelX = plotVerticalTagLabel(triggerCtx, xTagPosition, plotLimits, false).x;
+        }
+    }
+    return lastTextPixelX;
+}
+
 template<typename ForEachTagFn>
 inline void drawTags(ForEachTagFn&& forEachTagFn, AxisScale axisScale, double xMin, double xMax, ImVec4 tagColor) {
     const auto& lnf               = DigitizerUi::LookAndFeel::instance();
@@ -658,15 +684,16 @@ inline void drawTags(ForEachTagFn&& forEachTagFn, AxisScale axisScale, double xM
 
     ImGui::PushStyleColor(ImGuiCol_Text, tagColor);
 
-    float lastTextPixelX = ImPlot::PlotToPixels(transformX(std::min(xMin, xMax), axisScale, xMin, xMax), 0.0).x;
-    float lastAxisPixelX = ImPlot::PlotToPixels(transformX(std::max(xMin, xMax), axisScale, xMin, xMax), 0.0).x;
+    const double shift          = xOffset(axisScale, xMin, xMax);
+    float        lastTextPixelX = ImPlot::PlotToPixels(std::min(xMin, xMax) - shift, 0.0).x;
+    float        lastAxisPixelX = ImPlot::PlotToPixels(std::max(xMin, xMax) - shift, 0.0).x;
 
     forEachTagFn([&](double timestamp, const gr::property_map& properties) {
         if (timestamp < std::min(xMin, xMax) || timestamp > std::max(xMin, xMax)) {
             return;
         }
 
-        double      xTagPosition = transformX(timestamp, axisScale, xMin, xMax);
+        double      xTagPosition = timestamp - shift;
         const float xPixelPos    = ImPlot::PlotToPixels(xTagPosition, 0.0).x;
 
         const bool isDrop = properties.contains(gr::tag::kNDroppedSamples);
@@ -686,30 +713,7 @@ inline void drawTags(ForEachTagFn&& forEachTagFn, AxisScale axisScale, double xM
                 lastTextPixelX = plotVerticalTagLabel("dropped samples", xTagPosition, plotLimits, true).x;
                 return;
             }
-            std::string triggerLabel = "TRIGGER";
-            if (const auto it = properties.find(gr::tag::kTriggerName); it != properties.end()) {
-                if (const auto str = it->second.value_or(std::string_view{}); str.data() != nullptr) {
-                    triggerLabel = str;
-                }
-            }
-
-            const ImVec2 triggerLabelSize = ImGui::CalcTextSize(triggerLabel.c_str());
-            if (triggerLabelSize.x < 0.75f * yPixelRange) {
-                lastTextPixelX = plotVerticalTagLabel(triggerLabel, xTagPosition, plotLimits, true).x;
-
-                std::string triggerCtx;
-                if (const auto it = properties.find(gr::tag::kContext); it != properties.end()) {
-                    if (const auto str = it->second.value_or(std::string_view{}); str.data() != nullptr) {
-                        triggerCtx = str;
-                    }
-                }
-                if (!triggerCtx.empty() && triggerCtx != triggerLabel) {
-                    const ImVec2 ctxLabelSize = ImGui::CalcTextSize(triggerCtx.c_str());
-                    if (ctxLabelSize.x < 0.75f * yPixelRange) {
-                        lastTextPixelX = plotVerticalTagLabel(triggerCtx, xTagPosition, plotLimits, false).x;
-                    }
-                }
-            }
+            lastTextPixelX = plotTriggerLabels(properties, xTagPosition, plotLimits, yPixelRange, lastTextPixelX);
         }
     });
 
@@ -717,7 +721,7 @@ inline void drawTags(ForEachTagFn&& forEachTagFn, AxisScale axisScale, double xM
 }
 
 template<typename T>
-inline void drawDataSetTimingEvents(const gr::DataSet<T>& dataSet, AxisScale axisScale, ImVec4 baseColor) {
+inline void drawDataSetTimingEvents(const gr::DataSet<T>& dataSet, ImVec4 baseColor) {
     if (dataSet.timing_events.empty() || dataSet.axisValues(0).empty()) {
         return;
     }
@@ -734,8 +738,8 @@ inline void drawDataSetTimingEvents(const gr::DataSet<T>& dataSet, AxisScale axi
 
     ImGui::PushStyleColor(ImGuiCol_Text, tagColor);
 
-    float lastTextPixelX = ImPlot::PlotToPixels(transformX(std::min(xMin, xMax), axisScale, xMin, xMax, true), 0.0).x;
-    float lastAxisPixelX = ImPlot::PlotToPixels(transformX(std::max(xMin, xMax), axisScale, xMin, xMax, true), 0.0).x;
+    float lastTextPixelX = ImPlot::PlotToPixels(std::min(xMin, xMax), 0.0).x;
+    float lastAxisPixelX = ImPlot::PlotToPixels(std::max(xMin, xMax), 0.0).x;
 
     for (const auto& eventsForSig : dataSet.timing_events) {
         for (const auto& [xIndex, tagMap] : eventsForSig) {
@@ -743,41 +747,14 @@ inline void drawDataSetTimingEvents(const gr::DataSet<T>& dataSet, AxisScale axi
                 continue;
             }
 
-            double      xVal         = static_cast<double>(xAxisSpan[static_cast<std::size_t>(xIndex)]);
-            double      xTagPosition = transformX(xVal, axisScale, xMin, xMax, true);
+            double      xTagPosition = static_cast<double>(xAxisSpan[static_cast<std::size_t>(xIndex)]);
             const float xPixelPos    = ImPlot::PlotToPixels(xTagPosition, 0.0).x;
 
             ImPlot::SetNextLineStyle(tagColor);
             ImPlot::PlotInfLines("", &xTagPosition, 1, ImPlotInfLinesFlags_None);
 
             if ((xPixelPos - lastTextPixelX) > 1.5f * fontHeight && (lastAxisPixelX - xPixelPos) > 2.0f * fontHeight) {
-                std::string triggerLabel = "TRIGGER";
-                if (auto it = tagMap.find(gr::tag::kTriggerName); it != tagMap.end()) {
-                    if (const auto str = it->second.value_or(std::string_view{}); str.data() != nullptr) {
-                        triggerLabel = str;
-                    }
-                }
-
-                const ImVec2 triggerLabelSize = ImGui::CalcTextSize(triggerLabel.c_str());
-                if (triggerLabelSize.x < 0.75f * yPixelRange) {
-                    lastTextPixelX = plotVerticalTagLabel(triggerLabel, xTagPosition, plotLimits, true).x;
-                } else {
-                    continue;
-                }
-
-                // Render kContext tag label below trigger label if present and different
-                std::string triggerCtx;
-                if (const auto it = tagMap.find(gr::tag::kContext); it != tagMap.end()) {
-                    if (const auto str = it->second.value_or(std::string_view{}); str.data() != nullptr) {
-                        triggerCtx = str;
-                    }
-                }
-                if (!triggerCtx.empty() && triggerCtx != triggerLabel) {
-                    const ImVec2 triggerCtxLabelSize = ImGui::CalcTextSize(triggerCtx.c_str());
-                    if (triggerCtxLabelSize.x < 0.75f * yPixelRange) {
-                        lastTextPixelX = plotVerticalTagLabel(triggerCtx, xTagPosition, plotLimits, false).x;
-                    }
-                }
+                lastTextPixelX = plotTriggerLabels(tagMap, xTagPosition, plotLimits, yPixelRange, lastTextPixelX);
             }
         }
     }
@@ -869,22 +846,6 @@ inline void showPlotMouseTooltip(double onDelay = DigitizerUi::LookAndFeel::inst
 
 } // namespace tooltip
 
-inline constexpr std::string_view kDefaultChartType = "opendigitizer::charts::XYChart";
-
-inline std::vector<std::string> registeredChartTypes() {
-    std::vector<std::string> chartTypes;
-    for (const auto& blockName : gr::globalBlockRegistry().keys()) {
-        // Case-insensitive check for "chart" in the block name
-        std::string lowerName = blockName;
-        std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(), [](unsigned char c) { return std::tolower(c); });
-        if (lowerName.find("chart") != std::string::npos && lowerName.find("chartmonitor") == std::string::npos) {
-            chartTypes.push_back(blockName);
-        }
-    }
-    std::ranges::sort(chartTypes);
-    return chartTypes;
-}
-
 /// D&D protocol for signal sink transfers between charts and legend.
 namespace dnd {
 
@@ -948,14 +909,14 @@ struct PayloadStatus {
 
 template<typename Callable>
 requires std::is_invocable_r_v<bool, Callable, const Payload&>
-inline bool handleDropTarget(Callable&& handler, const char* payloadType) {
-    const auto payloadResult = getPayloadStatus(payloadType, SignalKind::All);
+inline bool handleDropTarget(Callable&& handler, const char* payloadType, SignalKind supportedKinds = SignalKind::All) {
+    const auto payloadResult = getPayloadStatus(payloadType, supportedKinds);
     if (payloadResult.payload && !payloadResult.isCompatible) {
         return false;
     }
 
     if (ImGui::BeginDragDropTarget()) {
-        Digitizer::utils::scope_exit _([] { ImGui::EndDragDropTarget(); });
+        gr::on_scope_exit _([] { ImGui::EndDragDropTarget(); });
         if (ImGui::AcceptDragDropPayload(payloadType) && payloadResult.payload && payloadResult.payload->isValid()) {
             g_state.accepted = std::invoke(handler, *payloadResult.payload);
             return g_state.accepted;
@@ -1040,10 +1001,6 @@ inline void iconText(const char* icon, const char* text) {
     ImGui::TextUnformatted(text);
 }
 
-/// Creates a menu item label with icon prefix (icon rendered in fontIconsSolid).
-/// Returns the combined label string for use with ImGui::MenuItem or ImGui::BeginMenu.
-inline std::string makeIconLabel(const char* icon, std::string_view text) { return std::format("{} {}", icon, text); }
-
 /// MenuItem with icon (icon rendered with fontIconsSolid font).
 inline bool menuItemWithIcon(const char* icon, const char* label, bool selected = false, bool enabled = true) {
     bool clicked = false;
@@ -1093,14 +1050,14 @@ enum class ChartMode : std::uint8_t { View, Interaction, Layout };
 
 inline constexpr std::string_view kChartModeKey = "chartMode";
 
-[[nodiscard]] inline gr::property_map chartDrawConfig(ChartMode mode) { return {{std::pmr::string(kChartModeKey), std::string(magic_enum::enum_name(mode))}}; }
+[[nodiscard]] inline gr::property_map chartDrawConfig(ChartMode mode) { return {{std::pmr::string(kChartModeKey), std::string(gr::meta::enumName(mode).value_or(""))}}; }
 
 [[nodiscard]] inline ChartMode chartModeFrom(const gr::property_map& config) {
     const auto it = config.find(kChartModeKey);
     if (it == config.end()) {
         return ChartMode::View;
     }
-    const auto mode = magic_enum::enum_cast<ChartMode>(it->second.value_or(std::string_view{}));
+    const auto mode = gr::meta::parseEnum<ChartMode>(it->second.value_or(std::string_view{}));
     assert(mode.has_value() && "unknown chartMode");
     return mode.value_or(ChartMode::View);
 }
@@ -1222,19 +1179,95 @@ inline void onScrollWheel(auto&& apply) {
     }
 }
 
-/// We need to know the signal compatibilities for every chart type in order to
-/// enumerate the available types to switch to in the "Change Type" chart dropdown.
-/// This is a map of Chart typenames to the signals they can display
-inline std::unordered_map<std::string, SignalKind>& chartSignalCompatibilityRegistry() {
-    static std::unordered_map<std::string, SignalKind> s_instance;
-    return s_instance;
-}
 } // namespace detail
 
-template<typename T>
-int registerChartSignalCompatibility() {
-    detail::chartSignalCompatibilityRegistry().emplace(gr::refl::type_name<T>, T::supportedSignals);
-    return 0;
+template<typename TChart>
+void registerChart(gr::BlockRegistry& registry) {
+    std::ignore = gr::registerBlock<TChart>(registry);
+    chartTypes().insert_or_assign(std::string(gr::meta::type_name<TChart>()), TChart::supportedSignals);
+}
+
+/// sorted, those the global registry knows
+inline std::vector<std::string> registeredChartTypes() {
+    std::vector<std::string> names;
+    for (const auto& name : chartTypes() | std::views::keys) {
+        if (gr::globalBlockRegistry().contains(name)) {
+            names.push_back(name);
+        }
+    }
+    return names;
+}
+
+template<typename TOnToggled, typename TOnFitOnce>
+void drawAutoFitControls(bool& autoFit, TOnToggled&& onToggled, TOnFitOnce&& onFitOnce) {
+    {
+        DigitizerUi::IMW::Font iconFont(DigitizerUi::LookAndFeel::instance().fontIconsSolid);
+        ImGui::TextUnformatted(menu_icons::kAutoFit);
+    }
+    ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
+    if (DigitizerUi::Checkbox("##auto", &autoFit)) {
+        onToggled();
+    }
+    if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("Auto-fit axis range");
+    }
+    ImGui::SameLine();
+    if (DigitizerUi::TextButton("Fit once")) {
+        onFitOnce();
+    }
+    if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("Fit axis to data once, then return to manual mode");
+    }
+}
+
+template<typename TSetMin, typename TSetMax>
+void drawLimitSpinners(bool disabled, double minVal, double maxVal, TSetMin&& setMin, TSetMax&& setMax) {
+    if (disabled) {
+        ImGui::BeginDisabled();
+    }
+    const auto&  chartStyle = DigitizerUi::LookAndFeel::instance().chartStyle;
+    const double range      = std::abs(maxVal - minVal);
+    const double increment  = (range > 0.0 && range < 1e10) ? range * 0.01 : 0.1;
+    const float  dragSpeed  = static_cast<float>(increment * 0.1);
+
+    auto drawSpinner = [&](const char* id, double& val, auto&& assign) {
+        const std::string decId  = std::format("\uf146##{}_dec", id);
+        const std::string incId  = std::format("\uf0fe##{}_inc", id);
+        const std::string dragId = std::format("##{}", id);
+        {
+            DigitizerUi::IMW::Font iconFont(DigitizerUi::LookAndFeel::instance().fontIconsSolid);
+            if (DigitizerUi::Button(decId.c_str())) {
+                val -= increment;
+                assign(val);
+            }
+        }
+        ImGui::SameLine(0.0f, chartStyle.menuSpinnerSpacing);
+        ImGui::SetNextItemWidth(chartStyle.menuAxisLimitDragWidth);
+        if (ImGui::DragScalar(dragId.c_str(), ImGuiDataType_Double, &val, dragSpeed, nullptr, nullptr, "%.4g")) {
+            assign(val);
+        }
+        detail::onScrollWheel([&](float wheel) {
+            val += static_cast<double>(wheel) * increment;
+            assign(val);
+        });
+        ImGui::SameLine(0.0f, chartStyle.menuSpinnerSpacing);
+        {
+            DigitizerUi::IMW::Font iconFont(DigitizerUi::LookAndFeel::instance().fontIconsSolid);
+            if (DigitizerUi::Button(incId.c_str())) {
+                val += increment;
+                assign(val);
+            }
+        }
+    };
+
+    drawSpinner("min", minVal, setMin);
+    ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
+    menu_icons::iconText(menu_icons::kArrow, "");
+    ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
+    drawSpinner("max", maxVal, setMax);
+    if (disabled) {
+        ImGui::EndDisabled();
+    }
 }
 
 /// Non-polymorphic CRTP mixin for chart signal sink storage and D&D using C++23 deducing this.
@@ -1558,6 +1591,13 @@ struct Chart {
         m.f0Held[p]    = f0Held;
     }
 
+    void plotLegendEntries() const { // enables the legend and its drag and drop on charts that plot no line per sink
+        for (const auto& sink : _signalSinks) {
+            ImPlot::SetNextLineStyle(sinkColor(sink->color()));
+            ImPlot::PlotDummy(plotLabel(*sink).c_str());
+        }
+    }
+
     [[nodiscard]] auto enabledSinks() const {
         return _signalSinks | std::views::filter([](const auto& s) { return s && s->drawEnabled(); });
     }
@@ -1587,23 +1627,13 @@ struct Chart {
     }
 
     template<typename Self>
-    void setupSingleAxis(this Self& self, bool isX, ImAxis axisId, const ImVec2& plotSize, bool showGrid, LabelFormat defaultFormat = LabelFormat::Auto, bool foreground = false, std::optional<ImPlotCond> condOverride = std::nullopt, std::optional<AxisScale> scaleOverride = std::nullopt) {
+    void setupSingleAxis(this Self& self, bool isX, ImAxis axisId, const ImVec2& plotSize, bool showGrid, LabelFormat defaultFormat = LabelFormat::Auto, bool foreground = false, std::optional<ImPlotCond> condOverride = std::nullopt) {
         const auto      dashCfg = parseAxisConfig(self.ui_constraints.value, isX);
-        const AxisScale scale   = scaleOverride.value_or(dashCfg ? dashCfg->scale.value_or(AxisScale::Linear) : AxisScale::Linear);
+        const AxisScale scale   = dashCfg ? dashCfg->scale.value_or(AxisScale::Linear) : AxisScale::Linear;
         const auto      format  = dashCfg ? dashCfg->format : defaultFormat;
 
-        const bool isAutoScale = isX ? static_cast<bool>(self.x_auto_scale) : static_cast<bool>(self.y_auto_scale);
-
-        double minLimit = isAutoScale ? std::numeric_limits<double>::quiet_NaN() : (isX ? static_cast<double>(self.x_min) : static_cast<double>(self.y_min));
-        double maxLimit = isAutoScale ? std::numeric_limits<double>::quiet_NaN() : (isX ? static_cast<double>(self.x_max) : static_cast<double>(self.y_max));
-        if (dashCfg && isAutoScale) {
-            if (std::isfinite(dashCfg->min)) {
-                minLimit = static_cast<double>(dashCfg->min);
-            }
-            if (std::isfinite(dashCfg->max)) {
-                maxLimit = static_cast<double>(dashCfg->max);
-            }
-        }
+        const bool isAutoScale          = isX ? static_cast<bool>(self.x_auto_scale) : static_cast<bool>(self.y_auto_scale);
+        const auto [minLimit, maxLimit] = axisLimits(isAutoScale, isX ? static_cast<double>(self.x_min) : static_cast<double>(self.y_min), isX ? static_cast<double>(self.x_max) : static_cast<double>(self.y_max), dashCfg);
 
         auto [quantity, unit] = self.sinkAxisInfo(isX);
         AxisCategory cat{.quantity = quantity, .unit = unit};
@@ -1819,7 +1849,7 @@ struct Chart {
         }
 
         if (ImPlot::BeginDragDropTargetPlot()) {
-            Digitizer::utils::scope_exit _([] { ImPlot::EndDragDropTarget(); });
+            gr::on_scope_exit _([] { ImPlot::EndDragDropTarget(); });
 
             if (!ImGui::AcceptDragDropPayload(payloadType) || !payloadResult.payload || !payloadResult.payload->isValid()) {
                 return false;
@@ -1843,8 +1873,8 @@ struct Chart {
             const auto minimumCompatibility = self.minimumSinkCompatibility();
             for (const auto& type : registeredChartTypes()) {
                 bool disabled                     = false;
-                auto otherSignalCompatibilityIter = detail::chartSignalCompatibilityRegistry().find(type);
-                if (otherSignalCompatibilityIter != std::end(detail::chartSignalCompatibilityRegistry()) && (otherSignalCompatibilityIter->second & minimumCompatibility) != minimumCompatibility) {
+                auto otherSignalCompatibilityIter = chartTypes().find(type);
+                if (otherSignalCompatibilityIter != chartTypes().end() && (otherSignalCompatibilityIter->second & minimumCompatibility) != minimumCompatibility) {
                     disabled = true; // this chart type does not support all the signal types we are displaying
                 }
 
@@ -1860,24 +1890,10 @@ struct Chart {
         }
     }
 
-    /// draws axis submenu (scale selector, auto-fit toggle, min/max editors)
-    template<typename Self>
-    void drawAxisSubmenu(this Self& self, AxisKind axis) {
-        const bool  isX   = (axis == AxisKind::X);
-        const char* label = isX ? "x-Axis" : "y-Axis";
-        const char* icon  = isX ? menu_icons::kXAxis : menu_icons::kYAxis;
-
-        if (menu_icons::beginMenuWithIcon(icon, label)) {
-            self.drawAxisSubmenuContent(axis);
-            ImGui::EndMenu();
-        }
-    }
-
     /// Axis submenu content with scale, auto-fit, and min/max controls.
     template<typename Self>
     void drawAxisSubmenuContent(this Self& self, AxisKind axis, std::size_t axisIndex = 0UZ) {
-        const bool  isX        = (axis == AxisKind::X);
-        const float kDragWidth = DigitizerUi::LookAndFeel::instance().chartStyle.menuAxisLimitDragWidth;
+        const bool isX = (axis == AxisKind::X);
 
         // Get current plot limits for the specific axis being edited
         const ImAxis targetXAxis = ImAxis_X1 + static_cast<int>(isX ? axisIndex : 0);
@@ -1901,13 +1917,7 @@ struct Chart {
             }
             if (headerLabel.empty()) {
                 auto [quantity, unit] = self.sinkAxisInfo(isX);
-                if (!quantity.empty() && !unit.empty()) {
-                    headerLabel = std::format("{} [{}]", quantity, unit);
-                } else if (!quantity.empty()) {
-                    headerLabel = quantity;
-                } else {
-                    headerLabel = std::format("{}{}", isX ? "X" : "Y", axisIndex + 1);
-                }
+                headerLabel           = quantity.empty() ? std::format("{}{}", isX ? "X" : "Y", axisIndex + 1) : labelWithUnit(quantity, unit);
             }
             menu_icons::iconText(isX ? menu_icons::kXAxis : menu_icons::kYAxis, headerLabel.c_str());
             ImGui::Separator();
@@ -1916,17 +1926,17 @@ struct Chart {
         auto drawEnumCombo = [&]<typename E>(const char* icon, const char* text, const char* comboId, E current, auto&& setter) {
             menu_icons::iconText(icon, text);
             ImGui::SameLine();
-            static const float w = [] {
+            const float w = [] {
                 float maxW = 0.0f;
-                for (auto e : magic_enum::enum_values<E>()) {
-                    maxW = std::max(maxW, ImGui::CalcTextSize(magic_enum::enum_name(e).data()).x);
+                for (auto e : gr::meta::enumValues<E>()) {
+                    maxW = std::max(maxW, ImGui::CalcTextSize(gr::meta::enumName(e).value_or("").data()).x);
                 }
                 return maxW + ImGui::GetStyle().FramePadding.x * 2.0f + ImGui::GetFrameHeight();
             }();
             ImGui::SetNextItemWidth(w);
-            if (DigitizerUi::BeginCombo(comboId, magic_enum::enum_name(current).data())) {
-                for (auto e : magic_enum::enum_values<E>()) {
-                    if (DigitizerUi::Selectable(magic_enum::enum_name(e).data(), e == current)) {
+            if (DigitizerUi::BeginCombo(comboId, gr::meta::enumName(current).value_or("").data())) {
+                for (auto e : gr::meta::enumValues<E>()) {
+                    if (DigitizerUi::Selectable(gr::meta::enumName(e).value_or("").data(), e == current)) {
                         setter(e);
                     }
                     if (e == current) {
@@ -1936,7 +1946,7 @@ struct Chart {
                 ImGui::EndCombo();
             }
             detail::onScrollWheel([&](float wheel) {
-                auto values = magic_enum::enum_values<E>();
+                auto values = gr::meta::enumValues<E>();
                 auto it     = std::ranges::find(values, current);
                 if (it == values.end()) {
                     return;
@@ -1975,93 +1985,28 @@ struct Chart {
                           self.x_auto_scale;
                           self.y_auto_scale;
                       }) {
-            auto drawAutoFitControls = [&](auto& autoScaleField, auto& minField, auto& maxField) {
+            auto drawAxisLimitControls = [&](auto& autoScaleField, auto& minField, auto& maxField) {
                 bool autoFit = readAutoScale(autoScaleField, axisIndex);
 
-                {
-                    DigitizerUi::IMW::Font iconFont(DigitizerUi::LookAndFeel::instance().fontIconsSolid);
-                    ImGui::TextUnformatted(menu_icons::kAutoFit);
-                }
-                ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
-                if (DigitizerUi::Checkbox("##auto", &autoFit)) {
-                    if (autoFit) {
-                        self.enableAxisAutoFit(axis, axisIndex);
-                    } else {
-                        writeAutoScale(autoScaleField, axisIndex, false);
-                        writeLimit(minField, axisIndex, plotMin);
-                        writeLimit(maxField, axisIndex, plotMax);
-                    }
-                }
-                if (ImGui::IsItemHovered()) {
-                    ImGui::SetTooltip("Auto-fit axis range");
-                }
-                ImGui::SameLine();
-                if (DigitizerUi::TextButton("Fit once")) {
-                    self.requestAxisFit(axis, axisIndex);
-                }
-                if (ImGui::IsItemHovered()) {
-                    ImGui::SetTooltip("Fit axis to data once, then return to manual mode");
-                }
-
-                if (autoFit) {
-                    ImGui::BeginDisabled();
-                }
-
-                double minVal = autoFit ? plotMin : readLimit(minField, axisIndex);
-                double maxVal = autoFit ? plotMax : readLimit(maxField, axisIndex);
-
-                const double range     = std::abs(maxVal - minVal);
-                const double increment = (range > 0.0 && range < 1e10) ? range * 0.01 : 0.1;
-                const float  dragSpeed = static_cast<float>(increment * 0.1);
-
-                auto drawSpinner = [&](const char* id, double& val, auto&& assign) {
-                    const std::string decId  = std::format("\uf146##{}_dec", id);
-                    const std::string incId  = std::format("\uf0fe##{}_inc", id);
-                    const std::string dragId = std::format("##{}", id);
-                    {
-                        DigitizerUi::IMW::Font iconFont(DigitizerUi::LookAndFeel::instance().fontIconsSolid);
-                        if (DigitizerUi::Button(decId.c_str())) {
-                            val -= increment;
-                            assign(val);
+                drawAutoFitControls(
+                    autoFit,
+                    [&] {
+                        if (autoFit) {
+                            self.enableAxisAutoFit(axis, axisIndex);
+                        } else {
+                            writeAutoScale(autoScaleField, axisIndex, false);
+                            writeLimit(minField, axisIndex, plotMin);
+                            writeLimit(maxField, axisIndex, plotMax);
                         }
-                    }
-                    ImGui::SameLine(0.0f, DigitizerUi::LookAndFeel::instance().chartStyle.menuSpinnerSpacing);
-                    ImGui::SetNextItemWidth(kDragWidth);
-                    if (ImGui::DragScalar(dragId.c_str(), ImGuiDataType_Double, &val, dragSpeed, nullptr, nullptr, "%.4g")) {
-                        assign(val);
-                    }
-                    detail::onScrollWheel([&](float wheel) {
-                        val += static_cast<double>(wheel) * increment;
-                        assign(val);
-                    });
-                    ImGui::SameLine(0.0f, DigitizerUi::LookAndFeel::instance().chartStyle.menuSpinnerSpacing);
-                    {
-                        DigitizerUi::IMW::Font iconFont(DigitizerUi::LookAndFeel::instance().fontIconsSolid);
-                        if (DigitizerUi::Button(incId.c_str())) {
-                            val += increment;
-                            assign(val);
-                        }
-                    }
-                };
-
-                auto setMin = [&](double v) { writeLimit(minField, axisIndex, v); };
-                auto setMax = [&](double v) { writeLimit(maxField, axisIndex, v); };
-
-                drawSpinner("min", minVal, setMin);
-                ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
-                menu_icons::iconText(menu_icons::kArrow, "");
-                ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
-                drawSpinner("max", maxVal, setMax);
-
-                if (autoFit) {
-                    ImGui::EndDisabled();
-                }
+                    },
+                    [&] { self.requestAxisFit(axis, axisIndex); });
+                drawLimitSpinners(autoFit, autoFit ? plotMin : readLimit(minField, axisIndex), autoFit ? plotMax : readLimit(maxField, axisIndex), [&](double v) { writeLimit(minField, axisIndex, v); }, [&](double v) { writeLimit(maxField, axisIndex, v); });
             };
 
             if (isX) {
-                drawAutoFitControls(self.x_auto_scale, self.x_min, self.x_max);
+                drawAxisLimitControls(self.x_auto_scale, self.x_min, self.x_max);
             } else {
-                drawAutoFitControls(self.y_auto_scale, self.y_min, self.y_max);
+                drawAxisLimitControls(self.y_auto_scale, self.y_min, self.y_max);
             }
         }
     }
@@ -2070,23 +2015,14 @@ struct Chart {
     /// n_history (gr::Size_t, samples) is the persistent property; display unit is UI-only state
     template<typename Self>
     void drawHistoryDepthWidget(this Self& self) {
-        const float          kDragWidth  = DigitizerUi::LookAndFeel::instance().chartStyle.historyDepthDragWidth;
-        const float          kComboWidth = DigitizerUi::LookAndFeel::instance().chartStyle.historyDepthComboWidth;
+        const auto&          chartStyle  = DigitizerUi::LookAndFeel::instance().chartStyle;
         constexpr gr::Size_t kMinSamples = 4U;
         constexpr gr::Size_t kMaxSamples = 1'000'000U;
 
         // canonical 1-2-5 decade stops for time and sample count
-        constexpr std::array kTimeStops     = {0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1.0, 2.0, 3.0, 4.0, 5.0, 10.0, 20.0, 30.0, 60.0, 120.0, 300.0, 600.0, 1800.0, 3600.0};
-        constexpr float      kTimeSliderMin = 0.0f;
-        constexpr float      kTimeSliderMax = static_cast<float>(kTimeStops.size() - 1);
+        constexpr std::array                   kTimeStops   = {0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1.0, 2.0, 3.0, 4.0, 5.0, 10.0, 20.0, 30.0, 60.0, 120.0, 300.0, 600.0, 1800.0, 3600.0};
+        constexpr std::array<gr::Size_t, 22UZ> kSampleStops = {4U, 10U, 20U, 50U, 100U, 200U, 500U, 1'000U, 2'000U, 5'000U, 10'000U, 20'000U, 50'000U, 100'000U, 200'000U, 500'000U, 1'000'000U, 2'000'000U, 5'000'000U, 10'000'000U, 50'000'000U, 100'000'000U};
 
-        constexpr std::array<gr::Size_t, 22UZ> kSampleStops     = {4U, 10U, 20U, 50U, 100U, 200U, 500U, 1'000U, 2'000U, 5'000U, 10'000U, 20'000U, 50'000U, 100'000U, 200'000U, 500'000U, 1'000'000U, 2'000'000U, 5'000'000U, 10'000'000U, 50'000'000U, 100'000'000U};
-        constexpr float                        kSampleSliderMin = 0.0f;
-        constexpr float                        kSampleSliderMax = static_cast<float>(kSampleStops.size() - 1);
-
-        gr::Size_t nSamples = self.n_history.value;
-
-        // get sample rate from first available sink
         float sampleRate = 0.0f;
         for (const auto& sink : self._signalSinks) {
             if (sink) {
@@ -2095,24 +2031,27 @@ struct Chart {
             }
         }
         const bool rateKnown = sampleRate > 0.0f;
+        const auto inSeconds = [&] { return self._historyDisplayUnit == HistoryUnit::seconds; };
 
-        // compute display value in the user's chosen unit
-        double displayValue = static_cast<double>(nSamples);
-        if (self._historyDisplayUnit == HistoryUnit::seconds && rateKnown) {
-            displayValue = static_cast<double>(nSamples) / static_cast<double>(sampleRate);
+        double displayValue = static_cast<double>(self.n_history.value);
+        if (inSeconds() && rateKnown) {
+            displayValue = static_cast<double>(self.n_history.value) / static_cast<double>(sampleRate);
         }
 
-        // helper: convert display value back to samples
-        auto toSamples = [&](double val) -> gr::Size_t {
-            if (self._historyDisplayUnit == HistoryUnit::seconds && rateKnown) {
+        const auto toSamples = [&](double val) -> gr::Size_t {
+            if (inSeconds() && rateKnown) {
                 double samples = std::ceil(std::max(val, 0.0) * static_cast<double>(sampleRate));
                 return static_cast<gr::Size_t>(std::clamp(samples, static_cast<double>(kMinSamples), static_cast<double>(kMaxSamples)));
             }
             return static_cast<gr::Size_t>(std::clamp(std::max(val, 0.0), static_cast<double>(kMinSamples), static_cast<double>(kMaxSamples)));
         };
-
-        // helper: schedule a debounced resize
-        auto scheduleResize = [&]() { self._pendingResizeTime = ImGui::GetTime() + kCapacityDebounceSeconds; };
+        const auto scheduleResize    = [&] { self._pendingResizeTime = ImGui::GetTime() + kCapacityDebounceSeconds; };
+        const auto applyDisplayValue = [&] {
+            self.n_history = toSamples(displayValue);
+            scheduleResize();
+        };
+        const auto   step            = [&] { return std::max(inSeconds() ? 0.1 : 100.0, displayValue * 0.1); };
+        const double minDisplayValue = inSeconds() ? 0.001 : static_cast<double>(kMinSamples);
 
         // --- Row 1: Icon + [- value +] [unit combo] ---
         {
@@ -2120,61 +2059,50 @@ struct Chart {
             ImGui::TextUnformatted(menu_icons::kHistory);
         }
         ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
-
-        // decrease button
         {
             DigitizerUi::IMW::Font iconFont(DigitizerUi::LookAndFeel::instance().fontIconsSolid);
             if (DigitizerUi::Button("\u{f146}##depthDec")) { // minus-square
-                double step    = std::max(self._historyDisplayUnit == HistoryUnit::seconds ? 0.1 : 100.0, displayValue * 0.1);
-                displayValue   = std::max(displayValue - step, self._historyDisplayUnit == HistoryUnit::seconds ? 0.001 : static_cast<double>(kMinSamples));
-                self.n_history = toSamples(displayValue);
-                scheduleResize();
+                displayValue = std::max(displayValue - step(), minDisplayValue);
+                applyDisplayValue();
             }
         }
-        ImGui::SameLine(0.0f, DigitizerUi::LookAndFeel::instance().chartStyle.menuSpinnerSpacing);
+        ImGui::SameLine(0.0f, chartStyle.menuSpinnerSpacing);
 
-        // value drag input with logarithmic speed
-        ImGui::SetNextItemWidth(kDragWidth);
+        ImGui::SetNextItemWidth(chartStyle.historyDepthDragWidth);
         float       dragSpeed = static_cast<float>(std::max(displayValue * 0.01, 0.001));
-        const char* format    = (self._historyDisplayUnit == HistoryUnit::seconds) ? "%.3g" : "%.0f";
+        const char* format    = inSeconds() ? "%.3g" : "%.0f";
         if (ImGui::DragScalar("##historyValue", ImGuiDataType_Double, &displayValue, dragSpeed, nullptr, nullptr, format)) {
-            self.n_history = toSamples(displayValue);
-            scheduleResize();
+            applyDisplayValue();
         }
         detail::onScrollWheel([&](float wheel) {
-            double step = std::max(self._historyDisplayUnit == HistoryUnit::seconds ? 0.1 : 100.0, displayValue * 0.1);
-            displayValue += static_cast<double>(wheel) * step;
-            displayValue   = std::max(displayValue, self._historyDisplayUnit == HistoryUnit::seconds ? 0.001 : static_cast<double>(kMinSamples));
-            self.n_history = toSamples(displayValue);
-            scheduleResize();
+            displayValue += static_cast<double>(wheel) * step();
+            displayValue = std::max(displayValue, minDisplayValue);
+            applyDisplayValue();
         });
 
-        ImGui::SameLine(0.0f, DigitizerUi::LookAndFeel::instance().chartStyle.menuSpinnerSpacing);
-        // increase button
+        ImGui::SameLine(0.0f, chartStyle.menuSpinnerSpacing);
         {
             DigitizerUi::IMW::Font iconFont(DigitizerUi::LookAndFeel::instance().fontIconsSolid);
             if (DigitizerUi::Button("\u{f0fe}##depthInc")) { // plus-square
-                double step    = std::max(self._historyDisplayUnit == HistoryUnit::seconds ? 0.1 : 100.0, displayValue * 0.1);
-                displayValue   = displayValue + step;
-                self.n_history = toSamples(displayValue);
-                scheduleResize();
+                displayValue += step();
+                applyDisplayValue();
             }
         }
 
         ImGui::SameLine();
 
         // unit combo (display unit only, not persisted)
-        ImGui::SetNextItemWidth(kComboWidth);
-        auto currentUnitName = magic_enum::enum_name(self._historyDisplayUnit);
+        ImGui::SetNextItemWidth(chartStyle.historyDepthComboWidth);
+        auto currentUnitName = gr::meta::enumName(self._historyDisplayUnit).value_or("");
         if (DigitizerUi::BeginCombo("##historyUnit", currentUnitName.data())) {
-            for (auto unit : magic_enum::enum_values<HistoryUnit>()) {
+            for (auto unit : gr::meta::enumValues<HistoryUnit>()) {
                 bool enabled  = (unit != HistoryUnit::seconds) || rateKnown;
                 bool selected = (unit == self._historyDisplayUnit);
 
                 if (!enabled) {
                     ImGui::BeginDisabled();
                 }
-                if (DigitizerUi::Selectable(magic_enum::enum_name(unit).data(), selected)) {
+                if (DigitizerUi::Selectable(gr::meta::enumName(unit).value_or("").data(), selected)) {
                     self._historyDisplayUnit = unit; // just change display, n_history stays unchanged
                 }
                 if (selected) {
@@ -2187,7 +2115,7 @@ struct Chart {
             ImGui::EndCombo();
         }
         detail::onScrollWheel([&](float wheel) {
-            auto values = magic_enum::enum_values<HistoryUnit>();
+            auto values = gr::meta::enumValues<HistoryUnit>();
             auto it     = std::ranges::find(values, self._historyDisplayUnit);
             if (it != values.end()) {
                 if (wheel > 0.0f && std::next(it) != values.end()) {
@@ -2198,89 +2126,60 @@ struct Chart {
             }
         });
 
-        // --- Row 2: Quick-adjust slider ---
-        nSamples = self.n_history.value; // re-read after potential changes above
+        // --- Row 2: Quick-adjust slider, snapped to the nearest stop ---
+        const auto drawStopSlider = [&](const auto& stops, double current, auto&& formatStop, auto&& samplesAt) {
+            const float sliderMin = 0.0f;
+            const float sliderMax = static_cast<float>(stops.size() - 1);
+            float       bestIdx   = 0.0f;
+            double      bestDist  = std::abs(std::log(current) - std::log(static_cast<double>(stops[0])));
+            for (std::size_t i = 1; i < stops.size(); ++i) {
+                double dist = std::abs(std::log(current) - std::log(static_cast<double>(stops[i])));
+                if (dist < bestDist) {
+                    bestDist = dist;
+                    bestIdx  = static_cast<float>(i);
+                }
+            }
+            if (DigitizerUi::SliderScalar("##historySlider", {.dataType = ImGuiDataType_Float, .data = &bestIdx, .min = &sliderMin, .max = &sliderMax, .format = formatStop(stops[static_cast<std::size_t>(std::round(bestIdx))]).c_str(), .flags = ImGuiSliderFlags_NoInput}) != DigitizerUi::SliderAction::NotEdited) {
+                self.n_history = samplesAt(stops[static_cast<std::size_t>(std::clamp(std::round(bestIdx), sliderMin, sliderMax))]);
+                scheduleResize();
+            }
+            detail::onScrollWheel([&](float wheel) {
+                bestIdx        = std::clamp(std::round(bestIdx) + ((wheel > 0.0f) ? 1.0f : -1.0f), sliderMin, sliderMax);
+                self.n_history = samplesAt(stops[static_cast<std::size_t>(bestIdx)]);
+                scheduleResize();
+            });
+        };
+        const auto formatTimeStop = [](double seconds) -> std::string {
+            if (seconds >= 60.0) {
+                return std::format("{:.0f} min", seconds / 60.0);
+            }
+            if (seconds >= 1.0) {
+                return std::format("{:.0f} s", seconds);
+            }
+            if (seconds >= 0.01) {
+                return std::format("{:.0f} ms", seconds * 1e3);
+            }
+            return std::format("{:.1f} ms", seconds * 1e3);
+        };
+        const auto formatSampleStop = [](gr::Size_t samples) -> std::string {
+            if (samples >= 1'000'000U) {
+                return std::format("{:.0f}M", static_cast<double>(samples) / 1e6);
+            }
+            if (samples >= 1'000U) {
+                return std::format("{:.0f}k", static_cast<double>(samples) / 1e3);
+            }
+            return std::format("{}", samples);
+        };
+
         ImGui::SetNextItemWidth(std::max(ImGui::GetContentRegionAvail().x, 60.0f));
-
-        if (self._historyDisplayUnit == HistoryUnit::seconds && rateKnown) {
-            // seconds mode: snap to canonical time stops
-            double currentSeconds = static_cast<double>(nSamples) / static_cast<double>(sampleRate);
-            // find nearest stop index
-            float  bestIdx  = 0.0f;
-            double bestDist = std::abs(std::log(currentSeconds) - std::log(kTimeStops[0]));
-            for (std::size_t i = 1; i < kTimeStops.size(); ++i) {
-                double dist = std::abs(std::log(currentSeconds) - std::log(kTimeStops[i]));
-                if (dist < bestDist) {
-                    bestDist = dist;
-                    bestIdx  = static_cast<float>(i);
-                }
-            }
-
-            auto formatTimeStop = [](double seconds) -> std::string {
-                if (seconds >= 60.0) {
-                    return std::format("{:.0f} min", seconds / 60.0);
-                }
-                if (seconds >= 1.0) {
-                    return std::format("{:.0f} s", seconds);
-                }
-                if (seconds >= 0.01) {
-                    return std::format("{:.0f} ms", seconds * 1e3);
-                }
-                return std::format("{:.1f} ms", seconds * 1e3);
-            };
-
-            if (DigitizerUi::SliderScalar("##historySlider", {.dataType = ImGuiDataType_Float, .data = &bestIdx, .min = &kTimeSliderMin, .max = &kTimeSliderMax, .format = formatTimeStop(kTimeStops[static_cast<std::size_t>(std::round(bestIdx))]).c_str(), .flags = ImGuiSliderFlags_NoInput}) != DigitizerUi::SliderAction::NotEdited) {
-                std::size_t idx        = static_cast<std::size_t>(std::clamp(std::round(bestIdx), kTimeSliderMin, kTimeSliderMax));
-                double      seconds    = kTimeStops[idx];
-                gr::Size_t  newSamples = static_cast<gr::Size_t>(std::ceil(seconds * static_cast<double>(sampleRate)));
-                self.n_history         = std::clamp(newSamples, kMinSamples, kMaxSamples);
-                scheduleResize();
-            }
-            detail::onScrollWheel([&](float wheel) {
-                bestIdx               = std::clamp(std::round(bestIdx) + ((wheel > 0.0f) ? 1.0f : -1.0f), kTimeSliderMin, kTimeSliderMax);
-                auto       idx        = static_cast<std::size_t>(bestIdx);
-                double     seconds    = kTimeStops[idx];
-                gr::Size_t newSamples = static_cast<gr::Size_t>(std::ceil(seconds * static_cast<double>(sampleRate)));
-                self.n_history        = std::clamp(newSamples, kMinSamples, kMaxSamples);
-                scheduleResize();
-            });
+        if (inSeconds() && rateKnown) {
+            drawStopSlider(kTimeStops, static_cast<double>(self.n_history.value) / static_cast<double>(sampleRate), formatTimeStop, [&](double seconds) { return std::clamp(static_cast<gr::Size_t>(std::ceil(seconds * static_cast<double>(sampleRate))), kMinSamples, kMaxSamples); });
         } else {
-            // samples mode: 1-2-5 decade stop sequence
-            float  bestIdx  = 0.0f;
-            double bestDist = std::abs(std::log(static_cast<double>(nSamples)) - std::log(static_cast<double>(kSampleStops[0])));
-            for (std::size_t i = 1; i < kSampleStops.size(); ++i) {
-                double dist = std::abs(std::log(static_cast<double>(nSamples)) - std::log(static_cast<double>(kSampleStops[i])));
-                if (dist < bestDist) {
-                    bestDist = dist;
-                    bestIdx  = static_cast<float>(i);
-                }
-            }
-
-            auto formatSampleStop = [](gr::Size_t samples) -> std::string {
-                if (samples >= 1'000'000U) {
-                    return std::format("{:.0f}M", static_cast<double>(samples) / 1e6);
-                }
-                if (samples >= 1'000U) {
-                    return std::format("{:.0f}k", static_cast<double>(samples) / 1e3);
-                }
-                return std::format("{}", samples);
-            };
-
-            if (DigitizerUi::SliderScalar("##historySlider", {.dataType = ImGuiDataType_Float, .data = &bestIdx, .min = &kSampleSliderMin, .max = &kSampleSliderMax, .format = formatSampleStop(kSampleStops[static_cast<std::size_t>(std::round(bestIdx))]).c_str(), .flags = ImGuiSliderFlags_NoInput}) != DigitizerUi::SliderAction::NotEdited) {
-                auto idx       = static_cast<std::size_t>(std::clamp(std::round(bestIdx), kSampleSliderMin, kSampleSliderMax));
-                self.n_history = std::clamp(kSampleStops[idx], kMinSamples, kMaxSamples);
-                scheduleResize();
-            }
-            detail::onScrollWheel([&](float wheel) {
-                bestIdx        = std::clamp(std::round(bestIdx) + ((wheel > 0.0f) ? 1.0f : -1.0f), kSampleSliderMin, kSampleSliderMax);
-                auto idx       = static_cast<std::size_t>(bestIdx);
-                self.n_history = std::clamp(kSampleStops[idx], kMinSamples, kMaxSamples);
-                scheduleResize();
-            });
+            drawStopSlider(kSampleStops, static_cast<double>(self.n_history.value), formatSampleStop, [&](gr::Size_t samples) { return std::clamp(samples, kMinSamples, kMaxSamples); });
         }
 
         // --- Row 3: Status line ---
-        nSamples = self.n_history.value;
+        const gr::Size_t nSamples = self.n_history.value;
         if (self._historyDisplayUnit == HistoryUnit::seconds) {
             if (rateKnown) {
                 ImGui::TextDisabled("= %zu samples @ %.0f Hz", static_cast<std::size_t>(nSamples), static_cast<double>(sampleRate));
@@ -2325,6 +2224,11 @@ struct Chart {
         // periodic refresh to keep capacity requests alive (before 60s expiry)
         if ((now - self._lastCapacityRefreshTime) >= kCapacityRefreshIntervalSeconds) {
             self.updateAllSinksCapacity();
+        }
+        for (auto& sink : self._signalSinks) {
+            if (sink) {
+                sink->expireCapacityRequests();
+            }
         }
     }
 
@@ -2450,7 +2354,7 @@ struct Chart {
                     continue;
                 }
                 gr::property_map axisMap = axisMapView->owned();
-                axisMap.insert_or_assign(key, std::pmr::string(magic_enum::enum_name(value)));
+                axisMap.insert_or_assign(key, std::pmr::string(gr::meta::enumName(value).value_or("")));
                 axisPmt = gr::pmt::Value(std::move(axisMap));
                 found   = true;
                 break;
@@ -2465,7 +2369,7 @@ struct Chart {
 
             gr::property_map newAxis;
             newAxis.insert_or_assign("axis", targetAxis);
-            newAxis.insert_or_assign(key, std::pmr::string(magic_enum::enum_name(value)));
+            newAxis.insert_or_assign(key, std::pmr::string(gr::meta::enumName(value).value_or("")));
             axesVec.push_back(std::move(newAxis));
         }
         constraints.insert_or_assign("axes", std::move(axesVec));
@@ -2616,12 +2520,12 @@ struct Chart {
         } else if constexpr (std::is_integral_v<ValueType> && !std::is_same_v<ValueType, bool>) {
             bool isColourPicker = false;
             if constexpr (std::is_same_v<ValueType, std::uint32_t>) {
-                if (FieldType::description().find("colo") != std::string_view::npos) {
+                if (DigitizerUi::isColorUnit(FieldType::unit())) {
                     isColourPicker = true;
                     ImVec4 col     = sinkColor(field.value);
                     float  rgb[3]{col.x, col.y, col.z};
                     if (ImGui::ColorEdit3(label.c_str(), rgb, ImGuiColorEditFlags_NoInputs)) {
-                        field = (static_cast<std::uint32_t>(rgb[0] * 255.0f) << 16) | (static_cast<std::uint32_t>(rgb[1] * 255.0f) << 8) | static_cast<std::uint32_t>(rgb[2] * 255.0f);
+                        field = float3ToRGB(rgb);
                     }
                 }
             }
@@ -2697,10 +2601,10 @@ struct Chart {
         } else if constexpr (std::is_enum_v<ValueType>) {
             ImGui::SetNextItemWidth(kWidgetWidth);
             auto current = field.value;
-            if (DigitizerUi::BeginCombo(label.c_str(), magic_enum::enum_name(current).data())) {
-                for (auto e : magic_enum::enum_values<ValueType>()) {
+            if (DigitizerUi::BeginCombo(label.c_str(), gr::meta::enumName(current).value_or("").data())) {
+                for (auto e : gr::meta::enumValues<ValueType>()) {
                     bool selected = (e == current);
-                    if (DigitizerUi::Selectable(magic_enum::enum_name(e).data(), selected)) {
+                    if (DigitizerUi::Selectable(gr::meta::enumName(e).value_or("").data(), selected)) {
                         field = e;
                     }
                     if (selected) {
@@ -2746,12 +2650,6 @@ struct Chart {
     void drawSettingsSubmenu(this Self& self) {
         if (menu_icons::beginMenuWithIcon(menu_icons::kSettings, "Settings")) {
             self.drawAutoGeneratedSettings(/*visibleOnly=*/false);
-            if constexpr (requires { self.customMenuCallback; }) {
-                if (self.customMenuCallback) {
-                    ImGui::Separator();
-                    self.customMenuCallback();
-                }
-            }
             ImGui::EndMenu();
         }
     }

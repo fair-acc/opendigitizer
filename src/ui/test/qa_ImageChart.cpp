@@ -21,7 +21,6 @@
 #include <DashboardPage.hpp>
 #include <ToolbarView.hpp>
 
-#include "TestingBlockInspectionUtils.hpp"
 #include "blocks/ImControlCamera.hpp"
 #include "blocks/TestSpectrumGenerator.hpp"
 #include "charts/ImageChart.hpp"
@@ -46,24 +45,19 @@ struct TestState : public opendigitizer::test::TestDashboardRunner {
     DigitizerUi::ToolbarView                    toolbar;
 };
 
-TestState g_state;
+TestState* gState = nullptr;
 
 namespace {
 [[nodiscard]] opendigitizer::charts::ImageChart* chartNamed(std::string_view name);
 
 [[nodiscard]] std::vector<opendigitizer::charts::ImageChart*> imageCharts() {
     std::vector<opendigitizer::charts::ImageChart*> charts;
-    for (auto& window : g_state.dashboard->uiWindows) {
+    for (auto& window : gState->dashboard->uiWindows) {
         if (window.block && window.block->typeName().find("ImageChart") != std::string_view::npos) {
             charts.push_back(static_cast<opendigitizer::charts::ImageChart*>(window.block->raw()));
         }
     }
     return charts;
-}
-
-[[nodiscard]] const opendigitizer::charts::TensorRowsChart* rowsChart() {
-    const auto window = std::ranges::find_if(g_state.dashboard->uiWindows, [](const auto& w) { return w.block && w.block->typeName().find("TensorRowsChart") != std::string_view::npos; });
-    return window == g_state.dashboard->uiWindows.end() ? nullptr : static_cast<const opendigitizer::charts::TensorRowsChart*>(window->block->raw());
 }
 
 opendigitizer::charts::ImageChart* chartNamed(std::string_view name) {
@@ -78,27 +72,26 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
 
     void registerTests() override {
         ImGuiTest* t = IM_REGISTER_TEST(engine(), "image_chart", "ImageChart::draw");
-        t->SetVarsDataType<opendigitizer::test::TestDashboardRunner>();
 
         t->GuiFunc = [](ImGuiTestContext*) {
             IMW::Window window("Test Window", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoSavedSettings);
             ImGui::SetWindowPos({0, 0});
             ImGui::SetWindowSize(ImVec2(800, 400));
-            if (g_state.dashboard) {
-                if (!g_state.dashboardPage) {
-                    g_state.dashboardPage = std::make_shared<DigitizerUi::DashboardPage>();
-                    g_state.dashboardPage->setDashboard(*g_state.dashboard);
+            if (gState->dashboard) {
+                if (!gState->dashboardPage) {
+                    gState->dashboardPage = std::make_shared<DigitizerUi::DashboardPage>();
+                    gState->dashboardPage->setDashboard(*gState->dashboard);
                 }
-                if (g_state.dashboard->isInitialised) {
-                    g_state.toolbar.draw(g_state.dashboard->session, false);
+                if (gState->dashboard->isInitialised) {
+                    gState->toolbar.draw(gState->dashboard->session, false);
                 }
-                g_state.dashboardPage->draw();
+                gState->dashboardPage->draw();
             }
         };
 
         t->TestFunc = [](ImGuiTestContext* ctx) {
-            g_state.reload(cmrc::ui_test_assets::get_filesystem(), "examples/qa_image_chart.grc");
-            g_state.waitForScheduler(ctx);
+            gState->reload(cmrc::ui_test_assets::get_filesystem(), "examples/qa_image_chart.grc");
+            gState->waitForScheduler(ctx);
 
             "Tensor frames reach the image charts through the GR4 stream"_test = [ctx] {
                 ctx->SetRef("Test Window");
@@ -107,7 +100,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                     const auto sink = SinkRegistry::instance().findSink([sinkName](const auto& s) { return s.name() == sinkName; });
                     expect(sink != nullptr) << sinkName;
                     if (sink) {
-                        expect(g_state.waitUntil(ctx, std::format("{} holds a frame", sinkName), [&sink] {
+                        expect(gState->waitUntil(ctx, std::format("{} holds a frame", sinkName), [&sink] {
                             auto guard = sink->dataGuard();
                             return sink->imageFrame().generation > 0U;
                         }));
@@ -117,7 +110,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                         expect(sink->signalKind() == opendigitizer::SignalKind::Image2D) << sinkName;
                     }
                 }
-                expect(g_state.waitUntil(ctx, "all camera charts show a frame", [] {
+                expect(gState->waitUntil(ctx, "all camera charts show a frame", [] {
                     return std::ranges::all_of(std::array{"Camera RGB", "Camera Luma", "Camera Luma CPU", "Tiles", "Overlay", "Overlay CPU"}, [](const char* name) {
                         const auto* chart = chartNamed(name);
                         return chart != nullptr && std::ranges::all_of(chart->layers(), [](const auto& layer) { return layer.shown > 0U && layer.rows == 48UZ; }) && !chart->layers().empty();
@@ -136,7 +129,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 const auto* chart   = chartNamed("Camera RGB");
                 expect(chart != nullptr) << fatal;
                 std::vector<std::uint64_t> barcodes;
-                expect(g_state.waitUntil(ctx, "four successive frames read from the screen", [&] {
+                expect(gState->waitUntil(ctx, "four successive frames read from the screen", [&] {
                     const CapturedPixels screen = capturePixels(*ctx, ImRect({0.f, 0.f}, ImGui::GetIO().DisplaySize));
                     const auto           value  = test_card::readBarcode({64UZ, 48UZ}, [&](std::size_t x, std::size_t y) {
                         const ImVec2 at = chart->screenPosition(static_cast<double>(x) + 0.5, static_cast<double>(y) + 0.5);
@@ -186,14 +179,14 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             };
 
             "TensorRowsChart draws each row of the luma frame as a trace"_test = [ctx] {
-                expect(g_state.waitUntil(ctx, "48 traces drawn", [] {
-                    const auto* chart = rowsChart();
+                expect(gState->waitUntil(ctx, "48 traces drawn", [] {
+                    const auto* chart = gState->chart<const opendigitizer::charts::TensorRowsChart>("TensorRowsChart");
                     return chart != nullptr && chart->drawnTraces() == 48UZ;
                 }));
             };
 
             "a backlog shows every frame in order"_test = [ctx] {
-                expect(g_state.waitUntil(ctx, "all 30 frames displayed", [] {
+                expect(gState->waitUntil(ctx, "all 30 frames displayed", [] {
                     const auto* chart = chartNamed("Backlog");
                     return chart != nullptr && !chart->layers().empty() && chart->layers().front().displayed == 30U;
                 }));
@@ -202,9 +195,9 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             };
 
             "the camera control receives the camera's devices and status"_test = [ctx] {
-                auto&                            model = g_state.dashboard->session.graphModel;
+                auto&                            model = gState->dashboard->session.graphModel;
                 DigitizerUi::DrawableBlockConfig config;
-                expect(g_state.waitUntil(ctx, "camera settings reach the control", [&] {
+                expect(gState->waitUntil(ctx, "camera settings reach the control", [&] {
                     const DigitizerUi::UiGraphBlock* control = model.recursiveFindBlockByName("cameraControl").block;
                     if (control == nullptr) {
                         return false;
@@ -219,18 +212,18 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             };
 
             "picking a device and a priority in the toolbar control sets them on the camera"_test = [ctx] {
-                auto&                            session = g_state.dashboard->session;
+                auto&                            session = gState->dashboard->session;
                 const DigitizerUi::UiGraphBlock* control = session.graphModel.recursiveFindBlockByName("cameraControl").block;
                 expect(control != nullptr) << fatal;
-                const auto cameraSetting = [&session](const char* key) { return opendigitizer::test::setting(session, "camera", key).value_or(std::string{}); };
+                const auto cameraSetting = [](const char* key) { return gState->setting("camera", key).value_or(std::string{}); };
                 ctx->ItemClick(opendigitizer::test::controlItemId(ctx, "//Test Window/##Toolbar", control->blockUniqueName, "##device"));
                 ctx->ItemClick("//$FOCUSED/Test card [test_card]");
-                expect(g_state.waitUntil(ctx, "the picked device reaches the camera", [&] { return cameraSetting("device") == "@id:test_card"; }));
+                expect(gState->waitUntil(ctx, "the picked device reaches the camera", [&] { return cameraSetting("device") == "@id:test_card"; }));
                 ctx->ItemClick(opendigitizer::test::controlItemId(ctx, "//Test Window/##Toolbar", control->blockUniqueName, "...##cameraSettings"));
                 for (const char* priority : {"rate", "requested"}) {
                     ctx->ItemClick("//$FOCUSED/priority");
                     ctx->ItemClick(std::format("//$FOCUSED/{}", priority).c_str());
-                    expect(g_state.waitUntil(ctx, std::format("priority '{}' reaches the camera", priority), [&] { return cameraSetting("priority") == priority; }));
+                    expect(gState->waitUntil(ctx, std::format("priority '{}' reaches the camera", priority), [&] { return cameraSetting("priority") == priority; }));
                 }
                 ctx->PopupCloseAll();
             };
@@ -296,13 +289,13 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
 #endif
 
             "a device setting switches the running camera, its status follows"_test = [ctx] {
-                auto&                      session = g_state.dashboard->session;
+                auto&                      session = gState->dashboard->session;
                 DigitizerUi::UiGraphBlock* camera  = session.graphModel.recursiveFindBlockByName("camera").block;
                 expect(camera != nullptr) << fatal;
                 camera->setSetting("device", gr::pmt::Value(std::string("no such camera")));
-                expect(g_state.waitUntil(ctx, "the camera falls back to the test card", [&] { return !opendigitizer::test::setting(session, "camera", "fallback_reason").value_or(std::string{}).empty(); }));
+                expect(gState->waitUntil(ctx, "the camera falls back to the test card", [&] { return !gState->setting("camera", "fallback_reason").value_or(std::string{}).empty(); }));
                 camera->setSetting("device", gr::pmt::Value(std::string("@id:test_card")));
-                expect(g_state.waitUntil(ctx, "the requested test card replaces the fallback", [&] { return opendigitizer::test::setting(session, "camera", "fallback_reason").value_or(std::string{"?"}).empty(); }));
+                expect(gState->waitUntil(ctx, "the requested test card replaces the fallback", [&] { return gState->setting("camera", "fallback_reason").value_or(std::string{"?"}).empty(); }));
             };
         };
     }
@@ -323,16 +316,13 @@ int main(int argc, char* argv[]) {
     gr::blocklib::initGrLocalisationBlocks(registry);
     std::ignore = gr::registerBlock<opendigitizer::video::BrowserMicrophonePairs>(registry); // the browser variant's, built not started
 #endif
-    gr::PluginLoader pluginLoader(registry, gr::globalSchedulerRegistry(), {});
 
     options.speedMode = ImGuiTestRunSpeed_Normal;
     TestApp app(options);
     app.initImGui();
-
-    auto loader = DigitizerUi::test::ImGuiTestApp::createPluginLoader();
+    TestState state;
+    gState = std::addressof(state);
 
     auto result = app.runTests();
-    g_state.dashboardPage.reset();
-    g_state.dashboard.reset(); // ensure scheduler cleanup before global teardown
     return result ? 0 : 1;
 }

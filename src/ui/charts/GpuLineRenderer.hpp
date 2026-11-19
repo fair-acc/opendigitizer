@@ -11,7 +11,6 @@
 #include <cstdint>
 #include <cstring>
 #include <limits>
-#include <print>
 #include <string_view>
 #include <utility>
 #include <vector>
@@ -76,12 +75,12 @@ struct GpuLineProgram {
         if (!_compileAttempted) {
             _compileAttempted = true;
             if (!allowSoftwareRasteriser && softwareRasteriser()) {
-                std::println(stderr, "[XYChart] software rasteriser, streaming traces are drawn on the CPU");
+                gr::log::info("[XYChart] software rasteriser, streaming traces are drawn on the CPU");
                 return false;
             }
             compile();
             if (handles.program == 0) {
-                std::println(stderr, "[XYChart] GPU line shaders unavailable, streaming traces are drawn on the CPU");
+                gr::log::info("[XYChart] GPU line shaders unavailable, streaming traces are drawn on the CPU");
             }
         }
         return handles.program != 0;
@@ -292,13 +291,9 @@ struct GpuLineRenderer {
         }
         upload(sink, sinkBegin, total);
 
-        _windowBegin   = begin;
-        _windowExtents = {};
-        switch (xAxisScale) {
-        case AxisScale::Time: _shift = 0.0; break;
-        case AxisScale::LinearReverse: _shift = newest; break;
-        default: _shift = xAt(begin); break;
-        }
+        _windowBegin                      = begin;
+        _windowExtents                    = {};
+        _shift                            = xOffset(xAxisScale, xAt(begin), newest);
         const std::size_t firstWholeBlock = std::min(begin + (kBlockSize - begin % kBlockSize) % kBlockSize, total);
         for (std::size_t sample = begin; sample < firstWholeBlock; ++sample) {
             _windowExtents.add(xAt(sample), yAt(sample));
@@ -347,7 +342,7 @@ struct GpuLineRenderer {
         glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>((capacity + 1UZ) * sizeof(Vertex)), nullptr, GL_DYNAMIC_DRAW);
         outOfMemory = glGetError() == GL_OUT_OF_MEMORY;
         if (outOfMemory) {
-            std::println(stderr, "[XYChart] no GPU memory for {} samples, the trace is drawn on the CPU", capacity);
+            gr::log::warning("[XYChart] no GPU memory for {} samples, the trace is drawn on the CPU", capacity);
         }
         _capacity    = capacity;
         _uploadedEnd = 0UZ;

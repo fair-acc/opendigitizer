@@ -142,8 +142,6 @@ Arrival events are associated as DelayLocator does; each event sink is a layer o
     LastDraw                                          _lastDraw;
     std::optional<std::array<double, 4>>              _fittedRoi; // the roi the axes were last fitted to; then the user's pan and zoom
 
-    [[nodiscard]] static constexpr std::string_view                    chartTypeName() noexcept { return kChartTypeName; }
-    [[nodiscard]] std::string_view                                     uniqueId() const noexcept { return this->unique_name; }
     [[nodiscard]] std::span<const DrawCounts>                          drawnLayers() const noexcept { return _lastDraw.layers; }
     [[nodiscard]] std::span<const std::optional<localisation::Point2>> drawnPositions() const noexcept { return _lastDraw.positions; }
     [[nodiscard]] std::size_t                                          tracedEvents() const noexcept { return _tracedEvents; }
@@ -367,7 +365,5 @@ Arrival events are associated as DelayLocator does; each event sink is a layer o
 };
 
 } // namespace opendigitizer::charts
-
-inline auto registerLocalisationChartCompatibilities = opendigitizer::charts::registerChartSignalCompatibility<opendigitizer::charts::LocalisationChart>();
 
 #endif // OPENDIGITIZER_CHARTS_LOCALISATIONCHART_HPP

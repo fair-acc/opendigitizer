@@ -16,8 +16,6 @@
 
 namespace opendigitizer {
 
-GR_REGISTER_BLOCK("opendigitizer::TestSpectrumGenerator", opendigitizer::TestSpectrumGenerator, [ float, double ]);
-
 template<typename T>
 requires std::floating_point<T>
 struct TestSpectrumGenerator : gr::Block<TestSpectrumGenerator<T>, gr::Resampling<1LU, 1LU>> {
@@ -253,7 +251,5 @@ struct TestSpectrumGenerator : gr::Block<TestSpectrumGenerator<T>, gr::Resamplin
 };
 
 } // namespace opendigitizer
-
-inline auto registerTestSpectrumGenerator = gr::registerBlock<opendigitizer::TestSpectrumGenerator, float, double>(gr::globalBlockRegistry());
 
 #endif // OPENDIGITIZER_TESTSPECTRUMGENERATOR_HPP

@@ -59,12 +59,6 @@ void push(std::size_t to) {
     }
 }
 
-void yieldUntil(ImGuiTestContext* ctx, auto condition) {
-    while (!condition()) {
-        ctx->Yield();
-    }
-}
-
 using Rows = std::vector<std::optional<std::pair<int, int>>>;
 
 Rows lineRows(const DigitizerUi::test::ImGuiTestApp::CapturedPixels& image, int left) {
@@ -132,7 +126,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 const XYChart& gpu = *gState->gpu;
                 for (const std::size_t total : {300UZ, 700UZ, 1100UZ}) {
                     push(total);
-                    yieldUntil(ctx, [&] { return (gpu._gpuLineProgram._compileAttempted && gpu._gpuLineProgram.handles.program == 0) || (!gpu._gpuLines.empty() && gpu._gpuLines.begin()->second._uploadedEnd == total); });
+                    opendigitizer::test::waitUntil(ctx, "the GPU lines are uploaded or the line shader is unavailable", [&] { return (gpu._gpuLineProgram._compileAttempted && gpu._gpuLineProgram.handles.program == 0) || (!gpu._gpuLines.empty() && gpu._gpuLines.begin()->second._uploadedEnd == total); });
                     expect(!gpu._gpuLines.empty()) << "the GPU path draws" << fatal;
                     expectMatch(ctx, total);
                 }

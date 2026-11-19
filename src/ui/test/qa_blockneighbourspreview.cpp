@@ -10,10 +10,9 @@
 
 using namespace boost;
 
-DigitizerUi::components::BlockControlsPanelContext g_context;
+DigitizerUi::components::BlockControlsPanelContext gContext;
 
 struct TestApp : public DigitizerUi::test::ImGuiTestApp {
-private:
     using DigitizerUi::test::ImGuiTestApp::ImGuiTestApp;
 
     void registerTests() override {
@@ -26,7 +25,7 @@ private:
             ImGui::Begin("Test Window", NULL, ImGuiWindowFlags_NoSavedSettings);
             ImGui::SetWindowSize(ImVec2(500, 400));
 
-            DigitizerUi::components::BlockNeighboursPreview(g_context, ImGui::GetContentRegionAvail());
+            DigitizerUi::components::BlockNeighboursPreview(gContext, ImGui::GetContentRegionAvail());
 
             ImGui::End();
         };
@@ -49,7 +48,6 @@ int main(int argc, char* argv[]) {
     // So styling can be accessed:
     ax::NodeEditor::Config config;
     config.SettingsFile = nullptr;
-    ax::NodeEditor::CreateEditor(&config);
     ax::NodeEditor::SetCurrentEditor(ax::NodeEditor::CreateEditor(&config));
 
     auto block       = std::make_unique<DigitizerUi::UiGraphBlock>(&graphModel, nullptr);
@@ -67,8 +65,8 @@ int main(int argc, char* argv[]) {
     blocks.push_back(std::move(sourceBlock));
     blocks.push_back(std::move(destBlock));
 
-    g_context.graphModel            = &graphModel;
-    g_context.showNeighboursPreview = true;
+    gContext.graphModel            = &graphModel;
+    gContext.showNeighboursPreview = true;
 
     // Get pointers to blocks from the vector since we moved our local pointers
     auto* mainBlock = graphModel.rootBlock.childBlocks[0].get();
@@ -103,7 +101,7 @@ int main(int argc, char* argv[]) {
     outEdge.edgeDestinationPort = &dstBlock->_inputPorts.back();
     graphModel.rootBlock.childEdges.push_back(outEdge);
 
-    g_context.setSelectedBlock(mainBlock, &graphModel);
+    gContext.setSelectedBlock(mainBlock, &graphModel);
 
     TestApp app(options);
     return app.runTests() ? 0 : 1;

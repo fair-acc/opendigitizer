@@ -3,15 +3,18 @@
 
 #include <gnuradio-4.0/Tag.hpp>
 
-#include <magic_enum.hpp>
+#include <gnuradio-4.0/meta/reflection.hpp>
 
 #include <algorithm>
+#include <limits>
 #include <optional>
 #include <ranges>
 #include <string>
 #include <vector>
 
 namespace DigitizerUi {
+
+inline constexpr double kImGuiSliderDoubleLimit = std::numeric_limits<double>::max() / 2.; // imgui_widgets.cpp asserts beyond it
 
 /// Constraints on the values a block property accepts
 struct BlockPropertyHints {
@@ -182,7 +185,7 @@ struct DrawableBlockConfig {
             result.showLabel = *showLabel;
         }
         if (auto drawingContext = configMap.get_if<std::string_view>("drawing_context"sv)) {
-            result.drawingContext = magic_enum::enum_cast<DrawingContext>(*drawingContext);
+            result.drawingContext = gr::meta::parseEnum<DrawingContext>(*drawingContext);
         }
         return result;
     }
@@ -208,7 +211,7 @@ struct DrawableBlockConfig {
             map->emplace("show_label"sv, *showLabel);
         }
         if (drawingContext.has_value()) {
-            map->emplace("drawing_context"sv, std::string(magic_enum::enum_name(*drawingContext)));
+            map->emplace("drawing_context"sv, std::string(gr::meta::enumName(*drawingContext).value_or("")));
         }
         return map;
     }

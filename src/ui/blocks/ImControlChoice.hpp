@@ -60,8 +60,8 @@ A choice's `choice_values` entry is sent instead: to target_map, or without targ
         } else if (!value.empty() && !std::exchange(_appliedAtStart, true)) {
             apply(value);
         }
-        drawWithLabelAndTooltip(layout, [&](float width) {
-            const std::string id = "##" + label;
+        drawWithLabel(layout, [&](float width) {
+            const std::string id = widgetId();
             // we have to disable the dropdown while inside the flowgraph editor because imgui node editor can't handle combo boxes being drawn in nodes.
             // to fix this we would need to set up a two-pass draw, one in node editor space and one normally. See <https://github.com/thedmd/imgui-node-editor/issues/48>
             const bool    insideNodeEditor = parsedConfig.drawingContext == DrawableBlockConfig::DrawingContext::FlowgraphView;
@@ -70,8 +70,8 @@ A choice's `choice_values` entry is sent instead: to target_map, or without targ
             if (auto combo = DigitizerUi::ComboBox(id.c_str(), value.c_str(), 0)) {
                 for (const std::string& choice : offered) {
                     if (DigitizerUi::Selectable(choice.c_str(), choice == value)) {
-                        value       = choice;
-                        std::ignore = settings().setStaged({{"value", value}});
+                        value = choice;
+                        stageValue(value);
                         apply(value);
                     }
                 }

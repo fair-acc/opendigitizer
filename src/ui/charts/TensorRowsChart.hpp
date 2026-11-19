@@ -4,11 +4,9 @@
 #include "Chart.hpp"
 #include "SignalSink.hpp"
 
-#include <algorithm>
 #include <cstddef>
 #include <format>
 #include <limits>
-#include <ranges>
 #include <span>
 #include <string>
 #include <variant>
@@ -21,12 +19,7 @@
 
 namespace opendigitizer::charts {
 
-[[nodiscard]] inline std::string axisTitle(const ImageAxis& axis, std::string_view fallback) {
-    if (axis.name.empty()) {
-        return std::string(fallback);
-    }
-    return axis.unit.empty() ? axis.name : std::format("{} [{}]", axis.name, axis.unit);
-}
+[[nodiscard]] inline std::string axisTitle(const ImageAxis& axis, std::string_view fallback) { return axis.name.empty() ? std::string(fallback) : labelWithUnit(axis.name, axis.unit); }
 
 [[nodiscard]] inline std::string rowLabel(const ImageAxis& axis, std::size_t row) { return std::format("{} {:g}", axis.name.empty() ? std::string_view("row") : std::string_view(axis.name), axisCoordinate(axis, row)); }
 
@@ -57,9 +50,7 @@ The x axis and the trace names are the frame's gr:axis_* coordinates, else the x
 
     std::size_t _drawnTraces = 0UZ;
 
-    [[nodiscard]] static constexpr std::string_view chartTypeName() noexcept { return kChartTypeName; }
-    [[nodiscard]] std::string_view                  uniqueId() const noexcept { return this->unique_name; }
-    [[nodiscard]] std::size_t                       drawnTraces() const noexcept { return _drawnTraces; }
+    [[nodiscard]] std::size_t drawnTraces() const noexcept { return _drawnTraces; }
 
     void reset() { requestRenderReset(); }
 
@@ -81,15 +72,8 @@ The x axis and the trace names are the frame's gr:axis_* coordinates, else the x
         if (!DigitizerUi::TouchHandler<>::BeginZoomablePlot(chart_name.value, plotSize, plotFlags)) {
             return gr::work::Status::OK;
         }
-        std::vector<const SignalSink*> distinct = _signalSinks | std::views::transform([](const auto& sink) { return static_cast<const SignalSink*>(sink.get()); }) | std::ranges::to<std::vector>();
-        std::ranges::sort(distinct); // each sink's mutex once, in one order
-        distinct.erase(std::ranges::unique(distinct).begin(), distinct.end());
-        std::vector<DataGuard> guards; // the frames' pixels are the sinks' storage
-        guards.reserve(distinct.size());
-        for (const SignalSink* sink : distinct) {
-            guards.push_back(sink->dataGuard());
-        }
-        std::vector<ImageFrame> frames;
+        const std::vector<DataGuard> guards = lockAll(_signalSinks); // the frames' pixels are the sinks' storage
+        std::vector<ImageFrame>      frames;
         frames.reserve(_signalSinks.size());
         for (const auto& sink : _signalSinks) {
             frames.push_back(sink->imageFrame());
@@ -141,7 +125,5 @@ The x axis and the trace names are the frame's gr:axis_* coordinates, else the x
 };
 
 } // namespace opendigitizer::charts
-
-inline auto registerTensorRowsChartCompatibilities = opendigitizer::charts::registerChartSignalCompatibility<opendigitizer::charts::TensorRowsChart>();
 
 #endif // OPENDIGITIZER_CHARTS_TENSORROWSCHART_HPP

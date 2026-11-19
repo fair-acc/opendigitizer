@@ -134,6 +134,8 @@ public:
         _remoteSignalSelector.reset();
         _dashboard = std::addressof(dashboard);
     }
+
+    [[nodiscard]] bool isEditPaneShown() const noexcept { return _splitter.anim_state == components::SplitterState::State::Shown; }
 };
 
 } // namespace DigitizerUi

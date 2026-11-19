@@ -24,10 +24,6 @@ namespace DigitizerUi {
 
 bool                Checkbox(const char* label, bool* value);
 [[nodiscard]] float toggleSwitchWidth(); // without the label
-bool                RadioButton(const char* label, bool active);
-bool                RadioButton(const char* label, int* v, int vButton);
-
-bool ArrowButton(const char* strId, ImGuiDir dir);
 
 /// A way of converting to and from the variants of enum ImGuiDataType_ and actual types at compile time
 using ImGuiNumberTypes = std::tuple<std::int8_t, std::uint8_t, std::int16_t, std::uint16_t, std::int32_t, std::uint32_t, std::int64_t, std::uint64_t, float, double>;

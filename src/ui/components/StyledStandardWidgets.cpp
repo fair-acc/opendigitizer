@@ -8,7 +8,6 @@
 #include <imgui_toggle_palette.h>
 
 #include <cstdint>
-#include <print>
 #include <tuple>
 #include <type_traits>
 #include <utility>
@@ -43,44 +42,6 @@ auto colorDependingOnInteraction(bool hovered, bool held, T idle, T hover, T pre
 }
 
 ImVec4 spectrumSelectedColor(bool hovered, bool held) { return colorDependingOnInteraction(hovered, held, ImGui::GetStyleColorVec4(ImGuiCol_Button), ImGui::GetStyleColorVec4(ImGuiCol_ButtonHovered), ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive)); }
-
-bool spectrumRadioButton(const char* label, bool active) {
-#ifndef NDEBUG
-    // To avoid duplicating stuff from ImGui, this is not provided because we don't use it (yet).
-    // But maybe in the future having this is worth it for visual consistency.
-    // But radio buttons are kind of a UX anti-pattern anyways... try a combobox?
-    std::println("spectrum-themed radio button not implemented");
-#endif
-    return ImGui::RadioButton(label, active);
-}
-
-bool spectrumArrowButton(const char* strId, ImGuiDir dir) {
-    ImGuiWindow* window = ImGui::GetCurrentWindow();
-    if (window->SkipItems) {
-        return false;
-    }
-
-    ImGuiContext& g    = *GImGui;
-    const float   size = ImGui::GetFrameHeight();
-    const ImGuiID id   = window->GetID(strId);
-    const ImRect  bb(window->DC.CursorPos, window->DC.CursorPos + ImVec2(size, size));
-    ImGui::ItemSize(bb, g.Style.FramePadding.y);
-    if (!ImGui::ItemAdd(bb, id)) {
-        return false;
-    }
-
-    bool        hovered         = false;
-    bool        held            = false;
-    const bool  pressed         = ImGui::ButtonBehavior(bb, id, &hovered, &held, ImGuiButtonFlags_None);
-    const ImU32 backgroundColor = ImGui::GetColorU32((held && hovered) ? ImGuiCol_ButtonActive : hovered ? ImGuiCol_ButtonHovered : ImGuiCol_Button);
-    ImGui::RenderNavCursor(bb, id);
-    ImGui::RenderFrame(bb.Min, bb.Max, backgroundColor, true, g.Style.FrameRounding);
-    const float arrowInset = ImMax(0.f, (size - g.FontSize) * 0.5f);
-    ImGui::RenderArrow(window->DrawList, bb.Min + ImVec2(arrowInset, arrowInset), ImGui::GetColorU32(ButtonContentsColor()), dir, 1.f);
-
-    IMGUI_TEST_ENGINE_ITEM_INFO(id, strId, g.LastItemData.StatusFlags);
-    return pressed;
-}
 
 bool spectrumTreeNodeEx(const char* label, ImGuiTreeNodeFlags flags) {
     const bool      isFramed    = (flags & ImGuiTreeNodeFlags_Framed) != 0;
@@ -288,30 +249,6 @@ bool Checkbox(const char* label, bool* value) {
 }
 
 float toggleSwitchWidth() { return ImGui::GetFrameHeight() * LookAndFeel::instance().toggleWidthFrameHeightRatio; }
-
-bool RadioButton(const char* label, bool active) {
-    switch (LookAndFeel::instance().theme) {
-    case LookAndFeel::Theme::Classic: return ImGui::RadioButton(label, active);
-    case LookAndFeel::Theme::Advanced: return spectrumRadioButton(label, active);
-    }
-    std::unreachable();
-}
-
-bool RadioButton(const char* label, int* v, int vButton) {
-    const bool pressed = RadioButton(label, *v == vButton);
-    if (pressed) {
-        *v = vButton;
-    }
-    return pressed;
-}
-
-bool ArrowButton(const char* strId, ImGuiDir dir) {
-    switch (LookAndFeel::instance().theme) {
-    case LookAndFeel::Theme::Classic: return ImGui::ArrowButton(strId, dir);
-    case LookAndFeel::Theme::Advanced: return spectrumArrowButton(strId, dir);
-    }
-    std::unreachable();
-}
 
 float comboWidthForText(float textWidth) {
     const ImGuiStyle& style = ImGui::GetStyle();

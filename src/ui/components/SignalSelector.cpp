@@ -7,9 +7,87 @@
 #include "FAIR/DeviceNameHelper.hpp"
 #include "StyledStandardWidgets.hpp"
 
+#include <charconv>
+#include <cstdlib>
+#include <iostream>
+#include <optional>
+
 using namespace std::string_literals;
 
 namespace DigitizerUi {
+
+void QueryFilters::draw() {
+    std::optional<std::size_t> removed;
+    for (std::size_t index = 0UZ; index < elements.size(); ++index) {
+        QueryFilter& filter = elements[index];
+        ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x / 3);
+        if (auto combo = DigitizerUi::ComboBox(filter.keyId.c_str(), QueryFilter::fieldNames[filter.selectedIndex], 0)) {
+            for (std::size_t i = 0; i < QueryFilter::fieldNames.size(); i++) {
+                const bool isSelected = filter.selectedIndex == i;
+                if (DigitizerUi::Selectable(QueryFilter::fieldNames[i], isSelected)) {
+                    if (std::ranges::any_of(elements, [&i, &filter](const QueryFilter& other) { return other.keyId != filter.keyId && other.selectedIndex == i; })) {
+                        if (auto popup = IMW::ModalPopup("Wrong Entry", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+                            ImGui::Text("Key already selected. Please select a different one");
+                            if (DigitizerUi::TextButton("Ok")) {
+                                ImGui::CloseCurrentPopup();
+                            }
+                        }
+                    } else {
+                        filter.selectedIndex = i;
+                        changed();
+                    }
+                }
+                if (isSelected) {
+                    ImGui::SetItemDefaultFocus();
+                }
+            }
+        }
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x / 2);
+        if (ImGui::InputText(filter.valueId.c_str(), &filter.filterText)) {
+            changed();
+        }
+        ImGui::SameLine(ImGui::GetContentRegionAvail().x - ImGui::GetFontSize() - ImGui::GetStyle().FramePadding.x * 2);
+        if (DigitizerUi::Button(filter.deleteButtonId.c_str())) {
+            removed = index;
+        }
+    }
+    if (removed) {
+        elements.erase(elements.begin() + static_cast<std::ptrdiff_t>(*removed));
+        changed();
+    }
+}
+
+void SignalList::update() {
+    opencmw::service::dns::QueryEntry queryEntry;
+    refl::util::for_each(refl::reflect(queryEntry).members, [&](auto member) {
+        auto it = std::ranges::find_if(filters.elements, [&member](const QueryFilter& f) { return f.selectedField() == refl::descriptor::get_display_name(member); });
+        if (it != filters.elements.end() && !it->filterText.empty()) {
+            using TField         = std::remove_cvref_t<decltype(member(queryEntry))>;
+            const auto& strValue = it->filterText;
+            if constexpr (std::is_integral_v<TField>) {
+                TField val{};
+                std::from_chars(strValue.data(), strValue.data() + strValue.size(), val);
+                member(queryEntry) = val;
+            } else if constexpr (std::is_floating_point_v<TField>) {
+                member(queryEntry) = static_cast<TField>(std::strtod(strValue.c_str(), nullptr));
+            } else {
+                member(queryEntry) = strValue;
+            }
+        }
+    });
+    try {
+        std::unique_lock l{signalsMutex};
+        dnsClient.querySignalsAsync([this](const std::vector<opencmw::service::dns::Entry>& entries) {
+            signals = entries;
+            if (updateSignalsCallback) {
+                updateSignalsCallback(signals);
+            }
+        });
+    } catch (const std::exception& e) {
+        std::cerr << "Error loading signals: " << e.what() << std::endl;
+    }
+}
 
 SignalSelector::SignalSelector(UiGraphModel& graphModel) {
     m_graphModel = std::addressof(graphModel);
@@ -84,7 +162,7 @@ void SignalSelector::drawElement(const SignalData& entry, std::size_t idx, const
     ImGui::TextUnformatted(entry.comment.c_str());
 }
 
-void SignalSelector::startSearching(const std::string& _searchString, std::vector<FilterData*> _filters) {
+void SignalSelector::startSearching(const std::string& _searchString, std::vector<FilterTag*> _filters) {
     m_filteredItems.clear();
     m_searchString     = _searchString;
     m_nextItemToFilter = 0UZ;
@@ -95,7 +173,7 @@ void SignalSelector::startSearching(const std::string& _searchString, std::vecto
 
         std::ranges::sort(m_categorySearch->filters, [](const auto* left, const auto* right) { return *left < *right; });
         auto mainCategory      = m_categorySearch->filters.front()->category;
-        auto mainCategoryIndex = categoryIndices[+mainCategory];
+        auto mainCategoryIndex = categoryIndices[mainCategory];
 
         for (const auto& filter : m_categorySearch->filters) {
             if (filter->category != mainCategory) {
@@ -120,13 +198,13 @@ bool SignalSelector::signalMatchesActiveFilters(const SignalData& signal) const 
     std::ranges::fill(stateMatches, Unspecified);
 
     for (const auto filter : m_categorySearch->filters) {
-        if (stateMatches[+filter->category] == Unspecified) {
-            stateMatches[+filter->category] = NoMatches;
+        if (stateMatches[filter->category] == Unspecified) {
+            stateMatches[filter->category] = NoMatches;
         }
 
-        if (stateMatches[+filter->category] == NoMatches) {
+        if (stateMatches[filter->category] == NoMatches) {
             if (filter->title == categoryFieldForSignal(filter->category, signal)) {
-                stateMatches[+filter->category] = HasMatches;
+                stateMatches[filter->category] = HasMatches;
             }
         }
     }
@@ -135,20 +213,19 @@ bool SignalSelector::signalMatchesActiveFilters(const SignalData& signal) const 
 }
 
 std::vector<SignalData> SignalSelector::drawSignalSelector() {
-    m_querySignalFilters.drawFilters();
+    m_querySignalFilters.draw();
 
     bool filtersChanged = m_forceRefresh;
     m_forceRefresh      = false;
 
-    if (auto comboSelectedItem = m_filterCombos.draw()) {
-        auto* item      = *comboSelectedItem;
-        bool  wasActive = item->isActive;
-        item->isActive  = !wasActive;
+    if (FilterTag* item = m_filterCombos.draw()) {
+        bool wasActive = item->isActive;
+        item->isActive = !wasActive;
 
         if (wasActive) {
             m_selectedFilters.removeLabel(item);
         } else {
-            m_selectedFilters.addLabel({item->title, item, colorForCategory(item->category)});
+            m_selectedFilters.labels.push_back({item->title, item, colorForCategory(item->category)});
         }
         filtersChanged = true;
     }
@@ -160,13 +237,13 @@ std::vector<SignalData> SignalSelector::drawSignalSelector() {
         filtersChanged = true;
     }
 
-    if (auto removedLabel = m_selectedFilters.draw()) {
-        (*removedLabel)->isActive = false;
-        filtersChanged            = true;
+    if (FilterTag* removedLabel = m_selectedFilters.draw()) {
+        removedLabel->isActive = false;
+        filtersChanged         = true;
     }
 
     if (filtersChanged) {
-        auto filters = m_selectedFilters.labels() | std::views::transform([](const auto& filter) { return filter.data; }) | std::ranges::to<std::vector>();
+        auto filters = m_selectedFilters.labels | std::views::transform([](const auto& filter) { return filter.data; }) | std::ranges::to<std::vector>();
         startSearching(m_shownSearchString, std::move(filters));
         while (loadMoreItems()) {
         }
@@ -270,20 +347,20 @@ void SignalSelector::buildIndex() {
     }
 
     auto itemsForIndex = [this](Category category) {
-        const auto&             index = *categoryIndices[+category];
-        std::vector<FilterData> result;
+        const auto&            index = *categoryIndices[+category];
+        std::vector<FilterTag> result;
         result.resize(index.size());
-        std::ranges::transform(index, result.begin(), [category](const auto& kvp) { return FilterData{category, kvp.first, false}; });
+        std::ranges::transform(index, result.begin(), [category](const auto& kvp) { return FilterTag{+category, kvp.first, false}; });
         return result;
     };
 
-    m_filterCombos.setData({
-        {"##comboDomain", "Domain", colorForCategory(Category::Domain), itemsForIndex(Category::Domain)},                //
-        {"##comboDeviceType", "Dev. type", colorForCategory(Category::DeviceType), itemsForIndex(Category::DeviceType)}, //
-        {"##comboDAQ", "DAQ-M.", colorForCategory(Category::DAQ_M), {}},                                                 //
-        {"##comboStatus", "Status", colorForCategory(Category::Status), {}},                                             //
-        {"##comboQuantity", "Quantity", colorForCategory(Category::Quantity), itemsForIndex(Category::Quantity)}         //
-    });
+    m_filterCombos.combos = {
+        {"##comboDomain", "Domain", colorForCategory(+Category::Domain), itemsForIndex(Category::Domain)},                //
+        {"##comboDeviceType", "Dev. type", colorForCategory(+Category::DeviceType), itemsForIndex(Category::DeviceType)}, //
+        {"##comboDAQ", "DAQ-M.", colorForCategory(+Category::DAQ_M), {}},                                                 //
+        {"##comboStatus", "Status", colorForCategory(+Category::Status), {}},                                             //
+        {"##comboQuantity", "Quantity", colorForCategory(+Category::Quantity), itemsForIndex(Category::Quantity)}         //
+    };
 }
 
 bool SignalSelector::loadMoreItems() {

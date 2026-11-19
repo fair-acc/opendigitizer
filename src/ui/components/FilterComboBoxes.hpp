@@ -2,6 +2,9 @@
 #define OPENDIGITIZER_UI_COMPONENTS_FILTER_COMBO_BOXES_HPP_
 
 #include <algorithm>
+#include <array>
+#include <compare>
+#include <cstddef>
 #include <string>
 #include <vector>
 
@@ -20,13 +23,27 @@ inline auto ColorComboBoxExpectedWidth(const std::string& label) {
     return comboWidth;
 }
 
-template<typename ComboboxItem>
-inline auto ColorComboBox(char* id, const std::string& label, ImColor color, float comboWidth, std::vector<ComboboxItem>& items) {
-    std::optional<ComboboxItem*> result;
+struct FilterTag {
+    std::size_t category = 0UZ;
+    std::string title;
+    bool        isActive = false;
+
+    auto operator<=>(const FilterTag&) const = default;
+};
+
+struct FilterCombo {
+    std::string            id;
+    std::string            label;
+    std::array<ImColor, 2> color;
+    std::vector<FilterTag> items;
+};
+
+inline FilterTag* ColorComboBox(char* id, const std::string& label, ImColor color, float comboWidth, std::vector<FilterTag>& items) {
+    FilterTag* result = nullptr;
 
     ImGui::SetNextItemWidth(comboWidth);
 
-    const bool somethingIsSelected = std::ranges::any_of(items, &ComboboxItem::isActive);
+    const bool somethingIsSelected = std::ranges::any_of(items, &FilterTag::isActive);
     if (!somethingIsSelected) {
         color = ImGuiCol_FrameBg;
     }
@@ -50,24 +67,17 @@ inline auto ColorComboBox(char* id, const std::string& label, ImColor color, flo
     return result;
 }
 
-template<typename ComboboxDefinition>
-class FilterComboBoxes {
-private:
-    std::vector<ComboboxDefinition> m_comboboxes;
+struct FilterComboBoxes {
+    std::vector<FilterCombo> combos;
 
-public:
-    explicit FilterComboBoxes(std::vector<ComboboxDefinition> comboboxes = {}) : m_comboboxes(std::move(comboboxes)) {};
-
-    void setData(std::vector<ComboboxDefinition> comboboxes) { m_comboboxes = std::move(comboboxes); }
-
-    auto draw() {
-        std::optional<std::remove_cvref_t<decltype(*std::declval<ComboboxDefinition>().items.begin())>*> result;
+    [[nodiscard]] FilterTag* draw() {
+        FilterTag* result = nullptr;
 
         auto contentWidth          = ImGui::GetContentRegionAvail().x;
         auto remainingContentWidth = contentWidth;
         bool first                 = true;
 
-        for (ComboboxDefinition& combo : m_comboboxes) {
+        for (FilterCombo& combo : combos) {
             float desiredWidth = ColorComboBoxExpectedWidth(combo.label.c_str());
             if (!first && remainingContentWidth > desiredWidth * 1.2f) {
                 ImGui::SameLine();
@@ -76,8 +86,7 @@ public:
             }
             remainingContentWidth -= desiredWidth * 1.2f;
 
-            auto currentResult = ColorComboBox(combo.id.data(), combo.label, combo.color[LookAndFeel::instance().style == LookAndFeel::Style::Light ? 0 : 1], desiredWidth, combo.items);
-            if (currentResult) {
+            if (FilterTag* currentResult = ColorComboBox(combo.id.data(), combo.label, combo.color[LookAndFeel::instance().style == LookAndFeel::Style::Light ? 0 : 1], desiredWidth, combo.items)) {
                 result = currentResult;
             }
             first = false;

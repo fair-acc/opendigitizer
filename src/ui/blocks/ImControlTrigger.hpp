@@ -29,7 +29,7 @@ struct ImControlTrigger : ImControl<ImControlTrigger> {
         const SizeAndLayout layout = prepareDraw(parsedConfig, button, button, 0.f);
         const ImVec2        buttonSize(layout.width, 0.f);
 
-        drawWithLabelAndTooltip(layout, [this, buttonSize](float) {
+        drawWithLabel(layout, [this, buttonSize](float) {
             LabelAndFont labelAndFont(*this);
             if (DigitizerUi::Button(labelAndFont.selectedLabel().c_str(), buttonSize)) {
                 sendToTargets(true);

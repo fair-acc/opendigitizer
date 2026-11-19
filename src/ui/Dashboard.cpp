@@ -7,10 +7,12 @@
 #include <fstream>
 #include <print>
 #include <ranges>
+#include <set>
 
 #include <format>
 #include <gnuradio-4.0/Logger.hpp>
 #include <gnuradio-4.0/PmtTypeHelpers.hpp>
+#include <gnuradio-4.0/Scheduler.hpp>
 
 #if defined(__EMSCRIPTEN__) && !defined(OD_WASM_STATIC_BLOCKLIBS)
 #include "PluginWasmNames.hpp"
@@ -22,12 +24,11 @@
 
 #include <opencmw.hpp>
 
-#include <IoSerialiserJson.hpp>
 #include <MdpMessage.hpp>
 #include <RestClient.hpp>
-#include <daq_api.hpp>
 
 #include "GraphModel.hpp"
+#include "MapUtils.hpp"
 
 #include "blocks/RemoteSource.hpp"
 #include "components/SignalSelector.hpp"
@@ -37,155 +38,85 @@
 
 using namespace std::string_literals;
 
-struct FlowgraphMessage {
-    std::string flowgraph;
-    std::string layout;
-};
-
-#if defined(__clang__)
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wc2y-extensions" // refl-cpp uses __COUNTER__ issue
-#endif
-
-ENABLE_REFLECTION_FOR(FlowgraphMessage, flowgraph, layout)
-
-#if defined(__clang__)
-#pragma clang diagnostic pop
-#endif
-
 namespace DigitizerUi {
 
 namespace {
 enum class What { Header, Flowgraph };
 
-template<typename T>
-struct arrsize;
-
-template<typename T, std::size_t N>
-struct arrsize<T const (&)[N]> {
-    static constexpr auto size = N;
-};
-
-template<std::size_t N>
-auto fetch(std::shared_ptr<opencmw::client::RestClient> client, const std::shared_ptr<DashboardStorageInfo>& storageInfo, const std::string& name, What const (&what)[N], std::function<void(std::array<std::string, arrsize<decltype(what)>::size>&&)>&& cb, std::function<void()>&& errCb) {
-    if (storageInfo->path.starts_with("http://") || storageInfo->path.starts_with("https://")) {
+void fetch(std::shared_ptr<opencmw::client::RestClient> client, const std::shared_ptr<DashboardStorageInfo>& storageInfo, const std::string& name, What what, std::function<void(std::string&&)>&& cb, std::function<void()>&& errCb) {
+    const StorageKind kind = storageInfo->kind();
+    if (kind == StorageKind::Remote) {
         if (!client) {
             gr::log::error("cannot fetch '{}' from {}: no REST client", name, storageInfo->path);
             errCb();
             return;
         }
         opencmw::client::Command command;
-        command.command  = opencmw::mdp::Command::Get;
-        auto        path = std::filesystem::path(storageInfo->path) / name;
-        std::string whatStr;
-        for (std::size_t i = 0UZ; i < N; ++i) {
-            if (i > 0) {
-                whatStr += ",";
-            }
-            whatStr += [&]() {
-                switch (what[i]) {
-                case What::Header: return "header";
-                case What::Flowgraph: return "flowgraph";
-                }
-                return "header";
-            }();
-        }
-
-        command.topic = opencmw::URI<opencmw::STRICT>::UriFactory().path(path.native()).addQueryParameter("what", whatStr).build();
+        command.command = opencmw::mdp::Command::Get;
+        auto path       = std::filesystem::path(storageInfo->path) / name;
+        command.topic   = opencmw::URI<opencmw::STRICT>::UriFactory().path(path.native()).addQueryParameter("what", what == What::Header ? "header" : "flowgraph").build();
 
         command.callback = [callback = std::move(cb), errCallback = std::move(errCb)](const opencmw::mdp::Message& rep) mutable {
-            std::array<std::string, N> reply;
-
-            const char* s = reinterpret_cast<const char*>(rep.data.data());
-            const char* e = reinterpret_cast<const char*>(s + rep.data.size());
-            if (rep.data.data()) {
-                for (std::size_t i = 0UZ; i < N; ++i) {
-                    // the format is: <size>;<content>
-                    std::string_view sv(s, e);
-                    auto             p = sv.find(';');
-                    assert(p != sv.npos);
-                    std::size_t size = 0;
-                    std::from_chars(s, s + p, size);
-                    s += p + 1; // the +1 is for the ';'
-
-                    reply[i].resize(size);
-                    std::copy_n(s, size, reply[i].data());
-                    s += size;
+            std::string            reply; // <size>;<content>
+            const std::string_view data(reinterpret_cast<const char*>(rep.data.data()), rep.data.size());
+            if (const auto separator = data.find(';'); separator != std::string_view::npos) {
+                std::size_t size = 0;
+                if (std::from_chars(data.data(), data.data() + separator, size).ec == std::errc{} && size <= data.size() - separator - 1) {
+                    reply = data.substr(separator + 1, size);
                 }
             }
 
-            if (reply[0].empty()) {
+            if (reply.empty()) {
                 EventLoop::instance().executeLater(std::move(errCallback));
             } else {
-                // schedule the callback so it runs on the main thread
                 EventLoop::instance().executeLater([callback, reply]() mutable { callback(std::move(reply)); });
             }
         };
 
         client->request(command);
         return;
+    }
 #ifndef OD_DISABLE_DEMO_FLOWGRAPHS
-    } else if (storageInfo->path.starts_with("example://")) {
-        std::array<std::string, N> reply;
-        auto                       fs = cmrc::sample_dashboards::get_filesystem();
-        for (std::size_t i = 0UZ; i < N; ++i) {
-            reply[i] = [&]() -> std::string {
-                switch (what[i]) {
-                case What::Flowgraph: {
-                    auto file = fs.open(std::format("assets/sampleDashboards/{}.grc", name));
-                    return {file.begin(), file.end()};
-                }
-                default:
-                case What::Header: return {"favorite: false\nlastUsed: 07/04/2023"};
-                }
-            }();
+    if (kind == StorageKind::Example) {
+        if (what == What::Header) {
+            cb("favorite: false\nlastUsed: 07/04/2023");
+        } else {
+            auto file = cmrc::sample_dashboards::get_filesystem().open(std::format("assets/sampleDashboards/{}.grc", name));
+            cb(std::string(file.begin(), file.end()));
         }
-        cb(std::move(reply));
         return;
+    }
 #endif
-    } else {
 #ifndef __EMSCRIPTEN__
-        auto          path = std::filesystem::path(storageInfo->path) / name;
-        std::ifstream stream(path, std::ios::in);
-        if (stream.is_open()) {
-            stream.seekg(0, std::ios::end);
-            const auto filesize = stream.tellg();
-            stream.seekg(0);
-
-#define ERR                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    \
-    auto msg = std::format("Cannot load dashboard from '{}'. File is corrupted.", path.native());                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              \
-    components::Notification::warning(msg);                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    \
-    errCb();                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   \
-    return;
-
-            if (filesize < 32) {
-                ERR
-            }
-
-            std::array<std::string, N> desc;
-            for (std::size_t i = 0UZ; i < N; ++i) {
-                auto w = what[i];
-                stream.seekg(w == What::Header ? 0 : 16);
-
-                uint32_t start, size;
-                stream.read(reinterpret_cast<char*>(&start), 4);
-                stream.read(reinterpret_cast<char*>(&size), 4);
-
-                stream.seekg(start);
-
-                if (filesize < start + size) {
-                    ERR
-                }
-                desc[i].resize(size);
-                stream.read(desc[i].data(), size);
-            }
-#undef ERR
-            cb(std::move(desc));
+    auto          path = std::filesystem::path(storageInfo->path) / name;
+    std::ifstream stream(path, std::ios::in);
+    if (stream.is_open()) {
+        const auto corrupted = [&] {
+            components::Notification::warning(std::format("Cannot load dashboard from '{}'. File is corrupted.", path.native()));
+            errCb();
+        };
+        stream.seekg(0, std::ios::end);
+        const auto filesize = stream.tellg();
+        if (filesize < 32) {
+            corrupted();
             return;
         }
-#endif
-    }
+        stream.seekg(what == What::Header ? 0 : 16);
 
+        std::uint32_t start, size;
+        stream.read(reinterpret_cast<char*>(&start), 4);
+        stream.read(reinterpret_cast<char*>(&size), 4);
+        if (filesize < start + size) {
+            corrupted();
+            return;
+        }
+        stream.seekg(start);
+        std::string content(size, '\0');
+        stream.read(content.data(), size);
+        cb(std::move(content));
+        return;
+    }
+#endif
     errCb();
 }
 
@@ -239,7 +170,7 @@ std::shared_ptr<DashboardStorageInfo> DashboardStorageInfo::get(std::string_view
         return it->lock();
     }
 
-    auto dashboardStorageInfo = std::make_shared<DashboardStorageInfo>(std::string(path), PrivateTag{});
+    auto dashboardStorageInfo = std::make_shared<DashboardStorageInfo>(std::string(path));
     knownDashboardStorage().push_back(dashboardStorageInfo);
     return dashboardStorageInfo;
 }
@@ -250,7 +181,7 @@ std::shared_ptr<DashboardStorageInfo> DashboardStorageInfo::get(std::string_view
 // as shared pointers, and this is a single special instance
 // of all dashboard sources which is not saved.
 std::shared_ptr<DashboardStorageInfo> DashboardStorageInfo::memoryDashboardStorage() {
-    static auto storageInfo = std::make_shared<DashboardStorageInfo>("Unsaved"s, PrivateTag{});
+    static auto storageInfo = std::make_shared<DashboardStorageInfo>("Unsaved"s);
     return storageInfo;
 }
 
@@ -267,19 +198,7 @@ std::unordered_set<std::string_view> Dashboard::getAllWindowNamesInUse() const {
     return output;
 }
 
-Dashboard::UIWindow::UIWindow(DeserializeTag, std::shared_ptr<gr::BlockModel> blk, std::string_view name) //
-    : window(std::make_shared<DockSpace::Window>(std::string{name})), block(std::move(blk)) {}
-
-Dashboard::PropertyControlWindow::PropertyControlWindow(DeserializeTag, std::string_view labelView, std::string_view windowName)
-    : window(std::make_shared<DockSpace::Window>(std::string{windowName})), //
-      label{labelView}                                                      //
-{}
-
-Dashboard::Dashboard(PrivateTag, std::shared_ptr<opencmw::client::RestClient> client, const std::shared_ptr<const DashboardDescription>& desc) : restClient(std::move(client)), description(desc) { description->lastUsed = std::chrono::floor<std::chrono::days>(std::chrono::system_clock::now()); }
-
-Dashboard::~Dashboard() {}
-
-std::unique_ptr<Dashboard> Dashboard::create(std::shared_ptr<opencmw::client::RestClient> client, const std::shared_ptr<const DashboardDescription>& desc) { return std::make_unique<Dashboard>(PrivateTag{}, client, desc); }
+Dashboard::Dashboard(std::shared_ptr<opencmw::client::RestClient> client, std::shared_ptr<DashboardDescription> desc) : restClient(std::move(client)), description(std::move(desc)) { description->lastUsed = std::chrono::floor<std::chrono::days>(std::chrono::system_clock::now()); }
 
 void Dashboard::setNewDescription(const std::shared_ptr<DashboardDescription>& desc) { description = desc; }
 
@@ -321,9 +240,9 @@ void Dashboard::load() {
 
         auto doFetch = [this]() {
             fetch(
-                restClient, description->storageInfo, description->filename, {What::Flowgraph}, //
-                [this](std::array<std::string, 1>&& data) {
-                    loadAndThen(std::move(data[0]), [this](gr::Graph&& graph) { session.emplaceGraph(std::move(graph)); });
+                restClient, description->storageInfo, description->filename, What::Flowgraph, //
+                [this](std::string&& data) {
+                    loadAndThen(std::move(data), [this](gr::Graph&& graph) { session.emplaceGraph(std::move(graph)); });
                     isInUse = false;
                 },
                 [this]() {
@@ -341,32 +260,28 @@ void Dashboard::load() {
 }
 
 void Dashboard::loadAndThen(std::string_view grcData, std::function<void(gr::Graph&&)> assignScheduler) {
+    const auto fail = [this](std::string_view message) {
+        components::Notification::error(std::format("Error: {}", message));
+        if (requestClose) {
+            requestClose(this);
+        }
+    };
     try {
         const auto yaml = gr::pmt::yaml::deserialize(grcData);
         if (!yaml) {
-            throw gr::exception(std::format("Could not parse yaml: {}:{}\n{}", yaml.error().message, yaml.error().line, grcData));
+            fail(std::format("Could not parse yaml: {}:{}\n{}", yaml.error().message, yaml.error().line, grcData));
+            return;
         }
         const gr::property_map& rootMap = yaml.value();
 
-        gr::Graph grGraph = [this, &rootMap]() -> gr::Graph {
-            try {
-                gr::Graph  resultGraph(*pluginLoader);
-                const auto loadResult = gr::detail::loadGraphFromMap(*pluginLoader, resultGraph, rootMap);
-                if (!loadResult.has_value()) {
-                    throw gr::exception(loadResult.error().message, loadResult.error().sourceLocation);
-                }
-                return resultGraph;
-            } catch (const gr::exception& e) {
-                throw;
-            } catch (const std::string& e) {
-                throw gr::exception(e);
-            } catch (...) {
-                throw;
-            }
-        }();
+        gr::Graph grGraph(*pluginLoader);
+        if (const auto loaded = gr::detail::loadGraphFromMap(*pluginLoader, grGraph, rootMap); !loaded) {
+            fail(loaded.error().message);
+            return;
+        }
 
         const std::string_view dashboardStorageURI = description->storageInfo->path;
-        const bool             isRemoteStorage     = dashboardStorageURI.starts_with("http://") || dashboardStorageURI.starts_with("https://");
+        const bool             isRemoteStorage     = description->storageInfo->kind() == StorageKind::Remote;
         const std::string      sourceHost          = [&]() -> std::string {
             if (!isRemoteStorage) {
                 return "https://localhost:8443";
@@ -375,7 +290,7 @@ void Dashboard::loadAndThen(std::string_view grcData, std::function<void(gr::Gra
             return dashboardUri.factory().hostName(dashboardUri.hostName().value_or("localhost")).port(dashboardUri.port().value_or(8080)).scheme(dashboardUri.scheme().value_or("https")).build().str();
         }();
         gr::graph::forEachBlock<gr::block::Category::NormalBlock>(grGraph, [&sourceHost](auto& block) {
-            if (block->typeName().starts_with("opendigitizer::RemoteStreamSource") || block->typeName().starts_with("opendigitizer::RemoteDataSetSource")) {
+            if (block->typeName().starts_with(baseTypeName<opendigitizer::RemoteStreamSource<float>>()) || block->typeName().starts_with(baseTypeName<opendigitizer::RemoteDataSetSource<float>>())) {
                 auto* sourceBlock = static_cast<opendigitizer::RemoteSourceBase*>(block->raw());
                 sourceBlock->host = sourceHost;
             }
@@ -384,70 +299,27 @@ void Dashboard::loadAndThen(std::string_view grcData, std::function<void(gr::Gra
         const gr::pmt::Value dashboardValue = rootMap.find_value("dashboard").value_or(gr::pmt::Value{});
         const auto           dashboard      = dashboardValue.get_if<gr::property_map>();
         if (dashboard) {
-            doLoad(*dashboard, grGraph);
+            if (const auto loaded = doLoad(*dashboard, grGraph); !loaded) {
+                fail(loaded.error().message);
+                return;
+            }
         }
         assignScheduler(std::move(grGraph));
         if (!dashboard) {
-            throw gr::exception(std::format("dashboard field is not a property_map, it is {}, in the map {}", //
-                rootMap.find_value("dashboard"),                                                              //
-                rootMap));
+            fail(std::format("dashboard field is not a property_map, it is {}, in the map {}", rootMap.find_value("dashboard"), rootMap));
+            return;
         }
         loadUIWindowSources();
         isInitialised.store(true, std::memory_order_release);
-    } catch (const gr::exception& e) {
-        components::Notification::error(std::format("Error: {}", e.what()));
-        if (requestClose) {
-            requestClose(this);
-        }
     } catch (const std::exception& e) {
-        components::Notification::error(std::format("Error: {}", e.what()));
-        if (requestClose) {
-            requestClose(this);
-        }
+        fail(e.what());
     } catch (...) {
-        components::Notification::error(std::format("Error: {}", "Unkonwn exception"));
-        if (requestClose) {
-            requestClose(this);
-        }
+        fail("Unkonwn exception");
     }
 }
 
-void Dashboard::doLoad(const gr::property_map& dashboard, gr::Graph& graph) {
+std::expected<void, gr::Error> Dashboard::doLoad(const gr::property_map& dashboard, gr::Graph& graph) {
     using namespace gr;
-    auto path = std::filesystem::path(description->storageInfo->path) / description->filename;
-
-    const auto readField = []<typename T>(const gr::property_map& m, std::string_view key, bool required = true) -> std::optional<T> {
-        auto it = m.find(std::pmr::string(key));
-        if (it == m.end()) {
-            if (!required) {
-                return std::nullopt;
-            }
-            throw gr::exception(std::format("Missing required key '{}'", key));
-        }
-
-        if constexpr (std::same_as<T, std::string>) {
-            if (!it->second.is_string()) {
-                throw gr::exception(std::format("Key '{}' must be string", key));
-            }
-            return it->second.value_or(std::string{});
-        } else if constexpr (gr::TensorLike<T>) {
-            const gr::pmt::Value val = it->second;
-            if (const auto tv = val.get_if<gr::TensorView<typename T::value_type>>()) {
-                return tv->owned();
-            }
-            throw gr::exception(std::format("Key '{}' must be tensor-like", key));
-            return {};
-        } else {
-            const auto result = it->second.get_if<T>();
-            if (result) {
-                return *result;
-            }
-
-            std::string actualType = "<unknown>";
-            pmt::ValueVisitor([&actualType]<typename T0>(const T0& /*arg*/) { actualType = gr::meta::type_name<std::decay_t<T0>>(); }).visit(it->second);
-            throw gr::exception(std::format("Key '{}' has invalid type: expected '{}', got '{}'", key, gr::meta::type_name<T>(), actualType));
-        }
-    };
 
     editable                   = dashboard.value_or<bool>("editable", true);
     schedulerUi                = dashboard.value_or<bool>("scheduler_ui", false);
@@ -459,60 +331,68 @@ void Dashboard::doLoad(const gr::property_map& dashboard, gr::Graph& graph) {
         }
     }
 
-    const auto plots = *readField.operator()<Tensor<pmt::Value>>(dashboard, "plots");
+    const auto plots = getOptionalProperty<Tensor<pmt::Value>>(dashboard, "plots");
+    if (!plots) {
+        return std::unexpected(plots.error());
+    }
 
-    for (const auto& plotPmt : plots) {
+    for (const auto& plotPmt : *plots) {
         if (!plotPmt.holds<property_map>()) {
-            throw gr::exception("plot is not a property_map");
+            return std::unexpected(gr::Error("plot is not a property_map"));
         }
         const property_map plotMap = *plotPmt.get_if<property_map>();
 
-        const auto name        = *readField.operator()<std::string>(plotMap, "name");
-        const auto plotSources = *readField.operator()<Tensor<pmt::Value>>(plotMap, "sources");
-        auto       rect        = readField.operator()<Tensor<std::int64_t>>(plotMap, "rect", false);
-        if (!rect && !hasWindowLayout && layoutType == DockingLayoutType::Free) {
-            throw gr::exception("Missing one of two possible required keys for describing dashboard window UI:"
-                                " [\"dashboard\"][\"windowLayout\"] or per-plot [\"rect\"] field");
+        const auto name        = getOptionalProperty<std::string>(plotMap, "name");
+        const auto plotSources = getOptionalProperty<Tensor<pmt::Value>>(plotMap, "sources");
+        if (!name || !plotSources) {
+            return std::unexpected(name ? plotSources.error() : name.error());
         }
-        if (rect && hasWindowLayout) {
+        const auto optional = [&plotMap]<typename T>(std::string_view key) -> std::expected<std::optional<T>, gr::Error> {
+            if (!plotMap.contains(key)) {
+                return std::nullopt;
+            }
+            return getOptionalProperty<T>(plotMap, key);
+        };
+        auto rect = optional.operator()<Tensor<std::int64_t>>("rect");
+        if (!rect) {
+            return std::unexpected(rect.error());
+        }
+        if (!*rect && !hasWindowLayout && layoutType == DockingLayoutType::Free) {
+            return std::unexpected(gr::Error("Missing one of two possible required keys for describing dashboard window UI:"
+                                             " [\"dashboard\"][\"windowLayout\"] or per-plot [\"rect\"] field"));
+        }
+        if (*rect && hasWindowLayout) {
             gr::log::warning("a plot rect and the dashboard windowLayout are both specified, the rect is ignored");
-            rect = std::nullopt;
+            rect->reset();
         }
-        if (rect && rect->size() != 4) {
-            throw gr::exception("invalid plot definition rect.size() != 4");
-        }
-
-        std::string chartTypeName = "XYChart";
-        if (const auto type = readField.operator()<std::string>(plotMap, "type", false); type) {
-            chartTypeName = *type;
+        if (*rect && (*rect)->size() != 4) {
+            return std::unexpected(gr::Error("invalid plot definition rect.size() != 4"));
         }
 
-        // Parse chart parameters from .grc (e.g., show_legend, show_grid, etc.)
-        gr::property_map chartParameters;
-        if (const auto parameters = readField.operator()<property_map>(plotMap, "parameters", false); parameters) {
-            chartParameters = *parameters;
+        const auto type       = optional.operator()<std::string>("type");
+        const auto parameters = optional.operator()<property_map>("parameters");
+        const auto axes       = optional.operator()<gr::Tensor<gr::pmt::Value>>("axes");
+        if (!type || !parameters || !axes) {
+            return std::unexpected(!type ? type.error() : !parameters ? parameters.error() : axes.error());
         }
+        const std::string          chartTypeName   = type->value_or("XYChart");
+        gr::property_map           chartParameters = parameters->value_or(gr::property_map{});
+        gr::Tensor<gr::pmt::Value> axesConfig      = axes->value_or(gr::Tensor<gr::pmt::Value>{});
 
         // Transfer 'sources:' to 'data_sinks' (see grc_compat namespace in Dashboard.hpp)
-        gr::Tensor<gr::pmt::Value> dataSinksTensor(gr::extents_from, {plotSources.size()});
-        for (std::size_t i = 0; i < plotSources.size(); ++i) {
-            if (!plotSources[i].is_string()) {
-                throw gr::exception("plot.sources elements must be strings");
+        gr::Tensor<gr::pmt::Value> dataSinksTensor(gr::extents_from, {plotSources->size()});
+        for (std::size_t i = 0; i < plotSources->size(); ++i) {
+            if (!(*plotSources)[i].is_string()) {
+                return std::unexpected(gr::Error("plot.sources elements must be strings"));
             }
-            dataSinksTensor[i] = plotSources[i].value_or(std::string());
+            dataSinksTensor[i] = (*plotSources)[i].value_or(std::string());
         }
         chartParameters[std::pmr::string("data_sinks")] = std::move(dataSinksTensor);
-
-        // Parse axes config (will be set on block's uiConstraints after creation)
-        gr::Tensor<gr::pmt::Value> axesConfig;
-        if (const auto axes = readField.operator()<gr::Tensor<gr::pmt::Value>>(plotMap, "axes", false); axes) {
-            axesConfig = *axes;
-        }
 
         const std::string requestedBlockName = chartParameters.value_or<std::string>("name", resolveChartTypeName(chartTypeName));
         chartParameters["name"]              = session.graphModel.nameRegistry.ensureNameIsUnique(requestedBlockName);
 
-        auto blockPtr = emplaceChartBlock(graph, chartTypeName, name, chartParameters);
+        auto blockPtr = emplaceChartBlock(graph, chartTypeName, *name, chartParameters);
         if (!blockPtr) {
             components::Notification::warning(std::format("Failed to create chart block of type '{}'", chartTypeName));
             continue;
@@ -526,14 +406,15 @@ void Dashboard::doLoad(const gr::property_map& dashboard, gr::Graph& graph) {
             return value < 0 ? 0ULL : static_cast<std::uint64_t>(value);
         };
 
-        UIWindow uiWindow(DeserializeTag{}, std::move(blockPtr), name);
+        UIWindow uiWindow{.window = std::make_shared<DockSpace::Window>(*name), .block = std::move(blockPtr)};
 
-        if (rect) {
+        if (*rect) {
+            const auto& r                       = **rect;
             uiWindow.window->freeLayoutPosition = {
-                .x      = static_cast<std::size_t>(rectValue((*rect)[0])),
-                .y      = static_cast<std::size_t>(rectValue((*rect)[1])),
-                .width  = static_cast<std::size_t>(rectValue((*rect)[2])),
-                .height = static_cast<std::size_t>(rectValue((*rect)[3])),
+                .x      = static_cast<std::size_t>(rectValue(r[0])),
+                .y      = static_cast<std::size_t>(rectValue(r[1])),
+                .width  = static_cast<std::size_t>(rectValue(r[2])),
+                .height = static_cast<std::size_t>(rectValue(r[3])),
             };
         }
 
@@ -549,19 +430,20 @@ void Dashboard::doLoad(const gr::property_map& dashboard, gr::Graph& graph) {
                     const auto*          id       = idPmt.get_if<gr::Size_t>();
                     const auto           label    = labelPmt.get_if<std::string_view>();
                     if (id && label) {
-                        propertyControlWindows.try_emplace(*id, DeserializeTag{}, std::string(*label), controlWindowName);
+                        propertyControlWindows.try_emplace(*id, PropertyControlWindow{.window = std::make_shared<DockSpace::Window>(std::string(controlWindowName)), .label = std::string(*label)});
                     }
                 }
             }
         }
     }
+    return {};
 }
 
 void Dashboard::saveStore(const gr::property_map& headerYaml, const gr::property_map& graphYaml) {
     using namespace gr;
     const auto headerYamlStr = pmt::yaml::serialize(headerYaml);
     const auto graphYamlStr  = pmt::yaml::serialize(graphYaml);
-    if (description->storageInfo->path.starts_with("http://") || description->storageInfo->path.starts_with("https://")) {
+    if (description->storageInfo->kind() == StorageKind::Remote) {
         if (!restClient) {
             components::Notification::error(std::format("cannot save to {}: no REST client", description->storageInfo->path));
             return;
@@ -637,9 +519,15 @@ std::pair<gr::property_map, gr::property_map> Dashboard::serialise() {
     auto graphYaml = gr::detail::saveGraphToMap(*pluginLoader, session.graph());
     session.graphModel.saveBlockPositions(graphYaml);
     if (const auto savedBlocks = graphYaml.get_if<gr::TensorView<gr::pmt::Value>>("blocks")) {
+        std::set<std::string, std::less<>> chartUniqueNames;
+        for (const auto& block : session.graph().blocks()) {
+            if (isChartTypeName(block->typeName())) {
+                chartUniqueNames.emplace(block->uniqueName());
+            }
+        }
         gr::Tensor<gr::pmt::Value> blocksWithoutCharts;
         for (const gr::pmt::Value& block : savedBlocks->owned()) {
-            if (!isChartTypeName(block.value_or(gr::property_map{}).value_or<std::string>("id", {}))) {
+            if (!chartUniqueNames.contains(block.value_or(gr::property_map{}).value_or<std::string>("unique_name", {}))) {
                 blocksWithoutCharts.emplace_back(block);
             }
         }
@@ -663,7 +551,7 @@ std::pair<gr::property_map, gr::property_map> Dashboard::serialise() {
     if (schedulerUi) {
         dashboardYaml["scheduler_ui"] = true;
     }
-    dashboardYaml["layout"]       = std::string(dockingLayoutName(layoutType));
+    dashboardYaml["layout"]       = std::string(gr::meta::enumName(layoutType).value_or(""));
     dashboardYaml["windowLayout"] = windowLayout;
 
     dashboardYaml["propertyControlWindows"] = [this] {
@@ -808,7 +696,7 @@ void Dashboard::bindChartWindows() {
         if (window != uiWindows.end()) {
             window->block = block;
         } else {
-            uiWindows.emplace_back(DeserializeTag{}, block, name);
+            uiWindows.push_back({.window = std::make_shared<DockSpace::Window>(name), .block = block});
         }
         if (auto pending = pendingCharts.extract(name); pending && !pending.mapped().empty()) {
             block->uiConstraints() = std::move(pending.mapped());
@@ -818,23 +706,6 @@ void Dashboard::bindChartWindows() {
         }
     }
     std::erase_if(uiWindows, [&](const UIWindow& w) { return !std::ranges::contains(charts, w.block) && !(w.window && pendingCharts.contains(w.window->name)); });
-}
-
-void Dashboard::removeSinkFromPlots(std::string_view sinkName) {
-    for (auto& w : uiWindows) {
-        if (w.block) {
-            auto names = grc_compat::getBlockSinkNames(w.block.get());
-            std::erase(names, std::string(sinkName));
-            grc_compat::setBlockSinkNames(w.block.get(), names);
-        }
-    }
-    std::erase_if(uiWindows, [this](const UIWindow& w) {
-        if (!w.block || !grc_compat::getBlockSinkNames(w.block.get()).empty()) {
-            return false;
-        }
-        session.sendToScheduler(gr::scheduler::property::kRemoveBlock, {{"uniqueName", std::string(w.block->uniqueName())}});
-        return true;
-    });
 }
 
 void Dashboard::loadUIWindowSources() {
@@ -851,34 +722,6 @@ void Dashboard::loadUIWindowSources() {
     }
 }
 
-void Dashboard::registerRemoteService(std::string_view blockName, std::optional<opencmw::URI<>> uri) {
-    if (!uri || !restClient) {
-        return;
-    }
-
-    const auto flowgraphUri = opencmw::URI<>::UriFactory(*uri).path("/flowgraph").setQuery({}).build().str();
-    gr::log::debug("block {} adds subscription to remote flowgraph service: {} -> {}", blockName, uri->str(), flowgraphUri);
-    flowgraphUriByRemoteSource.insert({std::string{blockName}, flowgraphUri});
-
-    const auto it = std::ranges::find_if(services, [&](const auto& s) { return s.uri == flowgraphUri; });
-    if (it == services.end()) {
-        auto msg = std::format("Registering to remote flow graph for '{}' at {}", blockName, flowgraphUri);
-        components::Notification::warning(msg);
-        auto& s = *services.emplace(restClient, flowgraphUri, flowgraphUri);
-        s.reload();
-    }
-    removeUnusedRemoteServices();
-}
-
-void Dashboard::unregisterRemoteService(std::string_view blockName) {
-    flowgraphUriByRemoteSource.erase(std::string{blockName});
-    removeUnusedRemoteServices();
-}
-
-void Dashboard::removeUnusedRemoteServices() {
-    std::erase_if(services, [&](const auto& s) { return std::ranges::none_of(flowgraphUriByRemoteSource | std::views::values, [&s](const auto& uri) { return uri == s.uri; }); });
-}
-
 void Dashboard::addRemoteSignal(const SignalData& signalData) {
     const auto& uriStr    = signalData.uri();
     auto        blockType = [&] {
@@ -886,9 +729,9 @@ void Dashboard::addRemoteSignal(const SignalData& signalData) {
         const auto                     params  = uri.queryParamMap();
         const auto                     acqMode = params.find("acquisitionModeFilter");
         if (acqMode != params.end() && acqMode->second && acqMode->second != "streaming") {
-            return "opendigitizer::RemoteDataSetSource";
+            return std::string(baseTypeName<opendigitizer::RemoteDataSetSource<float>>());
         }
-        return "opendigitizer::RemoteStreamSource";
+        return std::string(baseTypeName<opendigitizer::RemoteStreamSource<float>>());
     }();
 
     auto blockParams = [&] {
@@ -904,56 +747,6 @@ void Dashboard::addRemoteSignal(const SignalData& signalData) {
     const std::string fullBlockType = std::move(blockType) + std::move(blockParams);
     gr::property_map  properties{{"remote_uri", uriStr}, {"signal_name", signalData.signalName}, {"signal_unit", signalData.unit}, {"name", session.graphModel.nameRegistry.ensureNameIsUnique(fullBlockType)}};
     session.sendToScheduler(gr::scheduler::property::kEmplaceBlock, {{"type", fullBlockType}, {"properties", std::move(properties)}});
-}
-
-void Dashboard::Service::reload() {
-    opencmw::client::Command command;
-    command.command  = opencmw::mdp::Command::Get;
-    command.topic    = opencmw::URI<>(uri);
-    command.callback = [this](const opencmw::mdp::Message& rep) {
-        auto buf = rep.data;
-
-        opendigitizer::flowgraph::SerialisedFlowgraphMessage serialisedMessage;
-        opencmw::deserialise<opencmw::Json, opencmw::ProtocolCheck::LENIENT>(buf, serialisedMessage);
-
-        gr::Message message      = opendigitizer::gnuradio::deserialiseMessage(serialisedMessage.data);
-        auto        newFlowgraph = opendigitizer::flowgraph::getFlowgraphFromMessage(message);
-
-        if (newFlowgraph) {
-            EventLoop::instance().executeLater([this, newGrc = std::move(newFlowgraph->serialisedFlowgraph), newLayout = std::move(newFlowgraph->serialisedUiLayout)]() mutable {
-                this->grc    = std::move(newGrc);
-                this->layout = std::move(newLayout);
-            });
-        } else {
-            EventLoop::instance().executeLater([] { components::Notification::warning("Error reading flowgraph from the service reply"); });
-        }
-    };
-    restClient->request(command);
-}
-
-void Dashboard::Service::emplaceBlock(std::string type, std::string params) {
-    gr::Message message;
-    message.cmd      = gr::message::Command::Set;
-    message.endpoint = gr::scheduler::property::kEmplaceBlock;
-    message.data     = gr::property_map{
-            {"type", std::move(type)},        //
-            {"parameters", std::move(params)} //
-    };
-
-    opendigitizer::flowgraph::SerialisedFlowgraphMessage serialisedMessage{opendigitizer::gnuradio::serialiseMessage(message)};
-
-    opencmw::client::Command command;
-    command.command = opencmw::mdp::Command::Set;
-
-    opencmw::serialise<opencmw::Json>(command.data, serialisedMessage);
-
-    command.topic    = opencmw::URI<>(uri);
-    command.callback = [](const opencmw::mdp::Message& rep) {
-        if (!rep.error.empty()) {
-            EventLoop::instance().executeLater([error = rep.error] { components::Notification::warning(error); });
-        }
-    };
-    restClient->request(command);
 }
 
 std::string Dashboard::resolveChartTypeName(std::string_view chartTypeName) const {
@@ -972,7 +765,7 @@ std::string Dashboard::resolveChartTypeName(std::string_view chartTypeName) cons
             return registeredType;
         }
     }
-    return std::string(kDefaultChartType);
+    return std::string(gr::meta::type_name<XYChart>());
 }
 
 std::shared_ptr<gr::BlockModel> Dashboard::emplaceChartBlock(gr::Graph& graph, std::string_view chartTypeName, const std::string& chartName, const gr::property_map& chartParameters) {
@@ -984,45 +777,15 @@ std::shared_ptr<gr::BlockModel> Dashboard::emplaceChartBlock(gr::Graph& graph, s
     return blockModel ? std::move(*blockModel) : nullptr;
 }
 
-void Dashboard::Service::execute() {
-    opencmw::client::Command command;
-    command.command = opencmw::mdp::Command::Set;
-
-    FlowgraphMessage request;
-    request.flowgraph = this->grc;
-    request.layout    = this->layout;
-    opencmw::serialise<opencmw::Json>(command.data, request);
-
-    command.topic    = opencmw::URI<>(uri);
-    command.callback = [](const opencmw::mdp::Message& rep) {
-        if (!rep.error.empty()) {
-            EventLoop::instance().executeLater([error = rep.error] { components::Notification::warning(error); });
-        }
-    };
-    restClient->request(command);
-}
-
-void Dashboard::saveRemoteServiceFlowgraph(Service* s) {
-    // TODO: Port loading and saving flowgraph layouts
-    std::stringstream stream;
-
-    opencmw::client::Command command;
-    command.command = opencmw::mdp::Command::Set;
-    command.topic   = opencmw::URI<>(s->uri);
-
-    FlowgraphMessage msg;
-    msg.flowgraph = std::move(stream).str();
-    opencmw::serialise<opencmw::Json>(command.data, msg);
-    s->restClient->request(command);
-}
-
-void DashboardDescription::loadAndThen(std::shared_ptr<opencmw::client::RestClient> client, const std::shared_ptr<DashboardStorageInfo>& storageInfo, const std::string& name, const std::function<void(std::shared_ptr<const DashboardDescription>&&)>& cb) {
+void DashboardDescription::loadAndThen(std::shared_ptr<opencmw::client::RestClient> client, const std::shared_ptr<DashboardStorageInfo>& storageInfo, const std::string& name, const std::function<void(std::shared_ptr<DashboardDescription>&&)>& cb) {
     fetch(
-        client, storageInfo, name, {What::Header},
-        [cb, name, storageInfo](std::array<std::string, 1>&& desc) {
-            const auto yaml = gr::pmt::yaml::deserialize(desc[0]);
+        client, storageInfo, name, What::Header,
+        [cb, name, storageInfo](std::string&& desc) {
+            const auto yaml = gr::pmt::yaml::deserialize(desc);
             if (!yaml) {
-                throw gr::exception(std::format("Could not parse yaml for DashboardDescription: {}:{}\n{}", yaml.error().message, yaml.error().line, desc));
+                components::Notification::warning(std::format("Could not parse yaml for DashboardDescription: {}:{}\n{}", yaml.error().message, yaml.error().line, desc));
+                cb({});
+                return;
             }
             const gr::property_map& rootMap     = yaml.value();
             const auto              valueForKey = [&rootMap](std::string_view key) { return rootMap.find_value(key).value_or(gr::pmt::Value{}); };
@@ -1057,17 +820,17 @@ void DashboardDescription::loadAndThen(std::shared_ptr<opencmw::client::RestClie
 
             auto lastUsed = rootMap.contains("lastUsed") && valueForKey("lastUsed").is_string() ? getDate(valueForKey("lastUsed").value_or(std::string())) : std::nullopt;
 
-            auto dashboardDescription          = std::make_shared<DashboardDescription>(PrivateTag{}, std::filesystem::path(name).stem().native(), storageInfo, name, isFavorite, lastUsed);
-            dashboardDescription->tags         = readStringList(rootMap, "tags");
-            dashboardDescription->keyValueTags = readStringMap(rootMap, "keyValueTags");
-            cb(std::move(dashboardDescription));
+            cb(std::make_shared<DashboardDescription>(DashboardDescription{.name = std::filesystem::path(name).stem().native(), .storageInfo = storageInfo, .filename = name, .isFavorite = isFavorite, .lastUsed = lastUsed, .tags = readStringList(rootMap, "tags"), .keyValueTags = readStringMap(rootMap, "keyValueTags")}));
         },
         [cb]() { cb({}); });
 }
 
-void DashboardDescription::loadFlowgraphAndThen(std::shared_ptr<opencmw::client::RestClient> client, const std::shared_ptr<DashboardStorageInfo>& storageInfo, const std::string& filename, std::function<void(std::string&&)>&& cb, std::function<void()>&& errCb) {
-    fetch(std::move(client), storageInfo, filename, {What::Flowgraph}, [callback = std::move(cb)](std::array<std::string, 1>&& data) mutable { callback(std::move(data[0])); }, std::move(errCb));
-}
+void DashboardDescription::loadFlowgraphAndThen(std::shared_ptr<opencmw::client::RestClient> client, const std::shared_ptr<DashboardStorageInfo>& storageInfo, const std::string& filename, std::function<void(std::string&&)>&& cb, std::function<void()>&& errCb) { fetch(std::move(client), storageInfo, filename, What::Flowgraph, std::move(cb), std::move(errCb)); }
 
-std::shared_ptr<const DashboardDescription> DashboardDescription::createEmpty(const std::string& name) { return std::make_shared<DashboardDescription>(PrivateTag{}, name, DashboardStorageInfo::memoryDashboardStorage(), std::string{}, false, std::nullopt); }
+std::shared_ptr<DashboardDescription> DashboardDescription::createEmpty(const std::string& name) {
+    auto description         = std::make_shared<DashboardDescription>();
+    description->name        = name;
+    description->storageInfo = DashboardStorageInfo::memoryDashboardStorage();
+    return description;
+}
 } // namespace DigitizerUi

@@ -55,13 +55,6 @@
 #include <gnuradio-4.0/sdr/RTL2832Source.hpp>
 #endif
 
-#include "blocks/Arithmetic.hpp"
-#include "blocks/ImPlotSink.hpp"
-#include "blocks/RemoteSource.hpp"
-#include "blocks/StridedWindow.hpp"
-#include "blocks/TagToSample.hpp"
-#include "blocks/TestSpectrumGenerator.hpp"
-
 #if !defined(__EMSCRIPTEN__) || defined(OD_WASM_STATIC_BLOCKLIBS)
 #include "blocks/ImControlRTL2832Connect.hpp"
 #include "charts/RDSView.hpp"
@@ -77,70 +70,12 @@ void registerDefaultThreadPool() {
     Manager::instance().replacePool(std::string(kDefaultCpuPoolId), std::make_shared<ThreadPoolWrapper>(std::make_unique<BasicThreadPool>(std::string(kDefaultCpuPoolId), TaskType::CPU_BOUND, 1U, 1U), "CPU"));
 }
 
-// Process SDL events and mark frame dirty on relevant input
 static bool processEventsWithPacer(DigitizerUi::FramePacer& pacer) {
-    SDL_Event event;
-    bool      hasInputEvent = false;
-
-    while (SDL_PollEvent(&event)) {
-        ImGui_ImplSDL3_ProcessEvent(&event);
-
-        if (imgui_helper::isWindowEventForOtherWindow(event, imgui_helper::g_Window)) {
-            continue;
-        }
-
-        switch (event.type) {
-        case SDL_EVENT_QUIT:
-        case SDL_EVENT_WINDOW_CLOSE_REQUESTED: return false;
-
-        case SDL_EVENT_WINDOW_RESTORED:
-            DigitizerUi::LookAndFeel::mutableInstance().windowMode = WindowMode::RESTORED;
-            hasInputEvent                                          = true;
-            break;
-        case SDL_EVENT_WINDOW_MINIMIZED: DigitizerUi::LookAndFeel::mutableInstance().windowMode = WindowMode::MINIMISED; break;
-        case SDL_EVENT_WINDOW_MAXIMIZED:
-            DigitizerUi::LookAndFeel::mutableInstance().windowMode = WindowMode::MAXIMISED;
-            hasInputEvent                                          = true;
-            break;
-        case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
-        case SDL_EVENT_WINDOW_RESIZED: {
-            const int width            = event.window.data1;
-            const int height           = event.window.data2;
-            ImGui::GetIO().DisplaySize = ImVec2(float(width), float(height));
-            glViewport(0, 0, width, height);
-            ImGui::SetNextWindowPos(ImVec2(0, 0));
-            ImGui::SetNextWindowSize(ImVec2(float(width), float(height)));
-            hasInputEvent = true;
-            break;
-        }
-
-        // Input events that should trigger a frame
-        case SDL_EVENT_KEY_DOWN:
-        case SDL_EVENT_KEY_UP:
-        case SDL_EVENT_TEXT_INPUT:
-        case SDL_EVENT_MOUSE_MOTION:
-        case SDL_EVENT_MOUSE_BUTTON_DOWN:
-        case SDL_EVENT_MOUSE_BUTTON_UP:
-        case SDL_EVENT_MOUSE_WHEEL:
-        case SDL_EVENT_FINGER_DOWN:
-        case SDL_EVENT_FINGER_UP:
-        case SDL_EVENT_FINGER_MOTION: hasInputEvent = true; break;
-
-        default: break;
-        }
-
-        DigitizerUi::TouchHandler<>::processSDLEvent(event);
-    }
-
-    // Fire application callbacks (may also request frames)
-    DigitizerUi::EventLoop::instance().fireCallbacks();
-    DigitizerUi::TouchHandler<>::updateGestures();
-
-    if (hasInputEvent) {
+    const auto [running, hadInput] = imgui_helper::processEvents();
+    if (running && hadInput) {
         pacer.requestFrame();
     }
-
-    return true;
+    return running;
 }
 
 // Render a single frame (no event processing)
@@ -159,10 +94,10 @@ static void renderFrameOnly(App* app, gr::profiling::PeriodicTimer& tim) {
     tim.snapshot("renderFrame");
     tim.snapshot("total", gr::profiling::kBegin);
 
-    const auto  now                                      = std::chrono::high_resolution_clock::now();
-    static auto lastFrame                                = now;
-    DigitizerUi::LookAndFeel::mutableInstance().execTime = std::chrono::duration_cast<std::chrono::milliseconds>(now - lastFrame);
-    lastFrame                                            = now;
+    const auto  now                 = std::chrono::high_resolution_clock::now();
+    static auto lastFrame           = now;
+    DigitizerUi::gAppState.execTime = std::chrono::duration_cast<std::chrono::milliseconds>(now - lastFrame);
+    lastFrame                       = now;
 }
 
 #ifdef __EMSCRIPTEN__
@@ -170,11 +105,11 @@ static void renderFrameOnly(App* app, gr::profiling::PeriodicTimer& tim) {
 #include <emscripten/html5.h>
 
 // Track visibility for power saving
-static bool g_isVisible = true;
+static bool gIsVisible = true;
 
 static EM_BOOL emVisibilityCallback([[maybe_unused]] int eventType, const EmscriptenVisibilityChangeEvent* event, void* /*userData*/) {
-    g_isVisible = !event->hidden;
-    if (g_isVisible) {
+    gIsVisible = !event->hidden;
+    if (gIsVisible) {
         // Waking up from hidden: request a frame
         DigitizerUi::globalFramePacer().requestFrame();
     }
@@ -203,7 +138,7 @@ static void emscriptenMainLoop(void* arg) {
     // Skip rendering if:
     // 1. Tab is hidden (browser throttles to 1 Hz anyway, but we can skip entirely)
     // 2. FramePacer says no render needed
-    if (!g_isVisible && !pacer.shouldRender()) {
+    if (!gIsVisible && !pacer.shouldRender()) {
         return; // Skip this frame entirely
     }
 
@@ -258,7 +193,7 @@ int main(int argc, char** argv) {
     gr::blocklib::initGrAnalogBlocks(*registry);
     gr::blocklib::initGrAudioBlocks(*registry);
     gr::blocklib::initGrDigitalBlocks(*registry);
-    gr::registerBlock<opendigitizer::charts::RDSView>(*registry);
+    opendigitizer::charts::registerChart<opendigitizer::charts::RDSView>(*registry);
     gr::registerBlock<DigitizerUi::ImControlRTL2832Connect>(*registry);
     gr::registerBlock<gr::blocks::sdr::RTL2832Source<std::complex<float>>, "">(*registry);
 #endif
@@ -271,9 +206,6 @@ int main(int argc, char** argv) {
     gr::registerBlock<gr::filter::BasicFilterProto<float, gr::Resampling<100UZ, 1UZ, false>>, "">(*registry);
     gr::registerBlock<gr::filter::BasicFilterProto<float, gr::Resampling<40UZ, 1UZ, false>>, "">(*registry);
     gr::registerBlock<gr::filter::BasicFilterProto<float, gr::Resampling<1UZ, 1UZ, false>>, "gr::filter::BasicFilterProto<float32, gr::Resampling<1, 1, false>>">(*registry);
-
-    // strided windowing in front of the FFT (the gr4 FFT has no Stride<>); see PulsedPowerDemo.grc
-    gr::registerBlock<opendigitizer::StridedWindow<float>, "">(*registry);
 
 #ifndef __EMSCRIPTEN__
     gr::registerBlock<fair::picoscope::Picoscope<float, fair::picoscope::Picoscope4000a>, "">(*registry);
@@ -290,11 +222,6 @@ int main(int argc, char** argv) {
     gr::globalSchedulerRegistry().insert<gr::scheduler::DepthFirst<gr::scheduler::ExecutionPolicy::multiThreaded>>();
 
     static App app;
-#ifdef __EMSCRIPTEN__
-    app.executable = "index.html";
-#else
-    app.executable = argv[0];
-#endif
 
     app.init(argc, argv);
     app.statusBarView.versionDetails = std::format("{}\ngrc: ?", kOpendigitizerVersion);

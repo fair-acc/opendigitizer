@@ -20,30 +20,12 @@ namespace DigitizerUi {
 
 enum class DockingLayoutType { Row, Column, Grid, Free };
 
-inline constexpr const char* dockingLayoutName(DockingLayoutType type) {
-    switch (type) {
-    case DockingLayoutType::Row: return "Row";
-    case DockingLayoutType::Column: return "Column";
-    case DockingLayoutType::Grid: return "Grid";
-    case DockingLayoutType::Free: return "Free";
-    }
-
-    return "unknown";
-}
-
 struct LayoutRect { // fractions of the layout area, in [0, 1]
     float x = 0.f;
     float y = 0.f;
     float w = 0.f;
     float h = 0.f;
 };
-
-struct GridShape {
-    std::size_t columns = 1UZ;
-    std::size_t rows    = 1UZ;
-};
-
-[[nodiscard]] GridShape gridShape(DockingLayoutType type, std::size_t windowCount) noexcept;
 
 [[nodiscard]] std::vector<LayoutRect> autoLayoutRects(DockingLayoutType type, std::size_t windowCount);
 
@@ -128,14 +110,7 @@ struct DockSpace::Window {
     /// This is only used at startup, loaded from "rect" field of plots in dashboard yaml
     std::optional<FreeGeometry> freeLayoutPosition;
 
-    std::optional<ImVec2> windowMinSizeOverride;
-    std::optional<ImVec2> windowMaxSize;
-    bool                  wantsHorizontalScrollbar = false;
-
-    /// If a window is floating and this is true, then relayout() will see it
-    /// and consume it, docking the floating window at the bottom of the
-    /// dockspace.
-    bool wantsDockAtBottom = false;
+    bool wantsHorizontalScrollbar = false;
 };
 
 } // namespace DigitizerUi

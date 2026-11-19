@@ -37,10 +37,6 @@
 #include <gnuradio-4.0/CircularBuffer.hpp>
 #include <gnuradio-4.0/Message.hpp>
 
-#ifdef __EMSCRIPTEN__
-#include <emscripten.h>
-#endif
-
 #include "common/AppDefinitions.hpp"
 
 namespace DigitizerUi {
@@ -50,8 +46,6 @@ struct SDLState;
 class App {
 public:
     static constexpr std::string_view kBuiltinSamplesSource = "example://builtin-samples";
-
-    std::string executable;
 
     std::unique_ptr<Dashboard>                   dashboard;
     std::shared_ptr<opencmw::client::RestClient> restClient = std::make_unique<opencmw::client::RestClient>(opencmw::client::VerifyServerCertificates(Digitizer::Settings::instance().checkCertificates));
@@ -73,9 +67,9 @@ public:
     // window to show the "Loading..." status, and the
     // next step to load the dashboard will hapen in the
     // next frame.
-    bool                                        prepareForANewDashboardToLoad = false;
-    std::shared_ptr<const DashboardDescription> dashboardToLoad;
-    std::optional<std::string>                  deferredDashboardUrl;
+    bool                                  prepareForANewDashboardToLoad = false;
+    std::shared_ptr<DashboardDescription> dashboardToLoad;
+    std::optional<std::string>            deferredDashboardUrl;
 
     components::AppHeader header;
 
@@ -85,20 +79,9 @@ public:
         setStyle(Digitizer::Settings::instance().darkMode ? LookAndFeel::Style::Dark : LookAndFeel::Style::Light);
     }
 
-    void openNewWindow() {
-#ifdef __EMSCRIPTEN__
-        std::string script = std::format("window.open('{}').focus()", executable);
-        emscripten_run_script(script.c_str());
-#else
-        if (fork() == 0) {
-            execl(executable.c_str(), executable.c_str(), nullptr);
-        }
-#endif
-    }
-
     void loadEmptyDashboard() { loadDashboard(DashboardDescription::createEmpty("New dashboard")); }
 
-    void loadDashboard(const std::shared_ptr<const DashboardDescription>& desc) {
+    void loadDashboard(const std::shared_ptr<DashboardDescription>& desc) {
         auto startedAt = std::chrono::system_clock::now();
 
         if (dashboard) {
@@ -123,7 +106,7 @@ public:
         }
 
         flowgraphPage.setDashboard(nullptr);
-        dashboard = Dashboard::create(restClient, desc);
+        dashboard = std::make_unique<Dashboard>(restClient, desc);
         dashboard->load();
         dashboard->requestClose = [this](Dashboard*) { closeDashboard(); };
 
@@ -143,7 +126,7 @@ public:
         fs::path path(url);
 
         auto storageInfo = DashboardStorageInfo::get(path.parent_path().native());
-        DashboardDescription::loadAndThen(restClient, storageInfo, path.filename(), [this, storageInfo](std::shared_ptr<const DashboardDescription>&& desc) {
+        DashboardDescription::loadAndThen(restClient, storageInfo, path.filename(), [this, storageInfo](std::shared_ptr<DashboardDescription>&& desc) {
             if (desc) {
                 loadDashboard(desc);
                 openDashboardPage.addDashboard(storageInfo->path);
@@ -216,13 +199,13 @@ public:
         auto resolveDefaultDashboardPath = [&settings]() -> std::string {
             // TODO: add subscription to remote dashboard worker if needed
             std::string dashboardPath = settings.defaultDashboard;
-            if (!dashboardPath.starts_with("http://") and !dashboardPath.starts_with("https://")) { // if the default dashboard does not contain a host, use the default
-                std::string basePath = settings.basePath.empty() ? "" : settings.basePath;          // needed in case the dashboard page is loaded via a redirect
+            if (!isRemotePath(dashboardPath)) {                                            // if the default dashboard does not contain a host, use the default
+                std::string basePath = settings.basePath.empty() ? "" : settings.basePath; // needed in case the dashboard page is loaded via a redirect
                 if (!basePath.empty() && !basePath.ends_with("/")) {
                     basePath += "/";
                 }
                 for (const std::string& bindAddress : settings.bindAddresses) {
-                    if (bindAddress.starts_with("https://") || bindAddress.starts_with("http://")) {
+                    if (isRemotePath(bindAddress)) {
                         const auto bindUri = opencmw::URI<>(std::string(bindAddress));
                         dashboardPath      = std::format("{}://{}:{}/{}dashboards/{}", bindUri.scheme().value(), settings.hostname, bindUri.port().value(), basePath, dashboardPath);
                         break;
@@ -331,7 +314,7 @@ public:
         }
 
         if (dashboard != nullptr) {
-            dashboard->handleMessages();
+            dashboard->session.handleMessages();
             if (loadedDashboard != dashboard.get() && dashboard->isInitialised) {
                 // Are we in the process of changing the dashboard?
                 loadedDashboard = dashboard.get();

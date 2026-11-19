@@ -27,12 +27,12 @@
 #include <print>
 
 namespace imgui_helper {
-inline static SDL_Window*   g_Window               = nullptr;
-inline static SDL_GLContext g_GLContext            = nullptr;
-inline static bool          g_ImGuiSDL3Initialised = false;
+inline SDL_Window*   gWindow               = nullptr;
+inline SDL_GLContext gGLContext            = nullptr;
+inline bool          gImGuiSDL3Initialised = false;
 
-inline bool requestGLContext(std::string_view windowTitle, ImVec2 windowSize, int major, int minor, std::string& glslVersionOut, SDL_WindowFlags extraWindowFlags = 0) {
-    std::println("[Main] Requesting OpenGL context {}.{}", major, minor);
+inline bool requestGLContext(std::string_view windowTitle, ImVec2 windowSize, std::string& glslVersionOut, SDL_WindowFlags extraWindowFlags = 0) {
+    std::println("[Main] Requesting OpenGL context 3.3");
 
 #ifdef __EMSCRIPTEN__
     // WebGL2 via GLES 3.0 + GLSL ES 300
@@ -52,8 +52,8 @@ inline bool requestGLContext(std::string_view windowTitle, ImVec2 windowSize, in
 #else
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, 0);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, major);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, minor);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
     glslVersionOut = "#version 330 core";
 #endif
 #endif
@@ -67,21 +67,21 @@ inline bool requestGLContext(std::string_view windowTitle, ImVec2 windowSize, in
 #else
     constexpr SDL_WindowFlags windowFlags = SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY;
 #endif
-    if (g_Window != nullptr) {
-        SDL_DestroyWindow(g_Window);
-        g_Window = nullptr;
+    if (gWindow != nullptr) {
+        SDL_DestroyWindow(gWindow);
+        gWindow = nullptr;
     }
-    g_Window = SDL_CreateWindow(windowTitle.data(), static_cast<int>(windowSize.x), static_cast<int>(windowSize.y), windowFlags | extraWindowFlags);
-    if (!g_Window) {
+    gWindow = SDL_CreateWindow(windowTitle.data(), static_cast<int>(windowSize.x), static_cast<int>(windowSize.y), windowFlags | extraWindowFlags);
+    if (!gWindow) {
         std::println(stderr, "[Main] SDL_CreateWindow failed: '{}'", SDL_GetError());
         return false;
     }
 
-    g_GLContext = SDL_GL_CreateContext(g_Window);
-    if (!g_GLContext) {
-        std::println(stderr, "[Main] SDL_GL_CreateContext({}.{}) failed: '{}'", major, minor, SDL_GetError());
-        SDL_DestroyWindow(g_Window);
-        g_Window = nullptr;
+    gGLContext = SDL_GL_CreateContext(gWindow);
+    if (!gGLContext) {
+        std::println(stderr, "[Main] SDL_GL_CreateContext(3.3) failed: '{}'", SDL_GetError());
+        SDL_DestroyWindow(gWindow);
+        gWindow = nullptr;
         return false;
     }
     std::println("[Main] GL_VERSION:   {}", reinterpret_cast<const char*>(glGetString(GL_VERSION)));
@@ -98,7 +98,7 @@ inline bool initSDL(std::string& glslVersion, std::string_view windowTitle = "Op
         return false;
     }
 
-    if (!requestGLContext(windowTitle, windowSize, 3, 3, glslVersion, extraWindowFlags) && !requestGLContext(windowTitle, windowSize, 2, 0, glslVersion, extraWindowFlags)) {
+    if (!requestGLContext(windowTitle, windowSize, glslVersion, extraWindowFlags)) {
         std::println("[Main] Could not create any GL context!");
         SDL_Quit();
         return false;
@@ -109,7 +109,7 @@ inline bool initSDL(std::string& glslVersion, std::string_view windowTitle = "Op
 }
 
 inline bool initImGui(const std::string& glslVersion) {
-    if (g_ImGuiSDL3Initialised) {
+    if (gImGuiSDL3Initialised) {
         return true; // already initialised
     }
     IMGUI_CHECKVERSION();
@@ -118,7 +118,7 @@ inline bool initImGui(const std::string& glslVersion) {
     ImPlot::CreateContext();
     ImPlot3D::CreateContext();
 
-    ImGui_ImplSDL3_InitForOpenGL(g_Window, g_GLContext);
+    ImGui_ImplSDL3_InitForOpenGL(gWindow, gGLContext);
 
     ImGuiIO& io                  = ImGui::GetIO();
     ImPlot::GetInputMap().Select = ImGuiMouseButton_Left;
@@ -133,13 +133,13 @@ inline bool initImGui(const std::string& glslVersion) {
     io.ConfigWindowsMoveFromTitleBarOnly = true;
 
     if (bool ret = ImGui_ImplOpenGL3_Init(glslVersion.c_str()); !ret) {
-        SDL_GL_DestroyContext(g_GLContext);
-        SDL_DestroyWindow(g_Window);
+        SDL_GL_DestroyContext(gGLContext);
+        SDL_DestroyWindow(gWindow);
         SDL_Quit();
         return false;
     }
     ImXkcd::Init();
-    g_ImGuiSDL3Initialised = true;
+    gImGuiSDL3Initialised = true;
     return true;
 }
 
@@ -179,20 +179,32 @@ inline bool isWindowEventForOtherWindow(const SDL_Event& e, SDL_Window* w) {
     }
 }
 
-[[maybe_unused]] inline bool processEvents() {
-    SDL_Event event;
+struct EventPumpResult {
+    bool running  = true;
+    bool hadInput = false;
+};
+
+[[nodiscard]] inline EventPumpResult processEvents() {
+    EventPumpResult result;
+    SDL_Event       event;
     while (SDL_PollEvent(&event)) {
         ImGui_ImplSDL3_ProcessEvent(&event);
-        if (isWindowEventForOtherWindow(event, imgui_helper::g_Window)) {
+        if (isWindowEventForOtherWindow(event, gWindow)) {
             continue;
         }
 
         switch (event.type) {
         case SDL_EVENT_QUIT:
-        case SDL_EVENT_WINDOW_CLOSE_REQUESTED: return false; break;
-        case SDL_EVENT_WINDOW_RESTORED: DigitizerUi::LookAndFeel::mutableInstance().windowMode = WindowMode::RESTORED; break;
-        case SDL_EVENT_WINDOW_MINIMIZED: DigitizerUi::LookAndFeel::mutableInstance().windowMode = WindowMode::MINIMISED; break;
-        case SDL_EVENT_WINDOW_MAXIMIZED: DigitizerUi::LookAndFeel::mutableInstance().windowMode = WindowMode::MAXIMISED; break;
+        case SDL_EVENT_WINDOW_CLOSE_REQUESTED: result.running = false; return result;
+        case SDL_EVENT_WINDOW_RESTORED:
+            DigitizerUi::gAppState.windowMode = WindowMode::RESTORED;
+            result.hadInput                   = true;
+            break;
+        case SDL_EVENT_WINDOW_MINIMIZED: DigitizerUi::gAppState.windowMode = WindowMode::MINIMISED; break;
+        case SDL_EVENT_WINDOW_MAXIMIZED:
+            DigitizerUi::gAppState.windowMode = WindowMode::MAXIMISED;
+            result.hadInput                   = true;
+            break;
         case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
         case SDL_EVENT_WINDOW_RESIZED: { // SDL3 recommends this one for logical size changes
             const int width            = event.window.data1;
@@ -201,8 +213,19 @@ inline bool isWindowEventForOtherWindow(const SDL_Event& e, SDL_Window* w) {
             glViewport(0, 0, width, height);
             ImGui::SetNextWindowPos(ImVec2(0, 0));
             ImGui::SetNextWindowSize(ImVec2(float(width), float(height)));
+            result.hadInput = true;
             break;
         }
+        case SDL_EVENT_KEY_DOWN:
+        case SDL_EVENT_KEY_UP:
+        case SDL_EVENT_TEXT_INPUT:
+        case SDL_EVENT_MOUSE_MOTION:
+        case SDL_EVENT_MOUSE_BUTTON_DOWN:
+        case SDL_EVENT_MOUSE_BUTTON_UP:
+        case SDL_EVENT_MOUSE_WHEEL:
+        case SDL_EVENT_FINGER_DOWN:
+        case SDL_EVENT_FINGER_UP:
+        case SDL_EVENT_FINGER_MOTION: result.hadInput = true; break;
         default: break;
         }
         DigitizerUi::TouchHandler<>::processSDLEvent(event);
@@ -210,8 +233,7 @@ inline bool isWindowEventForOtherWindow(const SDL_Event& e, SDL_Window* w) {
 
     DigitizerUi::EventLoop::instance().fireCallbacks();
     DigitizerUi::TouchHandler<>::updateGestures();
-
-    return true;
+    return result;
 }
 
 [[maybe_unused]] inline bool newFrame() {
@@ -223,17 +245,17 @@ inline bool isWindowEventForOtherWindow(const SDL_Event& e, SDL_Window* w) {
     ImGui::SetNextWindowPos({0, 0});
     int  width  = -1;
     int  height = -1;
-    bool ret    = SDL_GetWindowSize(g_Window, &width, &height);
+    bool ret    = SDL_GetWindowSize(gWindow, &width, &height);
     ImGui::SetNextWindowSize(ImVec2{static_cast<float>(width), static_cast<float>(height)});
     return ret;
 }
 
 [[maybe_unused]] inline bool renderFrame(const std::function<void()>& beforeSwap = {}) {
     ImGui::Render();
-    if (DigitizerUi::LookAndFeel::instance().prototypeMode) {
+    if (DigitizerUi::gAppState.prototypeMode) {
         ImXkcd::Apply(ImGui::GetDrawData());
     }
-    if (!SDL_GL_MakeCurrent(g_Window, g_GLContext)) {
+    if (!SDL_GL_MakeCurrent(gWindow, gGLContext)) {
         std::println("[Main] SDL_GL_MakeCurrent failed: '{}'", SDL_GetError());
         return false;
     }
@@ -248,16 +270,16 @@ inline bool isWindowEventForOtherWindow(const SDL_Event& e, SDL_Window* w) {
     if (beforeSwap) {
         beforeSwap();
     }
-    SDL_GL_SwapWindow(g_Window);
-    setWindowMode(g_Window, DigitizerUi::LookAndFeel::instance().windowMode);
+    SDL_GL_SwapWindow(gWindow);
+    setWindowMode(gWindow, DigitizerUi::gAppState.windowMode);
     return true;
 }
 
 inline bool teardownSDL() {
-    if (g_Window == nullptr) {
+    if (gWindow == nullptr) {
         return false;
     }
-    if (g_GLContext == nullptr) {
+    if (gGLContext == nullptr) {
         return false;
     }
     ImXkcd::Shutdown();
@@ -265,14 +287,14 @@ inline bool teardownSDL() {
     ImGui_ImplSDL3_Shutdown();
     ImPlot3D::DestroyContext();
     ImGui::DestroyContext();
-    if (bool state = SDL_GL_DestroyContext(g_GLContext); !state) {
+    if (bool state = SDL_GL_DestroyContext(gGLContext); !state) {
         std::println("[Main] teardownSDL failed: '{}'", SDL_GetError());
         return false;
     }
-    SDL_DestroyWindow(g_Window);
+    SDL_DestroyWindow(gWindow);
     SDL_Quit();
-    g_Window    = nullptr;
-    g_GLContext = nullptr;
+    gWindow    = nullptr;
+    gGLContext = nullptr;
     return true;
 }
 } // namespace imgui_helper

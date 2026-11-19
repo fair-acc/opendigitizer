@@ -11,11 +11,17 @@
 #include "MapUtils.hpp"
 #include "OverlayButton.hpp"
 
-#include <scope_exit.hpp>
+#include <gnuradio-4.0/meta/utils.hpp>
 
 #include <imgui_node_editor.h>
 
 namespace {
+
+struct UiControlConnectionNotchResult {
+    float labelHeight  = 0.F;
+    bool  labelClicked = false;
+    bool  notchClicked = false;
+};
 
 [[nodiscard]] ImVec2 uiControlConnectionLabelSize(std::string_view label) {
     using namespace DigitizerUi;
@@ -73,7 +79,7 @@ void drawUnlinkIcon(ImDrawList* drawList, ImVec2 center, float iconFontSize, boo
 /// from that to whatever text is inside the block at the current cursor position.
 /// This does not move the cursor. Pass 0 to @param rowHeight to use the height of the drawn text instead.
 /// Pass @param interactionId to make connection interactable for the Unlink and Jump to Control actions
-DigitizerUi::components::UiControlConnectionNotchResult drawUiControlConnectionNotch(std::string_view outsideLabel, ImVec2 blockStartCursorPosition, float rowHeight, ImU32 color, const char* interactionId) {
+UiControlConnectionNotchResult drawUiControlConnectionNotch(std::string_view outsideLabel, ImVec2 blockStartCursorPosition, float rowHeight, ImU32 color, const char* interactionId) {
     using namespace DigitizerUi;
     using namespace DigitizerUi::components;
 
@@ -167,6 +173,50 @@ bool BlockDragConnectInteraction::update(std::span<UiGraphBlock* const> drawnBlo
     }
     _cancelled = _releasedOnUniqueName == _sourceUniqueName;
     return true;
+}
+
+ScrollableListSelectionPopupResult ScrollableListSelectionPopup::draw(const std::function<bool(std::size_t)>& isItemEnabled) {
+    if (!std::exchange(_opened, true)) {
+        ImGui::OpenPopup(_name.c_str());
+    }
+    _enabledItems.clear();
+    std::optional<std::size_t> hoveredItem;
+    bool                       confirmed = false;
+
+    if (auto popup = IMW::Popup(_name.c_str(), 0)) {
+        if (ImGui::IsKeyPressed(ImGuiKey_Escape)) {
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::TextUnformatted(_name.c_str());
+        ImGui::Separator();
+        {
+            IMW::Child list("##items", ImVec2(280.F, 180.F), true, 0);
+            for (std::size_t index = 0UZ; index < _items.size(); ++index) {
+                IMW::Disabled incompatible(isItemEnabled && !isItemEnabled(index));
+                if (_items[index].draw()) {
+                    _enabledItems.push_back(index);
+                }
+                if (ImGui::IsItemHovered()) {
+                    hoveredItem = index;
+                }
+            }
+            if (_items.empty() && !_emptyListMessage.empty()) {
+                IMW::StyleColor textColor(ImGuiCol_Text, LookAndFeel::instance().palette().errorColor);
+                ImGui::TextWrapped("%s", _emptyListMessage.c_str());
+            }
+        }
+
+        const float doneWidth = 100.F;
+        ImGui::SetCursorPosX(ImGui::GetCursorPosX() + std::max(0.F, (ImGui::GetContentRegionAvail().x - doneWidth) / 2.F));
+        if (DigitizerUi::TextButton("Done", ImVec2(doneWidth, 0.F))) {
+            confirmed = true;
+            ImGui::CloseCurrentPopup();
+        }
+    }
+
+    const SelectionPopupState unconfirmedState = ImGui::IsPopupOpen(_name.c_str()) ? SelectionPopupState::InProgress : SelectionPopupState::Cancelled;
+    const SelectionPopupState state            = confirmed ? SelectionPopupState::Confirmed : unconfirmedState;
+    return {.enabledItems = _enabledItems, .currentState = state, .hoveredItem = hoveredItem};
 }
 
 std::optional<std::string_view> UiControlMultiSelectPopup::hoveredProperty() const {
@@ -348,7 +398,7 @@ std::optional<ImVec2> drawUiControlTargetList(UiGraphModel& graphModel, const Ui
 
     std::size_t index = 0;
     for (const auto& entry : entries) {
-        Digitizer::utils::scope_exit increment = [&index] { ++index; };
+        gr::on_scope_exit increment = [&index] { ++index; };
 
         const std::string text      = std::format("{}:{}", entry.isGlob() ? "*" : entry.blockTarget, entry.propertyName);
         const ImVec2      dotCenter = calculateRowCenter(index);

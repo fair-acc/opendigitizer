@@ -61,7 +61,7 @@ void loadGrc(DigitizerUi::Dashboard& dashboard, const std::string& grc) {
 template<typename Condition>
 void waitUntil(DigitizerUi::Dashboard& dashboard, Condition&& condition) {
     while (!condition(dashboard.session.state())) {
-        dashboard.handleMessages();
+        dashboard.session.handleMessages();
         std::this_thread::yield();
     }
 }
@@ -77,7 +77,7 @@ void stopAndWait(DigitizerUi::Dashboard& dashboard) {
 
 } // namespace
 
-// tests run inside main(): the dashboard uses function-local statics (e.g. ColourManager) that are already destroyed
+// tests run inside main(): the dashboard uses function-local statics (e.g. SignalColours) that are already destroyed
 // when statically registered suites run at exit
 int main() {
     ImGui::CreateContext();
@@ -116,7 +116,7 @@ int main() {
         const auto recordsBefore = recordCount();
         const auto toastsBefore  = ImGui::notifications.size();
 
-        auto dashboard = DigitizerUi::Dashboard::create(restClient, DigitizerUi::DashboardDescription::createEmpty("invalid"));
+        auto dashboard = std::make_unique<DigitizerUi::Dashboard>(restClient, DigitizerUi::DashboardDescription::createEmpty("invalid"));
         loadGrc(*dashboard, "blocks: [ this is not a flowgraph");
 
         expect(recordCount() > recordsBefore) << "the load error is in the log history";
@@ -124,10 +124,10 @@ int main() {
     };
 
     "a saved dashboard lists its flowgraph's plot sinks and keeps the layout it is given"_test = [&] {
-        auto dashboard = DigitizerUi::Dashboard::create(restClient, DigitizerUi::DashboardDescription::createEmpty("serialise"));
+        auto dashboard = std::make_unique<DigitizerUi::Dashboard>(restClient, DigitizerUi::DashboardDescription::createEmpty("serialise"));
         loadGrc(*dashboard, grc);
         while (dashboard->session.graphModel.recursiveGatherPlotSinks().size() < 7UZ) {
-            dashboard->handleMessages();
+            dashboard->session.handleMessages();
             std::this_thread::yield();
         }
 
@@ -147,7 +147,7 @@ int main() {
         }
         expect(sourceNames == std::set<std::string>{"sinesSink", "sineSink1", "sineSink2", "fftSink", "DipoleCurrentSink", "IntensitySink", "spectrumSink"});
 
-        auto reloaded = DigitizerUi::Dashboard::create(restClient, DigitizerUi::DashboardDescription::createEmpty("reloaded"));
+        auto reloaded = std::make_unique<DigitizerUi::Dashboard>(restClient, DigitizerUi::DashboardDescription::createEmpty("reloaded"));
         loadGrc(*reloaded, gr::pmt::yaml::serialize(graph));
         expect(reloaded->layoutType == DigitizerUi::DockingLayoutType::Grid) << "the saved layout is what a reload applies";
         stopAndWait(*reloaded);
@@ -177,7 +177,7 @@ int main() {
         };
         const gr::property_map input = gr::pmt::yaml::deserialize(grc).value();
 
-        auto dashboard = DigitizerUi::Dashboard::create(restClient, DigitizerUi::DashboardDescription::createEmpty("roundTrip"));
+        auto dashboard = std::make_unique<DigitizerUi::Dashboard>(restClient, DigitizerUi::DashboardDescription::createEmpty("roundTrip"));
         loadGrc(*dashboard, grc);
         const std::size_t chartsInGraph = static_cast<std::size_t>(std::ranges::count_if(dashboard->session.graph().blocks(), [](const auto& block) { return DigitizerUi::isChartTypeName(block->typeName()); }));
         expect(eq(chartsInGraph, plots(input).size())) << "one chart block per plot of the .grc, in the scheduler's graph";
@@ -202,7 +202,7 @@ int main() {
     };
 
     "demo dashboard loads through opendigitizer::dashboard alone"_test = [&] {
-        auto dashboard = DigitizerUi::Dashboard::create(restClient, DigitizerUi::DashboardDescription::createEmpty("consumer"));
+        auto dashboard = std::make_unique<DigitizerUi::Dashboard>(restClient, DigitizerUi::DashboardDescription::createEmpty("consumer"));
         loadGrc(*dashboard, grc);
 
         expect(static_cast<bool>(dashboard->session)) << "scheduler created from the .grc";
@@ -233,14 +233,14 @@ dashboard:
       sources:
         - gridSink
 )";
-        auto                       dashboard         = DigitizerUi::Dashboard::create(restClient, DigitizerUi::DashboardDescription::createEmpty("grid"));
+        auto                       dashboard         = std::make_unique<DigitizerUi::Dashboard>(restClient, DigitizerUi::DashboardDescription::createEmpty("grid"));
         loadGrc(*dashboard, std::string(kGridWithoutRects));
         expect(dashboard->isInitialised.load()) << "loaded";
         expect(eq(dashboard->uiWindows.size(), 2UZ)) << "both plots placed by the grid";
     };
 
     "a stopped scheduler runs again after start()"_test = [&] {
-        auto dashboard = DigitizerUi::Dashboard::create(restClient, DigitizerUi::DashboardDescription::createEmpty("restart"));
+        auto dashboard = std::make_unique<DigitizerUi::Dashboard>(restClient, DigitizerUi::DashboardDescription::createEmpty("restart"));
         loadGrc(*dashboard, grc);
         stopAndWait(*dashboard);
 
@@ -249,7 +249,7 @@ dashboard:
     };
 
     "a dashboard loads again after its scheduler stopped"_test = [&] {
-        auto dashboard = DigitizerUi::Dashboard::create(restClient, DigitizerUi::DashboardDescription::createEmpty("reload"));
+        auto dashboard = std::make_unique<DigitizerUi::Dashboard>(restClient, DigitizerUi::DashboardDescription::createEmpty("reload"));
         loadGrc(*dashboard, grc);
         stopAndWait(*dashboard);
 

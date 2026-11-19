@@ -252,9 +252,9 @@ int main() {
     "XYChart creation via makeXYChart"_test = [] {
         auto chart = makeXYChart("TestChart");
 
-        expect(eq(chart->chartTypeName(), std::string_view("XYChart")));
-        expect(!chart->uniqueId().empty());
-        expect(chart->uniqueId().find("XYChart") != std::string_view::npos);
+        expect(eq(chart->kChartTypeName, std::string_view("XYChart")));
+        expect(!chart->unique_name.value().empty());
+        expect(chart->unique_name.value().find("XYChart") != std::string_view::npos);
         expect(eq(chart->signalSinkCount(), 0UZ));
     };
 
@@ -292,7 +292,7 @@ int main() {
     "Chart mixin via concrete types"_test = [] {
         auto xyChart = makeXYChart("MixinTest");
 
-        expect(eq(xyChart->chartTypeName(), std::string_view("XYChart")));
+        expect(eq(xyChart->kChartTypeName, std::string_view("XYChart")));
 
         auto sink = makeTestStreamingSink("mixin_sink");
         xyChart->addSignalSink(sink);
@@ -306,12 +306,12 @@ int main() {
         auto xyStorage = makeChartByType("XYChart", "TestXY");
         expect(std::holds_alternative<std::shared_ptr<XYChart>>(xyStorage));
         auto& xyChart = std::get<std::shared_ptr<XYChart>>(xyStorage);
-        expect(eq(xyChart->chartTypeName(), std::string_view("XYChart")));
+        expect(eq(xyChart->kChartTypeName, std::string_view("XYChart")));
 
         auto yyStorage = makeChartByType("YYChart", "TestYY");
         expect(std::holds_alternative<std::shared_ptr<YYChart>>(yyStorage));
         auto& yyChart = std::get<std::shared_ptr<YYChart>>(yyStorage);
-        expect(eq(yyChart->chartTypeName(), std::string_view("YYChart")));
+        expect(eq(yyChart->kChartTypeName, std::string_view("YYChart")));
 
         auto unknownStorage = makeChartByType("UnknownChart");
         expect(std::holds_alternative<std::monostate>(unknownStorage));
@@ -379,11 +379,11 @@ int main() {
 
         auto xyChart = makeXYChart();
         expect(xyChart != nullptr);
-        expect(eq(xyChart->chartTypeName(), std::string_view("XYChart")));
+        expect(eq(xyChart->kChartTypeName, std::string_view("XYChart")));
 
         auto yyChart = makeYYChart();
         expect(yyChart != nullptr);
-        expect(eq(yyChart->chartTypeName(), std::string_view("YYChart")));
+        expect(eq(yyChart->kChartTypeName, std::string_view("YYChart")));
     };
 
     "Minimal scientific values remain normalized without redundant exponents"_test = [] {
@@ -457,32 +457,12 @@ int main() {
         expect(eq(sink->bufferCapacity(), 50UZ));
     };
 
-    "PlotData can be used for rendering"_test = [] {
-        auto sink = makeTestStreamingSink("plot_data_test");
-
-        for (int i = 0; i < 50; ++i) {
-            sink->pushSample(static_cast<double>(i), static_cast<float>(i * 2));
-        }
-
-        auto pd = sink->plotData();
-        expect(!pd.empty());
-        expect(eq(pd.count, 50));
-
-        auto p0 = pd.getter(0, pd.user_data);
-        expect(std::abs(p0.x - 0.0) < 1e-9);
-        expect(std::abs(p0.y - 0.0) < 1e-9);
-
-        auto p25 = pd.getter(25, pd.user_data);
-        expect(std::abs(p25.x - 25.0) < 1e-9);
-        expect(std::abs(p25.y - 50.0) < 1e-9);
-    };
-
     "YYChart creation"_test = [] {
         auto chart = makeYYChart();
 
-        expect(eq(chart->chartTypeName(), std::string_view("YYChart")));
-        expect(!chart->uniqueId().empty());
-        expect(chart->uniqueId().find("YYChart") != std::string_view::npos);
+        expect(eq(chart->kChartTypeName, std::string_view("YYChart")));
+        expect(!chart->unique_name.value().empty());
+        expect(chart->unique_name.value().find("YYChart") != std::string_view::npos);
     };
 
     "YYChart with two sinks"_test = [] {
@@ -508,7 +488,7 @@ int main() {
     "YYChart mixin methods"_test = [] {
         auto yyChart = makeYYChart("YYMixinTest");
 
-        expect(eq(yyChart->chartTypeName(), std::string_view("YYChart")));
+        expect(eq(yyChart->kChartTypeName, std::string_view("YYChart")));
 
         auto sink = makeTestStreamingSink("yy_mixin_sink");
         yyChart->addSignalSink(sink);
@@ -737,39 +717,15 @@ int main() {
         expect(eq(overflowSinkIndices.size(), 1UZ)) << "4th distinct group should overflow";
     };
 
-    "getXRange boundaries"_test = [] {
-        auto sink = makeTestStreamingSink("range_test", 1000);
-
-        // empty sink
-        auto [emptyStart, emptyCount] = sink->getXRange(0.0, 1.0);
-        expect(eq(emptyStart, 0UZ));
-        expect(eq(emptyCount, 0UZ));
-
-        // push sorted samples
-        for (int i = 0; i < 10; ++i) {
-            sink->pushSample(static_cast<double>(i), static_cast<float>(i));
-        }
-
-        // tMin > tMax returns {0, 0}
-        auto [invStart, invCount] = sink->getXRange(5.0, 2.0);
-        expect(eq(invStart, 0UZ));
-        expect(eq(invCount, 0UZ));
-
-        // exact boundary match
-        auto [start, count] = sink->getXRange(3.0, 7.0);
-        expect(eq(start, 3UZ));
-        expect(eq(count, 5UZ)) << "should include values [3.0, 4.0, 5.0, 6.0, 7.0]";
-    };
-
     "capacity request expiry reduces capacity"_test = [] {
         auto sink = makeTestStreamingSink("expiry_test", 1000);
 
-        sink->requestCapacity("chart1", 3000);
-        sink->requestCapacity("chart2", 5000, std::chrono::seconds{0});
+        const auto now = opendigitizer::CapacityRequests::clock::now();
+        sink->requestCapacity("chart1", 3000, std::chrono::seconds{60}, now);
+        sink->requestCapacity("chart2", 5000, std::chrono::seconds{0}, now);
         expect(eq(sink->bufferCapacity(), 5000UZ));
 
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
-        sink->expireCapacityRequests();
+        sink->expireCapacityRequests(now + std::chrono::milliseconds(10));
         expect(eq(sink->bufferCapacity(), 3000UZ)) << "after expiry, should fall back to chart1's request";
     };
 
@@ -838,8 +794,10 @@ int main() {
         using opendigitizer::SignalKind;
         using namespace opendigitizer::charts;
 
+        gr::BlockRegistry blockRegistry;
+        DigitizerUi::registerDashboardBlocks(blockRegistry);
         auto expectEntry = []<typename T>() {
-            const auto&      registry = opendigitizer::charts::detail::chartSignalCompatibilityRegistry();
+            const auto&      registry = opendigitizer::charts::chartTypes();
             std::string_view name     = gr::refl::type_name<T>;
             auto             iterator = std::ranges::find_if(registry, [name](const auto& pair) { return pair.first.find(name) != std::string::npos; });
             if (iterator == registry.end()) {
@@ -938,7 +896,7 @@ int main() {
         for (const std::string_view name : {"opendigitizer::ImPlotSink<float32>", "opendigitizer::ImPlotSink<float64>", "opendigitizer::ImPlotSink<gr::DataSet<float32>>", "opendigitizer::ImPlotSink<gr::DataSet<float64>>"}) {
             expect(registry.contains(name)) << name;
         }
-        expect(gr::globalBlockRegistry().contains("opendigitizer::Arithmetic<float32>") && gr::globalBlockRegistry().contains("opendigitizer::Arithmetic<float64>"));
+        expect(registry.contains("opendigitizer::Arithmetic<float32>") && registry.contains("opendigitizer::Arithmetic<float64>"));
         for (const std::string_view name : {"opendigitizer::ImPlotSink<gr::pmt::ValueMap>", "opendigitizer::localisation::DelayLocator", "opendigitizer::localisation::PointSourceArrivals", "opendigitizer::charts::LocalisationChart"}) {
             expect(registry.contains(name)) << name << "(the event sink's key spells gr::property_map as gr::pmt::ValueMap)";
         }

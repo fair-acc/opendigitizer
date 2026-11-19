@@ -36,7 +36,6 @@ Palette classicPalette(LookAndFeel::Style style) {
     const std::uint32_t nodeEditorSelection     = 0xFFB032;
     const std::uint32_t nodeEditorSelectionRect = 0x0582FF;
     const std::uint32_t nodeEditorPinRect       = 0x3CB4FF;
-    const std::uint8_t  overlayAlpha            = 0x99;
     return Palette{
         .gridLines = dark ? quarterTransparentWhite : quarterTransparentBlack,
 
@@ -89,10 +88,6 @@ Palette classicPalette(LookAndFeel::Style style) {
         .successColor               = {.2f, .75f, .2f, 1.f},
         .currentDashboardPanelBg    = dark ? rgba(0xFFFFFF, 0x33) : rgba(0x000000, 0x33),
         .clearColor                 = white,
-
-        .layoutModePanel        = rgba(0x9EF7F1, overlayAlpha),
-        .layoutModePanelHovered = rgba(0x6EC9CF, overlayAlpha),
-        .layoutModePanelGrabbed = rgba(0x63E69F, overlayAlpha),
 
         .appHeaderFAIRLogoButton        = {0, 0, 0, 0},
         .appHeaderFAIRLogoButtonHovered = {.8f, .8f, .8f, .4f},
@@ -246,10 +241,6 @@ Palette spectrumPalette(LookAndFeel::Style style) {
         .successColor               = rgba(c.green500),
         .currentDashboardPanelBg    = dark ? rgba(c.gray200) : rgba(c.gray50),
         .clearColor                 = rgba(c.gray100),
-
-        .layoutModePanel        = rgba(c.blue400, 0x40),
-        .layoutModePanelHovered = rgba(c.blue500, 0x66),
-        .layoutModePanelGrabbed = rgba(c.green400, 0x80),
 
         .appHeaderFAIRLogoButton        = {},
         .appHeaderFAIRLogoButtonHovered = rgba(c.gray200),
@@ -440,9 +431,9 @@ void LookAndFeel::updateFormFactor(ImVec2 viewportSize) {
     if (shortSide <= 0.f) {
         return;
     }
-    compact                         = shortSide < (compact ? compactLeaveShortSide : compactEnterShortSide);
-    portrait                        = viewportSize.y > viewportSize.x;
-    ImGui::GetStyle().FontScaleMain = compact ? compactFontScale : 1.f;
+    gAppState.compact               = shortSide < (gAppState.compact ? compactLeaveShortSide : compactEnterShortSide);
+    gAppState.portrait              = viewportSize.y > viewportSize.x;
+    ImGui::GetStyle().FontScaleMain = gAppState.compact ? compactFontScale : 1.f;
 }
 
 [[nodiscard]] float LookAndFeel::mainWindowIconButtonSize() const noexcept { return kFontSizes[FontSizeBig] * 1.7f; }
@@ -519,7 +510,6 @@ void LookAndFeel::loadFonts() {
     auto& lookAndFeel               = LookAndFeel::mutableInstance();
     lookAndFeel.fontIcons           = loadIconsFont("assets/fontawesome/fa-regular-400.otf", kFontSizes[FontSizeTiny]);
     lookAndFeel.fontIconsBig        = loadIconsFont("assets/fontawesome/fa-regular-400.otf", kFontSizes[FontSizeSmall]);
-    lookAndFeel.fontIconsLarge      = loadIconsFont("assets/fontawesome/fa-regular-400.otf", kFontSizes[FontSizeBig]);
     lookAndFeel.fontIconsSolid      = loadIconsFont("assets/fontawesome/fa-solid-900.otf", kFontSizes[FontSizeTiny]);
     lookAndFeel.fontIconsSolidBig   = loadIconsFont("assets/fontawesome/fa-solid-900.otf", kFontSizes[FontSizeSmall]);
     lookAndFeel.fontIconsSolidLarge = loadIconsFont("assets/fontawesome/fa-solid-900.otf", kFontSizes[FontSizeBig]);

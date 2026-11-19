@@ -1,4 +1,5 @@
 #include "ImGuiTestApp.hpp"
+#include "TestDashboardRunner.hpp"
 
 #include <ClientCommon.hpp>
 #include <boost/ut.hpp>
@@ -51,14 +52,13 @@ constexpr std::array kScenarios{Scenario{DockingLayoutType::Free, Mode::View}, S
     Scenario{DockingLayoutType::Column, Mode::View}, Scenario{DockingLayoutType::Column, Mode::Interaction},                         //
     Scenario{DockingLayoutType::Grid, Mode::View}, Scenario{DockingLayoutType::Grid, Mode::Interaction}};
 
-struct TestState {
-    std::shared_ptr<DigitizerUi::Dashboard>     dashboard;
+struct TestState : opendigitizer::test::TestDashboardRunner {
     std::unique_ptr<DigitizerUi::DashboardPage> page;
     Scenario                                    scenario      = kScenarios.front();
     bool                                        layoutChanged = true;
 };
 
-TestState* g_state = nullptr;
+TestState* gState = nullptr;
 
 std::string scenarioName(const Scenario& scenario) { return std::format("{}/{}", magic_enum::enum_name(scenario.layout), magic_enum::enum_name(scenario.mode)); }
 
@@ -66,7 +66,7 @@ std::vector<std::string> chartRectangles(const Scenario& scenario) {
     const ImGuiWindow* host = ImGui::FindWindowByName("Test Window");
     expect(host != nullptr) << fatal;
     std::vector<std::string> lines;
-    for (const auto& uiWindow : g_state->dashboard->uiWindows) {
+    for (const auto& uiWindow : gState->dashboard->uiWindows) {
         if (!uiWindow.block) {
             continue;
         }
@@ -118,8 +118,8 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             ImGui::SetWindowPos({0, 0});
             ImGui::SetWindowSize(kHostSize);
 
-            auto& state = *g_state;
-            state.dashboard->handleMessages();
+            auto& state = *gState;
+            state.dashboard->session.handleMessages();
             if (std::exchange(state.layoutChanged, false)) {
                 state.dashboard->layoutType = state.scenario.layout;
             }
@@ -135,10 +135,8 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
 
         t->TestFunc = [](ImGuiTestContext* ctx) {
             "chart rectangles equal the pre-refactoring baseline"_test = [ctx] {
-                auto& state = *g_state;
-                while (!state.page) {
-                    ctx->Yield();
-                }
+                auto& state = *gState;
+                state.waitUntil(ctx, "the page is created", [&] { return state.page != nullptr; });
 
                 std::vector<std::string> actual;
                 for (const auto& scenario : kScenarios) {
@@ -146,13 +144,14 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                     state.layoutChanged = true;
                     std::vector<std::string> previous;
                     std::size_t              stableFrames = 0UZ;
-                    for (std::size_t frame = 0UZ; frame < 300UZ && stableFrames < 5UZ; ++frame) {
-                        ctx->Yield();
-                        auto current = chartRectangles(scenario);
-                        stableFrames = current == previous ? stableFrames + 1UZ : 0UZ;
-                        previous     = std::move(current);
-                    }
-                    expect(stableFrames >= 5UZ) << fatal << std::format("{}: chart windows settle", scenarioName(scenario));
+                    expect(state.waitUntil(ctx, std::format("{}: chart windows settle", scenarioName(scenario)),
+                        [&] {
+                            auto current = chartRectangles(scenario);
+                            stableFrames = current == previous ? stableFrames + 1UZ : 0UZ;
+                            previous     = std::move(current);
+                            return stableFrames >= 5UZ;
+                        }))
+                        << fatal << std::format("{}: chart windows settle", scenarioName(scenario));
                     expect(!previous.empty()) << fatal << std::format("{}: charts are drawn", scenarioName(scenario));
                     actual.insert(actual.end(), previous.begin(), previous.end());
                 }
@@ -175,7 +174,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             };
 
             "a destroyed dashboard page leaves no chart request handler behind"_test = [] {
-                auto& state = *g_state;
+                auto& state = *gState;
                 expect(opendigitizer::charts::g_chartRequests != nullptr) << fatal << "the drawing page receives chart requests";
                 state.page.reset();
                 expect(opendigitizer::charts::g_chartRequests == nullptr) << "no handler pointing into a destroyed page";
@@ -185,26 +184,20 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
 };
 
 int main(int argc, char* argv[]) {
-    TestState state;
-    g_state = std::addressof(state);
-
     auto options             = DigitizerUi::test::TestOptions::fromArgs(argc, argv);
     options.screenshotPrefix = "dashboard_baseline";
     TestApp app(options);
-    auto    restClient = std::make_shared<opencmw::client::RestClient>();
 
     app.initImGui();
+    TestState state;
+    gState = std::addressof(state);
 
     auto& registry = gr::globalBlockRegistry();
     gr::blocklib::initGrBasicBlocks(registry);
     gr::blocklib::initGrTestingBlocks(registry);
 
-    auto grcFile    = cmrc::ui_test_assets::get_filesystem().open("examples/qa_layout.grc");
-    state.dashboard = DigitizerUi::Dashboard::create(restClient, DigitizerUi::DashboardDescription::createEmpty("empty"));
-    state.dashboard->loadAndThen(std::string(grcFile.begin(), grcFile.end()), [&](gr::Graph&& graph) { state.dashboard->session.emplaceGraph(std::move(graph)); });
+    state.reload(cmrc::ui_test_assets::get_filesystem(), "examples/qa_layout.grc");
 
     const bool result = app.runTests();
-    state.page.reset();
-    g_state = nullptr;
     return result ? 0 : 1;
 }

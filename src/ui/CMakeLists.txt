@@ -290,6 +290,7 @@ endif()
 add_library(
   opendigitizer-ui-common STATIC
   common/AppDefinitions.hpp
+  common/AppState.hpp
   common/Events.hpp
   common/FramePacer.hpp
   common/ImguiWrap.cpp
@@ -316,12 +317,10 @@ add_library(
   components/Dialog.hpp
   components/EditableStringList.hpp
   components/FilterComboBoxes.hpp
-  components/FilterTagBar.hpp
-  components/FilterTagBar.cpp
   components/ImGuiNotify.hpp
   components/InputTextCompletion.hpp
+  components/Keypad.cpp
   components/Keypad.hpp
-  components/ListBox.hpp
   components/PopupMenu.hpp
   components/SearchAndFilterComponents.cpp
   components/SearchAndFilterComponents.hpp
@@ -364,7 +363,7 @@ target_sources(
             charts/WaterfallPlot.hpp
             charts/XYChart.hpp
             charts/YYChart.hpp
-            components/ColourManager.hpp
+            components/SignalColours.hpp
             utils/ShaderHelper.hpp)
 target_link_libraries(
   opendigitizer-charts
@@ -433,20 +432,19 @@ add_library(
   DashboardPage.hpp
   DashboardView.cpp
   DashboardView.hpp
-  DashboardsCollection.hpp
   GraphModel.cpp
   GraphModel.hpp
+  GraphSession.cpp
   GraphSession.hpp
   LogHistory.cpp
   LogHistory.hpp
   MapUtils.hpp
   PaneBlocks.cpp
   PaneBlocks.hpp
-  RemoteSignalSources.cpp
-  RemoteSignalSources.hpp
   Setup.cpp
   Setup.hpp
   SetupLocalisationBlocks.cpp
+  SetupSignalBlocks.cpp
   SetupVideoBlocks.cpp
   StatusBarView.cpp
   StatusBarView.hpp
@@ -479,7 +477,6 @@ add_library(
   blocks/PianoControl.hpp
   blocks/SineOscillator.hpp
   blocks/ValueSource.hpp
-  blocks/meta.hpp
   charts/RDSView.hpp
   components/Block.cpp
   components/Block.hpp
@@ -497,8 +494,7 @@ add_library(
   components/SignalSelector.cpp
   components/SignalSelector.hpp
   utils/ImGuiDockSpaceState.cpp
-  utils/ImGuiDockSpaceState.hpp
-  utils/emscripten_compat.hpp)
+  utils/ImGuiDockSpaceState.hpp)
 target_link_libraries(
   opendigitizer-dashboard
   PRIVATE opendigitizer-options gnuradio4::GrAudioBlocksShared
@@ -507,7 +503,6 @@ target_link_libraries(
          services
          core
          client
-         plf_colony
          digitizer_settings)
 if(OD_DISABLE_DEMO_FLOWGRAPHS)
   target_compile_definitions(opendigitizer-dashboard PUBLIC OD_DISABLE_DEMO_FLOWGRAPHS)

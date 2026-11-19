@@ -12,6 +12,7 @@
 #include <format>
 #include <functional>
 #include <limits>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -21,6 +22,7 @@
 
 #include <gnuradio-4.0/Block.hpp>
 #include <gnuradio-4.0/BlockModel.hpp>
+#include <gnuradio-4.0/BlockRegistry.hpp>
 #include <gnuradio-4.0/DataSet.hpp>
 #include <gnuradio-4.0/HistoryBuffer.hpp>
 #include <gnuradio-4.0/PmtTypeHelpers.hpp>
@@ -30,11 +32,12 @@
 #include "../common/ImguiWrap.hpp"
 #include "../common/LookAndFeel.hpp"
 
-#include "../components/ColourManager.hpp"
+#include "../components/SignalColours.hpp"
 
 #include <implot.h>
 
 #include "conversion.hpp"
+#include <PluginPaths.hpp>
 
 #include "../charts/Chart.hpp"
 #include "../charts/SignalSink.hpp"
@@ -61,8 +64,6 @@ T getValueOrDefault(const gr::property_map& map, std::string_view key, const T& 
 
 using charts::tags::drawDataSetTimingEvents;
 using charts::tags::drawTags;
-
-GR_REGISTER_BLOCK(opendigitizer::ImPlotSink, float, double, gr::DataSet<float>, gr::DataSet<double>, gr::UncertainValue<float>, gr::Tensor<float>, gr::Tensor<double>, gr::Tensor<std::uint32_t>, gr::property_map)
 
 template<typename T>
 struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Content, "ImGui">> {
@@ -145,12 +146,7 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
     // shared_ptr so SinkAdapter can safely hold a reference that outlives the block
     std::shared_ptr<std::mutex> _dataMutex = std::make_shared<std::mutex>();
 
-    // capacity request tracking with auto-expiry
-    struct CapacityRequest {
-        std::size_t                                        capacity;
-        std::chrono::time_point<std::chrono::steady_clock> expiry_time;
-    };
-    std::unordered_map<std::string, CapacityRequest> _capacityRequests;
+    CapacityRequests _capacityRequests{.minimum = gr::DataSetLike<T> ? charts::Chart::kDefaultDataSetHistorySize : 2048UZ};
 
     // DataSet cache for float conversion
     mutable std::vector<gr::DataSet<float>> _dsCache;
@@ -221,15 +217,12 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
 
     [[nodiscard]] std::string_view signalName() const noexcept { return signal_name.value.empty() ? std::string_view(this->name.value) : std::string_view(signal_name.value); }
     [[nodiscard]] float            sampleRate() const noexcept { return sample_rate; }
-    [[nodiscard]] LineStyle        lineStyle() const noexcept { return line_style.value; }
     [[nodiscard]] float            lineWidth() const noexcept { return line_width; }
 
     [[nodiscard]] std::string_view signalQuantity() const noexcept { return signal_quantity; }
     [[nodiscard]] std::string_view signalUnit() const noexcept { return signal_unit; }
     [[nodiscard]] std::string_view abscissaQuantity() const noexcept { return abscissa_quantity; }
     [[nodiscard]] std::string_view abscissaUnit() const noexcept { return abscissa_unit; }
-    [[nodiscard]] float            signalMin() const noexcept { return signal_min; }
-    [[nodiscard]] float            signalMax() const noexcept { return signal_max; }
 
     void updateAxisMetadataFromDataSet(const T& ds) {
         if constexpr (IsDataSet) {
@@ -308,25 +301,6 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
         return 0.0f;
     }
 
-    [[nodiscard]] PlotData plotData() const {
-        if constexpr (IsStreaming) {
-            static auto getter = +[](int idx, void* userData) -> PlotPoint {
-                auto* self  = static_cast<const ImPlotSink*>(userData);
-                auto  xSpan = self->_xValues.get_span(0);
-                auto  ySpan = self->_yValues.get_span(0);
-                return {xSpan[static_cast<std::size_t>(idx)], static_cast<double>(ySpan[static_cast<std::size_t>(idx)])};
-            };
-            return {getter, const_cast<ImPlotSink*>(this), static_cast<int>(_xValues.size())};
-        } else if constexpr (IsDataSet) {
-            static auto getter = +[](int idx, void* userData) -> PlotPoint {
-                auto* self = static_cast<const ImPlotSink*>(userData);
-                return {self->xAt(static_cast<std::size_t>(idx)), static_cast<double>(self->yAt(static_cast<std::size_t>(idx)))};
-            };
-            return {getter, const_cast<ImPlotSink*>(this), static_cast<int>(size())};
-        }
-        return {nullptr, nullptr, 0};
-    }
-
     [[nodiscard]] bool        hasDataSets() const noexcept { return IsDataSet && _yValues.size() > 0; }
     [[nodiscard]] std::size_t dataSetCount() const noexcept { return IsDataSet ? _yValues.size() : 0; }
     [[nodiscard]] SignalKind  signalKind() const noexcept { return kSignalKind; }
@@ -358,31 +332,12 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
         return {};
     }
 
-    [[nodiscard]] bool hasStreamingTags() const noexcept { return IsStreaming && !_tagValues.empty(); }
-
-    [[nodiscard]] std::pair<double, double> tagTimeRange() const noexcept {
-        if constexpr (IsStreaming) {
-            if (_tagValues.empty()) {
-                return {0.0, 0.0};
-            }
-            return {_tagValues.front().timestamp, _tagValues.back().timestamp};
-        }
-        return {0.0, 0.0};
-    }
-
     void forEachTag(std::function<void(double, const gr::property_map&)> callback) const {
         if constexpr (IsStreaming) {
             for (const auto& tag : _tagValues) {
                 callback(tag.timestamp, tag.map);
             }
         }
-    }
-
-    [[nodiscard]] double timeFirst() const noexcept {
-        if constexpr (IsStreaming) {
-            return _xValues.empty() ? 0.0 : _xValues.get_span(0).front();
-        }
-        return 0.0;
     }
 
     [[nodiscard]] double timeLast() const noexcept {
@@ -394,166 +349,22 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
 
     [[nodiscard]] std::size_t bufferCapacity() const noexcept { return static_cast<std::size_t>(required_size); }
 
-    void requestCapacity(std::string_view source, std::size_t capacity, std::chrono::seconds timeout = std::chrono::seconds{60}) {
+    void requestCapacity(std::string_view source, std::size_t capacity, std::chrono::seconds timeout = std::chrono::seconds{60}, CapacityRequests::clock::time_point now = CapacityRequests::clock::now()) {
         std::lock_guard lock(*_dataMutex);
+        resizeHistory(_capacityRequests.request(source, capacity, now + timeout));
+    }
 
-        auto expiry_time                       = std::chrono::steady_clock::now() + timeout;
-        _capacityRequests[std::string(source)] = CapacityRequest{capacity, expiry_time};
+    void expireCapacityRequests(CapacityRequests::clock::time_point now = CapacityRequests::clock::now()) {
+        std::lock_guard lock(*_dataMutex);
+        resizeHistory(_capacityRequests.expire(now));
+    }
 
-        // recalculate required_size from all active requests (supports both increase and decrease)
-        std::size_t maxCapacity = gr::DataSetLike<T> ? charts::Chart::kDefaultDataSetHistorySize : 2048UZ;
-        for (const auto& [_, request] : _capacityRequests) {
-            maxCapacity = std::max(maxCapacity, request.capacity);
-        }
-        if (maxCapacity != static_cast<std::size_t>(required_size)) {
-            required_size = static_cast<gr::Size_t>(maxCapacity);
+    void resizeHistory(std::size_t capacity) {
+        if (capacity != static_cast<std::size_t>(required_size)) {
+            required_size = static_cast<gr::Size_t>(capacity);
             _xValues.resize(required_size);
             _yValues.resize(required_size);
         }
-    }
-
-    void expireCapacityRequests() {
-        std::lock_guard lock(*_dataMutex);
-        auto            now = std::chrono::steady_clock::now();
-
-        std::erase_if(_capacityRequests, [now](const auto& pair) { return pair.second.expiry_time < now; });
-
-        // Recalculate required_size from remaining requests
-        std::size_t maxCapacity = gr::DataSetLike<T> ? charts::Chart::kDefaultDataSetHistorySize : 2048UZ; // minimum default
-        for (const auto& [_, request] : _capacityRequests) {
-            maxCapacity = std::max(maxCapacity, request.capacity);
-        }
-        required_size = static_cast<gr::Size_t>(maxCapacity);
-    }
-
-    [[nodiscard]] SignalSink::DataRange getXRange(double tMin, double tMax) const {
-        if constexpr (IsStreaming) {
-            if (_xValues.empty()) {
-                return {0, 0};
-            }
-            auto xSpan = _xValues.get_span(0);
-            // Binary search for range bounds
-            auto itBegin = std::lower_bound(xSpan.begin(), xSpan.end(), tMin);
-            auto itEnd   = std::upper_bound(xSpan.begin(), xSpan.end(), tMax);
-            if (itBegin >= itEnd) {
-                return {0, 0};
-            }
-            std::size_t startIdx = static_cast<std::size_t>(std::distance(xSpan.begin(), itBegin));
-            std::size_t count    = static_cast<std::size_t>(std::distance(itBegin, itEnd));
-            return {startIdx, count};
-        }
-        return {0, 0};
-    }
-
-    [[nodiscard]] SignalSink::DataRange getTagRange(double tMin, double tMax) const {
-        if constexpr (IsStreaming) {
-            if (_tagValues.empty()) {
-                return {0, 0};
-            }
-            // Find first tag >= tMin
-            auto itBegin = std::find_if(_tagValues.begin(), _tagValues.end(), [tMin](const TagData& tag) { return tag.timestamp >= tMin; });
-            // Find first tag > tMax
-            auto itEnd = std::find_if(itBegin, _tagValues.end(), [tMax](const TagData& tag) { return tag.timestamp > tMax; });
-            if (itBegin >= itEnd) {
-                return {0, 0};
-            }
-            std::size_t startIdx = static_cast<std::size_t>(std::distance(_tagValues.begin(), itBegin));
-            std::size_t count    = static_cast<std::size_t>(std::distance(itBegin, itEnd));
-            return {startIdx, count};
-        }
-        return {0, 0};
-    }
-
-    [[nodiscard]] SignalSink::XRangeResult getX(double tMin = -std::numeric_limits<double>::infinity(), double tMax = +std::numeric_limits<double>::infinity()) const {
-        if constexpr (IsStreaming) {
-            if (_xValues.empty()) {
-                return {{}, 0.0, 0.0};
-            }
-            auto xSpan = _xValues.get_span(0);
-            // Clamp requested range to available data
-            double dataMin      = xSpan.front();
-            double dataMax      = xSpan.back();
-            double effectiveMin = std::max(tMin, dataMin);
-            double effectiveMax = std::min(tMax, dataMax);
-
-            if (effectiveMin > effectiveMax) {
-                return {{}, dataMin, dataMax}; // Requested range outside data
-            }
-
-            // Binary search for range bounds
-            auto itBegin = std::lower_bound(xSpan.begin(), xSpan.end(), effectiveMin);
-            auto itEnd   = std::upper_bound(xSpan.begin(), xSpan.end(), effectiveMax);
-            if (itBegin >= itEnd) {
-                return {{}, dataMin, dataMax};
-            }
-
-            std::size_t startIdx = static_cast<std::size_t>(std::distance(xSpan.begin(), itBegin));
-            std::size_t count    = static_cast<std::size_t>(std::distance(itBegin, itEnd));
-            return {xSpan.subspan(startIdx, count), *itBegin, *(itEnd - 1)};
-        }
-        return {{}, 0.0, 0.0};
-    }
-
-    [[nodiscard]] SignalSink::YRangeResult getY(double tMin = -std::numeric_limits<double>::infinity(), double tMax = +std::numeric_limits<double>::infinity()) const {
-        if constexpr (IsStreaming) {
-            if (_yValues.empty() || _xValues.empty()) {
-                return {.data = {}, .actual_t_min = 0.0, .actual_t_max = 0.0, ._storage = {}};
-            }
-
-            // Get the X range first to determine indices
-            auto xResult = getX(tMin, tMax);
-            if (xResult.data.empty()) {
-                return {.data = {}, .actual_t_min = xResult.actual_t_min, .actual_t_max = xResult.actual_t_max, ._storage = {}};
-            }
-
-            // Calculate indices from X range
-            auto        xSpan    = _xValues.get_span(0);
-            std::size_t startIdx = static_cast<std::size_t>(xResult.data.data() - xSpan.data());
-            std::size_t count    = xResult.data.size();
-
-            if constexpr (std::is_same_v<ValueType, float>) {
-                auto ySpan = _yValues.get_span(0);
-                return {.data = ySpan.subspan(startIdx, count), .actual_t_min = xResult.actual_t_min, .actual_t_max = xResult.actual_t_max, ._storage = {}};
-            } else {
-                // non-float: convert to owned float storage so the span is self-contained
-                auto storage = std::make_shared<std::vector<float>>(count);
-                auto ySpan   = _yValues.get_span(0);
-                for (std::size_t i = 0; i < count; ++i) {
-                    (*storage)[i] = static_cast<float>(ySpan[startIdx + i]);
-                }
-                return {.data = std::span<const float>(*storage), .actual_t_min = xResult.actual_t_min, .actual_t_max = xResult.actual_t_max, ._storage = std::move(storage)};
-            }
-        }
-        return {.data = {}, .actual_t_min = 0.0, .actual_t_max = 0.0, ._storage = {}};
-    }
-
-    [[nodiscard]] SignalSink::TagRangeResult getTags(double tMin = -std::numeric_limits<double>::infinity(), double tMax = +std::numeric_limits<double>::infinity()) const {
-        if constexpr (IsStreaming) {
-            if (_tagValues.empty()) {
-                return {{}, 0.0, 0.0};
-            }
-
-            // Get actual data bounds
-            double dataMin      = _tagValues.front().timestamp;
-            double dataMax      = _tagValues.back().timestamp;
-            double effectiveMin = std::max(tMin, dataMin);
-            double effectiveMax = std::min(tMax, dataMax);
-
-            std::vector<SignalSink::TagEntry> result;
-            for (const auto& tag : _tagValues) {
-                if (tag.timestamp >= effectiveMin && tag.timestamp <= effectiveMax) {
-                    result.push_back({tag.timestamp, tag.map});
-                }
-            }
-
-            if (result.empty()) {
-                return {{}, dataMin, dataMax};
-            }
-            double firstTimestamp = result.front().timestamp;
-            double lastTimestamp  = result.back().timestamp;
-            return {std::move(result), firstTimestamp, lastTimestamp};
-        }
-        return {{}, 0.0, 0.0};
     }
 
     [[nodiscard]] std::mutex&                 dataMutex() const { return *_dataMutex; }
@@ -742,13 +553,8 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
             ImPlot::SetAxis(xAxes[std::clamp(getValueOrDefault<std::size_t>(config, "xAxisID", 0UZ), 0UZ, 2UZ)]);
             ImPlot::SetAxis(yAxes[std::clamp(getValueOrDefault<std::size_t>(config, "yAxisID", 0UZ), 0UZ, 2UZ)]);
         }
-        std::string scaleStr = config.contains("scale") ? config.find_value("scale").value_or(gr::pmt::Value{}).value_or(std::string{"Linear"}) : std::string{"Linear"};
-        auto        trim     = [](const std::string& str) {
-            auto start = std::ranges::find_if_not(str, [](unsigned char ch) { return std::isspace(ch); });
-            auto end   = std::ranges::find_if_not(str.rbegin(), str.rend(), [](unsigned char ch) { return std::isspace(ch); }).base();
-            return (start < end) ? std::string(start, end) : std::string{};
-        };
-        const AxisScale axisScale = magic_enum::enum_cast<AxisScale>(trim(scaleStr)).value_or(AxisScale::Linear);
+        std::string     scaleStr  = config.contains("scale") ? config.find_value("scale").value_or(gr::pmt::Value{}).value_or(std::string{"Linear"}) : std::string{"Linear"};
+        const AxisScale axisScale = gr::meta::parseEnum<AxisScale>(Digitizer::trimWhitespace(scaleStr)).value_or(AxisScale::Linear);
         const char*     label     = signal_name.value.empty() ? this->name.value.c_str() : signal_name.value.c_str();
         if (_yValues.empty()) {
             // plot one single dummy value so that the sink shows up in the plot legend
@@ -846,7 +652,7 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
                 if (historyIdx == 0UZ && getValueOrDefault<bool>(config, "draw_tag", false)) {
                     ImVec4 tagColor = lineColor;
                     tagColor.w *= std::max(0.35f - 0.05f * static_cast<float>(historyIdx), 0.f); // semi-transparent
-                    drawDataSetTimingEvents(dataSet, axisScale, tagColor);
+                    drawDataSetTimingEvents(dataSet, tagColor);
                 }
 
                 // NOTE: npoints is long int, while ImPlot lines are limited to int
@@ -876,6 +682,12 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
         return gr::work::Status::OK;
     }
 };
+
+template<typename... T>
+void registerPlotSinks(gr::BlockRegistry& registry) {
+    std::ignore = gr::registerBlock<ImPlotSink, T...>(registry);
+    (plotSinkTypes().insert_or_assign(std::string(gr::meta::type_name<ImPlotSink<T>>()), gr::meta::is_instantiation_of<T, gr::DataSet>), ...);
+}
 
 } // namespace opendigitizer
 

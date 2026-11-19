@@ -173,7 +173,7 @@ public:
         _editPaneContext.showNeighboursPreview = true;
         _editPaneContext.focusBlockRequest     = [this](const std::string& uniqueName) { requestFocusOnBlock(uniqueName); };
 
-        if (rootBlock->blockCategory == "ScheduledBlockGroup") {
+        if (rootBlock->isScheduler()) {
             if (!rootBlock->childBlocks.empty()) {
                 assert(std::get_if<UiGraphBlock::SchedulerBlockInfo>(&rootBlock->blockCategoryInfo) && std::get_if<UiGraphBlock::SchedulerBlockInfo>(&rootBlock->blockCategoryInfo)->childrenLoaded);
                 _rootBlockUniqueName = rootBlock->childBlocks.front()->blockUniqueName;
@@ -226,7 +226,7 @@ public:
         style.Colors[StyleColor_PinRectBorder]       = palette.flowgraphPinRectBorder;
     }
 
-    void draw(const ImVec2& contentTopLeft, const ImVec2& contentSize, bool isCurrentEditor);
+    void draw(const ImVec2& contentTopLeft, const ImVec2& contentSize);
 
     void requestRelayout() { _rearrangeRequested = true; }
 
@@ -367,7 +367,6 @@ private:
     void drawNodeEditorTab();
     void drawLocalNodeEditor();
     void drawLocalYamlTab();
-    void drawRemoteYamlTab(Dashboard::Service& service);
 
 public:
     FlowgraphPage() = default;

@@ -80,16 +80,7 @@ struct SurfaceBuffer {
 
     void updateAutoScale(std::span<const float> yValues, std::size_t nBins) {
         auto [minIt, maxIt] = std::ranges::minmax_element(yValues | std::views::take(static_cast<std::ptrdiff_t>(nBins)));
-        double fMin         = static_cast<double>(*minIt);
-        double fMax         = static_cast<double>(*maxIt);
-        if (_filledRows == 0) {
-            _scaleMin = fMin;
-            _scaleMax = fMax;
-        } else {
-            constexpr double kAlpha = 0.05;
-            _scaleMin += (fMin - _scaleMin) * kAlpha;
-            _scaleMax += (fMax - _scaleMax) * kAlpha;
-        }
+        followColourScale(_scaleMin, _scaleMax, static_cast<double>(*minIt), static_cast<double>(*maxIt), _filledRows == 0);
     }
 
     void buildSurfaceArrays() const {
@@ -124,23 +115,13 @@ struct SurfaceBuffer {
             return;
         }
 
-        std::vector<float>  newMag(newDepth * _spectrumWidth, 0.0f);
-        std::vector<double> newTs(newDepth, 0.0);
-        std::size_t         rowsToCopy = std::min(_filledRows, newDepth);
-
-        for (std::size_t i = 0; i < rowsToCopy; ++i) {
-            std::size_t srcRow = (_writeRow + _historyDepth - rowsToCopy + i) % _historyDepth;
-            std::size_t dstRow = (newDepth - rowsToCopy + i) % newDepth;
-            std::copy_n(_magnitudes.data() + srcRow * _spectrumWidth, _spectrumWidth, newMag.data() + dstRow * _spectrumWidth);
-            newTs[dstRow] = _timestamps[srcRow];
-        }
-
-        _magnitudes   = std::move(newMag);
-        _timestamps   = std::move(newTs);
-        _historyDepth = newDepth;
-        _filledRows   = rowsToCopy;
-        _writeRow     = 0;
-        _dirty        = true;
+        const std::size_t rowsToCopy = std::min(_filledRows, newDepth);
+        _magnitudes                  = resizeRing(_magnitudes, _spectrumWidth, _historyDepth, _writeRow, rowsToCopy, newDepth);
+        _timestamps                  = resizeRing(_timestamps, 1UZ, _historyDepth, _writeRow, rowsToCopy, newDepth);
+        _historyDepth                = newDepth;
+        _filledRows                  = rowsToCopy;
+        _writeRow                    = 0;
+        _dirty                       = true;
     }
 
     void clear() {
@@ -244,9 +225,9 @@ struct SurfaceGpuRenderer {
         _initAttempted = true;
         _gpuAvailable  = tryInitGpu();
         if (_gpuAvailable) {
-            std::println("[SurfacePlot] GPU mesh renderer initialised");
+            gr::log::info("[SurfacePlot] GPU mesh renderer initialised");
         } else {
-            std::println("[SurfacePlot] GPU init failed, using CPU fallback");
+            gr::log::warning("[SurfacePlot] GPU init failed, using CPU fallback");
         }
     }
 
@@ -698,9 +679,6 @@ struct SurfacePlot : gr::Block<SurfacePlot, gr::Drawable<gr::UICategory::Content
 
     static constexpr std::string_view kChartTypeName = "SurfacePlot";
 
-    [[nodiscard]] static constexpr std::string_view chartTypeName() noexcept { return kChartTypeName; }
-    [[nodiscard]] std::string_view                  uniqueId() const noexcept { return this->unique_name; }
-
     gr::work::Result work(std::size_t = std::numeric_limits<std::size_t>::max(), gr::device::DeviceContext& = gr::device::hostBackend()) noexcept { return {0UZ, 0UZ, gr::work::Status::OK}; }
 
     void settingsChanged(const gr::property_map& /*oldSettings*/, const gr::property_map& newSettings) { handleSettingsChanged(newSettings); }
@@ -764,10 +742,7 @@ struct SurfacePlot : gr::Block<SurfacePlot, gr::Drawable<gr::UICategory::Content
             if (fmt == LabelFormat::MetricInline || fmt == LabelFormat::None) {
                 return "";
             }
-            if (unit.empty()) {
-                return std::string(quantity);
-            }
-            return std::format("{} [{}]", quantity, unit);
+            return labelWithUnit(quantity, unit);
         };
         std::string xLabel = buildLabel(xQuantity, xUnit, _axisFormat[0]);
         std::string yLabel = buildLabel("time", "s", _axisFormat[1]);
@@ -901,14 +876,10 @@ struct SurfacePlot : gr::Block<SurfacePlot, gr::Drawable<gr::UICategory::Content
         _needsRefit = true;
     }
 
-    void syncColormap() {
-        static bool colormapsRegistered = false;
-        if (!colormapsRegistered) {
-            registerImPlotColormaps();
-            colormapsRegistered = true;
-        }
+    static constexpr std::array kImPlotColormapNames = {"Deep", "Dark", "Pastel", "Paired", "Viridis", "Plasma", "Hot", "Cool", "Pink", "Jet", "Twilight", "RdBu", "BrBG", "PiYG", "Spectral", "Greys"};
 
-        static constexpr std::array kImPlotColormapNames = {"Deep", "Dark", "Pastel", "Paired", "Viridis", "Plasma", "Hot", "Cool", "Pink", "Jet", "Twilight", "RdBu", "BrBG", "PiYG", "Spectral", "Greys"};
+    void syncColormap() {
+        registerImPlotColormaps();
 
         auto cmapIdx = static_cast<std::size_t>(colormap.value);
         if (cmapIdx < kImPlotColormapNames.size()) {
@@ -922,20 +893,18 @@ struct SurfacePlot : gr::Block<SurfacePlot, gr::Drawable<gr::UICategory::Content
     static void registerImPlotColormaps() {
         static constexpr std::array kImPlotColormapEnums = {ImPlotColormap_Deep, ImPlotColormap_Dark, ImPlotColormap_Pastel, ImPlotColormap_Paired, ImPlotColormap_Viridis, ImPlotColormap_Plasma, ImPlotColormap_Hot, ImPlotColormap_Cool, ImPlotColormap_Pink, ImPlotColormap_Jet, ImPlotColormap_Twilight, ImPlotColormap_RdBu, ImPlotColormap_BrBG, ImPlotColormap_PiYG, ImPlotColormap_Spectral, ImPlotColormap_Greys};
 
-        static constexpr std::array kNames = {"Deep", "Dark", "Pastel", "Paired", "Viridis", "Plasma", "Hot", "Cool", "Pink", "Jet", "Twilight", "RdBu", "BrBG", "PiYG", "Spectral", "Greys"};
-
         constexpr std::size_t        kLutSize = 256;
         std::array<ImVec4, kLutSize> colours{};
 
         for (std::size_t cm = 0; cm < kImPlotColormapEnums.size(); ++cm) {
-            if (ImPlot3D::GetColormapIndex(kNames[cm]) >= 0) {
+            if (ImPlot3D::GetColormapIndex(kImPlotColormapNames[cm]) >= 0) {
                 continue;
             }
             for (std::size_t i = 0; i < kLutSize; ++i) {
                 float t    = static_cast<float>(i) / static_cast<float>(kLutSize - 1);
                 colours[i] = ImPlot::SampleColormap(t, kImPlotColormapEnums[cm]);
             }
-            ImPlot3D::AddColormap(kNames[cm], colours.data(), static_cast<int>(kLutSize), false);
+            ImPlot3D::AddColormap(kImPlotColormapNames[cm], colours.data(), static_cast<int>(kLutSize), false);
         }
     }
 
@@ -1002,7 +971,6 @@ struct SurfacePlot : gr::Block<SurfacePlot, gr::Drawable<gr::UICategory::Content
         static constexpr std::array kAxisNames  = {"X-Axis", "Y-Axis", "Z-Axis"};
         static constexpr std::array kScaleNames = {"Linear", "Log10"};
         static constexpr std::array kScaleIds   = {ImPlot3DScale_Linear, ImPlot3DScale_Log10};
-        const float                 kDragWidth  = DigitizerUi::LookAndFeel::instance().chartStyle.menuAxisLimitDragWidth;
 
         auto ai = static_cast<std::size_t>(axisIndex);
 
@@ -1012,12 +980,12 @@ struct SurfacePlot : gr::Block<SurfacePlot, gr::Drawable<gr::UICategory::Content
             std::string label;
             if (axisIndex == 0) {
                 auto [q, u] = sinkAxisInfo(true);
-                label       = u.empty() ? q : std::format("{} [{}]", q, u);
+                label       = labelWithUnit(q, u);
             } else if (axisIndex == 1) {
                 label = "time [s]";
             } else {
                 auto [q, u] = sinkAxisInfo(false);
-                label       = u.empty() ? q : std::format("{} [{}]", q, u);
+                label       = labelWithUnit(q, u);
             }
             if (label.empty()) {
                 label = kAxisNames[ai];
@@ -1051,9 +1019,9 @@ struct SurfacePlot : gr::Block<SurfacePlot, gr::Drawable<gr::UICategory::Content
             menu_icons::iconText(menu_icons::kFormat, "format:");
             ImGui::SameLine();
             ImGui::SetNextItemWidth(DigitizerUi::LookAndFeel::instance().chartStyle.menuAxisComboWidth);
-            if (DigitizerUi::BeginCombo("##format", magic_enum::enum_name(_axisFormat[ai]).data())) {
-                for (auto f : magic_enum::enum_values<LabelFormat>()) {
-                    if (DigitizerUi::Selectable(magic_enum::enum_name(f).data(), f == _axisFormat[ai])) {
+            if (DigitizerUi::BeginCombo("##format", gr::meta::enumName(_axisFormat[ai]).value_or("").data())) {
+                for (auto f : gr::meta::enumValues<LabelFormat>()) {
+                    if (DigitizerUi::Selectable(gr::meta::enumName(f).value_or("").data(), f == _axisFormat[ai])) {
                         _axisFormat[ai] = f;
                     }
                 }
@@ -1061,103 +1029,25 @@ struct SurfacePlot : gr::Block<SurfacePlot, gr::Drawable<gr::UICategory::Content
             }
         }
 
-        // auto-fit checkbox + fit-once
         bool& autoFit = autoScaleRef(axisIndex);
-        {
-            DigitizerUi::IMW::Font iconFont(DigitizerUi::LookAndFeel::instance().fontIconsSolid);
-            ImGui::TextUnformatted(menu_icons::kAutoFit);
-        }
-        ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
-        if (DigitizerUi::Checkbox("##auto", &autoFit)) {
-            if (autoFit) {
-                _needsRefit = true;
-            } else {
-                // capture current axis range as manual limits
-                if (_savedPlot) {
+        drawAutoFitControls(
+            autoFit,
+            [&] {
+                if (autoFit) {
+                    _needsRefit = true;
+                } else if (_savedPlot) { // the current axis range as manual limits
                     minRef(axisIndex) = _savedPlot->Axes[axisIndex].Range.Min;
                     maxRef(axisIndex) = _savedPlot->Axes[axisIndex].Range.Max;
                 }
-            }
-        }
-        if (ImGui::IsItemHovered()) {
-            ImGui::SetTooltip("Auto-fit axis range");
-        }
-        ImGui::SameLine();
-        if (DigitizerUi::TextButton("Fit once")) {
-            _needsRefit = true;
-        }
-        if (ImGui::IsItemHovered()) {
-            ImGui::SetTooltip("Fit axis to data once, then return to manual mode");
-        }
-
-        // min/max editors
-        if (autoFit) {
-            ImGui::BeginDisabled();
-        }
-
-        double minVal = autoFit ? (_savedPlot ? _savedPlot->Axes[axisIndex].Range.Min : 0.0) : minRef(axisIndex);
-        double maxVal = autoFit ? (_savedPlot ? _savedPlot->Axes[axisIndex].Range.Max : 1.0) : maxRef(axisIndex);
-
-        const double range     = std::abs(maxVal - minVal);
-        const double increment = (range > 0.0 && range < 1e10) ? range * 0.01 : 0.1;
-        const float  dragSpeed = static_cast<float>(increment * 0.1);
-
-        auto drawSpinner = [&](const char* id, double& val, auto&& assign) {
-            const std::string decId  = std::format("\uf146##{}_dec", id);
-            const std::string incId  = std::format("\uf0fe##{}_inc", id);
-            const std::string dragId = std::format("##{}", id);
-            {
-                DigitizerUi::IMW::Font iconFont(DigitizerUi::LookAndFeel::instance().fontIconsSolid);
-                if (DigitizerUi::Button(decId.c_str())) {
-                    val -= increment;
-                    assign(val);
-                }
-            }
-            ImGui::SameLine(0.0f, DigitizerUi::LookAndFeel::instance().chartStyle.menuSpinnerSpacing);
-            ImGui::SetNextItemWidth(kDragWidth);
-            if (ImGui::DragScalar(dragId.c_str(), ImGuiDataType_Double, &val, dragSpeed, nullptr, nullptr, "%.4g")) {
-                assign(val);
-            }
-            detail::onScrollWheel([&](float wheel) {
-                val += static_cast<double>(wheel) * increment;
-                assign(val);
-            });
-            ImGui::SameLine(0.0f, DigitizerUi::LookAndFeel::instance().chartStyle.menuSpinnerSpacing);
-            {
-                DigitizerUi::IMW::Font iconFont(DigitizerUi::LookAndFeel::instance().fontIconsSolid);
-                if (DigitizerUi::Button(incId.c_str())) {
-                    val += increment;
-                    assign(val);
-                }
-            }
-        };
-
-        auto setMin = [&](double v) { minRef(axisIndex) = v; };
-        auto setMax = [&](double v) { maxRef(axisIndex) = v; };
-
-        drawSpinner("min", minVal, setMin);
-        ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
-        menu_icons::iconText(menu_icons::kArrow, "");
-        ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
-        drawSpinner("max", maxVal, setMax);
-
-        if (autoFit) {
-            ImGui::EndDisabled();
-        }
+            },
+            [&] { _needsRefit = true; });
+        const double minVal = autoFit ? (_savedPlot ? _savedPlot->Axes[axisIndex].Range.Min : 0.0) : minRef(axisIndex);
+        const double maxVal = autoFit ? (_savedPlot ? _savedPlot->Axes[axisIndex].Range.Max : 1.0) : maxRef(axisIndex);
+        drawLimitSpinners(autoFit, minVal, maxVal, [&](double v) { minRef(axisIndex) = v; }, [&](double v) { maxRef(axisIndex) = v; });
     }
 
     void handleSurfaceDropTarget() {
-        if (ImGui::BeginDragDropTarget()) {
-            if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(dnd::kPayloadType)) {
-                const auto* dndPayload = static_cast<const dnd::Payload*>(payload->Data);
-                if (dndPayload && dndPayload->isValid() && onSinkAddedFromDnd(*dndPayload)) {
-                    if (dndPayload->hasSource()) {
-                        dnd::g_state.accepted = true;
-                    }
-                }
-            }
-            ImGui::EndDragDropTarget();
-        }
+        std::ignore = dnd::handleDropTarget([this](const dnd::Payload& payload) { return onSinkAddedFromDnd(payload) && payload.hasSource(); }, dnd::kPayloadType, supportedSignals);
     }
 
     // log10(centre frequency) of each log-spaced column — the linear X coordinate used in log mode (matches the
@@ -1206,8 +1096,5 @@ struct SurfacePlot : gr::Block<SurfacePlot, gr::Drawable<gr::UICategory::Content
 };
 
 } // namespace opendigitizer::charts
-
-GR_REGISTER_BLOCK("opendigitizer::charts::SurfacePlot", opendigitizer::charts::SurfacePlot)
-inline auto registerSurfacePlotCompatibilities = opendigitizer::charts::registerChartSignalCompatibility<opendigitizer::charts::SurfacePlot>();
 
 #endif // OPENDIGITIZER_CHARTS_SURFACEPLOT_HPP

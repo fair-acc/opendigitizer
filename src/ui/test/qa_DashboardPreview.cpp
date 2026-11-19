@@ -1,3 +1,4 @@
+#include "Setup.hpp"
 #include "components/DashboardPreview.hpp"
 #include "components/Docking.hpp"
 #include <boost/ut.hpp>
@@ -27,6 +28,8 @@ bool sameRects(const std::vector<DigitizerUi::LayoutRect>& actual, std::initiali
 
 int main() {
     using namespace boost::ut;
+    gr::BlockRegistry registry;
+    DigitizerUi::registerDashboardBlocks(registry); // the plot sink types previews recognise
     using DigitizerUi::DashboardPreview;
     using enum DashboardPreview::ChartType;
 
@@ -263,7 +266,7 @@ dashboard:
         expect(preview->charts.at(0).signals.at(1).color == 0) << "expected 0 color for the sink with no inputs";
 
         expect(!preview->charts.at(0).signals.at(2).isDataSet);
-        expect(preview->charts.at(0).signals.at(2).color == 0) << "expected 0 color for user defined block, which doesnt use ColourManager";
+        expect(preview->charts.at(0).signals.at(2).color == 0) << "expected 0 color for user defined block, which doesnt use SignalColours";
     };
 
     "row layout"_test = [expectRect] {

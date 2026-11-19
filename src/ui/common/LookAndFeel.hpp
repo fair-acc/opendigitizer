@@ -9,7 +9,7 @@
 #include <imgui.h>
 #include <implot.h>
 
-enum class WindowMode { FULLSCREEN, MAXIMISED, MINIMISED, RESTORED };
+#include "AppState.hpp"
 
 /**
  * @brief Convert RGB color (0xRRGGBB) to ImGui's ABGR format (0xAABBGGRR).
@@ -23,6 +23,8 @@ constexpr std::uint32_t rgbToImGuiABGR(std::uint32_t rgb, std::uint8_t alpha = 0
     const std::uint32_t b = (rgb >> 0) & 0xFF;
     return (static_cast<std::uint32_t>(alpha) << 24) | (b << 16) | (g << 8) | r;
 }
+
+constexpr std::uint32_t float3ToRGB(const float (&rgb)[3]) { return (static_cast<std::uint32_t>(rgb[0] * 255.0f) << 16) | (static_cast<std::uint32_t>(rgb[1] * 255.0f) << 8) | static_cast<std::uint32_t>(rgb[2] * 255.0f); }
 
 constexpr std::uint32_t float4ToRGBA(ImVec4 float4) {
     const auto saturate = [](float f) { return (f < 0.0f) ? 0.0f : (f > 1.0f) ? 1.0f : f; };
@@ -124,10 +126,6 @@ struct Palette {
     ImVec4 currentDashboardPanelBg;
     ImVec4 clearColor;
 
-    ImVec4 layoutModePanel;
-    ImVec4 layoutModePanelHovered;
-    ImVec4 layoutModePanelGrabbed;
-
     ImVec4                appHeaderFAIRLogoButton;
     ImVec4                appHeaderFAIRLogoButtonHovered;
     ImVec4                appHeaderFAIRLogoButtonActive;
@@ -220,29 +218,21 @@ struct DashboardStyle {
     LegendPosition legend     = LegendPosition::Bottom;
     bool           background = true; // false: chart windows and frames, plots area, bar and toolbar draw no background or border
 
-    float toolbarRowHeight                = 36.f;
-    float toolbarLeftPadding              = 16.f;
-    float toolbarItemSpacing              = 24.f;
-    float layoutModeChartInset            = 5.f;
-    float legendColorRectBorderThickness  = 2.f;
-    float legendAddButtonIconScale        = .7f; // icon font size relative to the button size
-    float legendSwatchRounding            = 0.f;
-    float layoutModePanelRounding         = 0.f;
-    float statusDotRadiusEms              = .3f; // relative to the font size
-    float infoTextAlpha                   = .6f; // multiplied with ImGuiCol_TextDisabled
-    float statusDotUnlitAlpha             = .3f; // multiplied with ImGuiCol_TextDisabled
-    float toolbarBlockButtonRoundingRatio = .5f; // of the button size, .5 is a circle
-    float toolbarControlInputWidth        = 110.f;
-    float toolbarControlMinimumWidth      = 60.f;
-    float toolbarControlSliderTrackWidth  = 115.f;
-    float newChartPopupWidth              = 300.f;
-
-    struct DragAreaInteractionState {
-        bool grabbed = false;
-        bool hovered = false;
-    };
-
-    std::uint32_t draggableLayoutModePanelColor(DragAreaInteractionState interactionState) const;
+    float toolbarRowHeight               = 36.f;
+    float toolbarLeftPadding             = 16.f;
+    float toolbarItemSpacing             = 24.f;
+    float layoutModeChartInset           = 5.f;
+    float legendColorRectBorderThickness = 2.f;
+    float legendAddButtonIconScale       = .7f; // icon font size relative to the button size
+    float legendSwatchRounding           = 0.f;
+    float layoutModePanelRounding        = 0.f;
+    float statusDotRadiusEms             = .3f; // relative to the font size
+    float infoTextAlpha                  = .6f; // multiplied with ImGuiCol_TextDisabled
+    float statusDotUnlitAlpha            = .3f; // multiplied with ImGuiCol_TextDisabled
+    float toolbarControlInputWidth       = 110.f;
+    float toolbarControlMinimumWidth     = 60.f;
+    float toolbarControlSliderTrackWidth = 115.f;
+    float newChartPopupWidth             = 300.f;
 };
 
 struct OpenDashboardPageStyle {
@@ -349,104 +339,97 @@ struct LookAndFeel {
 #endif
     static constexpr std::chrono::milliseconds longPressDuration{500};
 
-    bool                      prototypeMode = false;
-    std::chrono::milliseconds execTime; /// time it took to handle events and draw one frame
-    float                     compactEnterShortSide = 600.f;
-    float                     compactLeaveShortSide = 640.f;
-    float                     compactFontScale      = .75f;
-    bool                      compact               = false;
-    bool                      portrait              = false;
-    ImFont*                   fontIcons;
-    ImFont*                   fontIconsBig;
-    ImFont*                   fontIconsLarge;
-    ImFont*                   fontIconsSolid;
-    ImFont*                   fontIconsSolidBig;
-    ImFont*                   fontIconsSolidLarge;
-    std::chrono::seconds      editPaneCloseDelay{15};
-    float                     requiredDragDistanceForWindowUndock     = 30.f;
-    float                     floatingWindowMinSizeFractionOfViewport = .25f;
-    float                     splitterWidth                           = 6.f;
-    float                     splitterDefaultRatio                    = .2f;
-    float                     splitterRatioDeltaPerFrame              = .02f; // how much of (splitter / rest of screen) fraction to add
-    float                     splitterRatioDeltaPerFrameSlow          = .01f;
-    float                     keypadRounding                          = 6.f;
-    ImVec2                    keypadPortraitSize                      = {400.f, 600.f};
-    ImVec2                    keypadLandscapeSize                     = {485.f, 400.f};
-    float                     popupMenuButtonRounding                 = 6.f;
-    float                     popupMenuRadialButtonRoundingPercentage = .5f; // percentage of button size, so .5 is a circle
-    float                     popupMenuAnimationLengthSeconds         = .25f;
-    float                     popupMenuMouseoutCloseDelaySeconds      = .5f;
-    float                     popupMenuMouseInactiveCloseDelaySeconds = 5.f;
-    float                     popupMenuButtonHoverLighten             = .5f; // saturation factor
-    float                     popupMenuButtonActiveDarken             = .7f; // value factor
-    float                     popupMenuButtonAlpha                    = 1.f;
-    ImVec2                    buttonFramePaddingMultiplier            = {2.f, 1.f}; // buttons should multiply with ImGuiStyle::FramePadding
-    float                     appHeaderMenuToLogoGap                  = 12.f;
-    float                     appHeaderRightMenuStartDegrees          = 75.f;
-    float                     appHeaderRightMenuStopDegrees           = 195.f;
-    float                     yesNoPopupWidth                         = 300.f;
-    ImVec2                    addContextPopupSize                     = {600.f, 120.f};
-    ImVec2                    removeContextPopupSize                  = {600.f, 100.f};
-    float                     editableStringListInputWidthEms         = 12.f;
-    float                     sortArrowScale                          = .75f;
-    float                     sliderTrackThickness                    = 4.f;
-    float                     sliderKnobRadiusFrameHeightRatio        = .35f;
-    float                     sliderKnobRingThickness                 = 3.f;
-    float                     sliderTextInputMinWidthEms              = 3.5f;
-    float                     sliderNumberLabelMaxWidthEms            = 4.f;
-    float                     toggleWidthFrameHeightRatio             = 1.75f;
-    float                     toggleKnobInset                         = 2.f;
-    float                     toggleHoveredDarkenPercentage           = .15f;
-    float                     toggleAnimationSeconds                  = .12f;
-    float                     comboOutlineThickness                   = 1.5f;
-    float                     comboChevronThickness                   = 2.f;
-    float                     comboChevronWidthEms                    = .55f;
-    float                     comboTextMaxWidthEms                    = 16.f; // longer values are drawn with an ellipsis
-    float                     searchHighlightRounding                 = 0.f;
-    float                     selectedLabelRoundingPercentage         = 1.f; // percentage of the label height
-    float                     notificationRounding                    = .5f;
-    float                     notificationBorderSize                  = 1.f;
-    float                     autoHideDelaySeconds                    = 2.f;   // developer menu, menu button and dashboard bar controls
-    bool                      autoHideLegends                         = true;  // unlocked charts' legends: shown while the mouse moves in the plot, faded after the delay
-    float                     autoHideRevealDistance                  = 100.f; // px around an auto-hidden control that brings it back
-    float                     autoHideSlideSeconds                    = .5f;
-    float                     devMenuButtonAlpha                      = 0.9f;
-    std::chrono::seconds      infoDotLifetime{5};
-    std::chrono::seconds      notificationDismissTime{5};
-    std::chrono::seconds      notificationErrorDismissTime{10};
-    double                    plotTooltipDelay         = 1.;  // s
-    double                    plotTooltipDuration      = 30.; // s
-    float                     plotTooltipStillDistance = 10.f;
-    Flowgraph                 flowgraph;
-    ChartStyle                chartStyle;
-    DashboardStyle            dashboardStyle;
-    OpenDashboardPageStyle    openDashboardPageStyle;
+    float                  compactEnterShortSide = 600.f;
+    float                  compactLeaveShortSide = 640.f;
+    float                  compactFontScale      = .75f;
+    ImFont*                fontIcons;
+    ImFont*                fontIconsBig;
+    ImFont*                fontIconsSolid;
+    ImFont*                fontIconsSolidBig;
+    ImFont*                fontIconsSolidLarge;
+    std::chrono::seconds   editPaneCloseDelay{15};
+    float                  requiredDragDistanceForWindowUndock     = 30.f;
+    float                  floatingWindowMinSizeFractionOfViewport = .25f;
+    float                  splitterWidth                           = 6.f;
+    float                  splitterDefaultRatio                    = .2f;
+    float                  splitterRatioDeltaPerFrame              = .02f; // how much of (splitter / rest of screen) fraction to add
+    float                  splitterRatioDeltaPerFrameSlow          = .01f;
+    float                  keypadRounding                          = 6.f;
+    ImVec2                 keypadPortraitSize                      = {400.f, 600.f};
+    ImVec2                 keypadLandscapeSize                     = {485.f, 400.f};
+    float                  popupMenuButtonRounding                 = 6.f;
+    float                  popupMenuRadialButtonRoundingPercentage = .5f; // percentage of button size, so .5 is a circle
+    float                  popupMenuAnimationLengthSeconds         = .25f;
+    float                  popupMenuMouseoutCloseDelaySeconds      = .5f;
+    float                  popupMenuMouseInactiveCloseDelaySeconds = 5.f;
+    float                  popupMenuButtonHoverLighten             = .5f; // saturation factor
+    float                  popupMenuButtonActiveDarken             = .7f; // value factor
+    float                  popupMenuButtonAlpha                    = 1.f;
+    ImVec2                 buttonFramePaddingMultiplier            = {2.f, 1.f}; // buttons should multiply with ImGuiStyle::FramePadding
+    float                  appHeaderMenuToLogoGap                  = 12.f;
+    float                  appHeaderRightMenuStartDegrees          = 75.f;
+    float                  appHeaderRightMenuStopDegrees           = 195.f;
+    float                  yesNoPopupWidth                         = 300.f;
+    ImVec2                 addContextPopupSize                     = {600.f, 120.f};
+    ImVec2                 removeContextPopupSize                  = {600.f, 100.f};
+    float                  editableStringListInputWidthEms         = 12.f;
+    float                  sortArrowScale                          = .75f;
+    float                  sliderTrackThickness                    = 4.f;
+    float                  sliderKnobRadiusFrameHeightRatio        = .35f;
+    float                  sliderKnobRingThickness                 = 3.f;
+    float                  sliderTextInputMinWidthEms              = 3.5f;
+    float                  sliderNumberLabelMaxWidthEms            = 4.f;
+    float                  toggleWidthFrameHeightRatio             = 1.75f;
+    float                  toggleKnobInset                         = 2.f;
+    float                  toggleHoveredDarkenPercentage           = .15f;
+    float                  toggleAnimationSeconds                  = .12f;
+    float                  comboOutlineThickness                   = 1.5f;
+    float                  comboChevronThickness                   = 2.f;
+    float                  comboChevronWidthEms                    = .55f;
+    float                  comboTextMaxWidthEms                    = 16.f; // longer values are drawn with an ellipsis
+    float                  searchHighlightRounding                 = 0.f;
+    float                  selectedLabelRoundingPercentage         = 1.f; // percentage of the label height
+    float                  notificationRounding                    = .5f;
+    float                  notificationBorderSize                  = 1.f;
+    float                  autoHideDelaySeconds                    = 2.f;   // developer menu, menu button and dashboard bar controls
+    bool                   autoHideLegends                         = true;  // unlocked charts' legends: shown while the mouse moves in the plot, faded after the delay
+    float                  autoHideRevealDistance                  = 100.f; // px around an auto-hidden control that brings it back
+    float                  autoHideSlideSeconds                    = .5f;
+    float                  devMenuButtonAlpha                      = 0.9f;
+    std::chrono::seconds   infoDotLifetime{5};
+    std::chrono::seconds   notificationDismissTime{5};
+    std::chrono::seconds   notificationErrorDismissTime{10};
+    double                 plotTooltipDelay         = 1.;  // s
+    double                 plotTooltipDuration      = 30.; // s
+    float                  plotTooltipStillDistance = 10.f;
+    Flowgraph              flowgraph;
+    ChartStyle             chartStyle;
+    DashboardStyle         dashboardStyle;
+    OpenDashboardPageStyle openDashboardPageStyle;
 
     [[nodiscard]] const Palette&                     palette() const noexcept;
     [[nodiscard]] const SpectrumSchemeKeywordColors& spectrumColours() const noexcept; // for the current style, also while theme is Classic
     [[nodiscard]] float                              mainWindowIconButtonSize() const noexcept;
 
-    [[nodiscard]] ImFont* fontTiny() const noexcept { return _fontTiny[prototypeMode]; }
-    [[nodiscard]] ImFont* fontSmall() const noexcept { return _fontSmall[prototypeMode]; }
-    [[nodiscard]] ImFont* fontNormal() const noexcept { return _fontNormal[prototypeMode]; }
-    [[nodiscard]] ImFont* fontBig() const noexcept { return _fontBig[prototypeMode]; }
-    [[nodiscard]] ImFont* fontBigger() const noexcept { return _fontBigger[prototypeMode]; }
-    [[nodiscard]] ImFont* fontLarge() const noexcept { return _fontLarge[prototypeMode]; }
+    [[nodiscard]] ImFont* fontTiny() const noexcept { return _fontTiny[gAppState.prototypeMode]; }
+    [[nodiscard]] ImFont* fontSmall() const noexcept { return _fontSmall[gAppState.prototypeMode]; }
+    [[nodiscard]] ImFont* fontNormal() const noexcept { return _fontNormal[gAppState.prototypeMode]; }
+    [[nodiscard]] ImFont* fontBig() const noexcept { return _fontBig[gAppState.prototypeMode]; }
+    [[nodiscard]] ImFont* fontBigger() const noexcept { return _fontBigger[gAppState.prototypeMode]; }
+    [[nodiscard]] ImFont* fontLarge() const noexcept { return _fontLarge[gAppState.prototypeMode]; }
 
     [[nodiscard]] float relativeFontSize(const ImFont* face) const noexcept {
         const ImFont* normal = fontNormal();
         return face && normal ? ImGui::GetStyle().FontSizeBase * face->LegacySize / normal->LegacySize : 0.f;
     }
 
-    Style      style      = Style::Light;
-    Theme      theme      = Theme::Classic;
-    WindowMode windowMode = WindowMode::RESTORED;
+    Style style = Style::Light;
+    Theme theme = Theme::Classic;
 
     static LookAndFeel&       mutableInstance();
     static const LookAndFeel& instance();
 
     static std::uint8_t  getColorAlphaU8(ImVec4 Palette::*color) { return std::clamp(static_cast<std::uint8_t>((instance().palette().*color).w * 255.f), std::uint8_t{0x00}, std::uint8_t{0xFF}); }
-    static std::uint32_t getColorU32(ImVec4 Palette::*color) { return float4ToRGBA(instance().palette().*color); }
     static std::uint32_t getColorU32ImGui(ImVec4 Palette::*color) {
         const auto vec4 = instance().palette().*color;
         const auto rgba = float4ToRGBA(vec4);

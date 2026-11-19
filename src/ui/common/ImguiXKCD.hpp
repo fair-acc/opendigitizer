@@ -10,11 +10,6 @@
 
 #include "imgui.h"
 
-#ifndef GLuint
-using GLuint = unsigned int;
-using GLint  = int;
-#endif
-
 namespace ImXkcd {
 
 void Init();
@@ -31,14 +26,7 @@ inline unsigned int minElemCount = 50;     // skip draw commands below this inde
 
 #ifdef IMGUI_XKCD_IMPLEMENTATION
 
-#ifdef __EMSCRIPTEN__
-#include <GLES3/gl3.h>
-#else
-#ifndef GL_GLEXT_PROTOTYPES
-#define GL_GLEXT_PROTOTYPES
-#endif
-#include <SDL3/SDL_opengl.h>
-#endif
+#include "../utils/ShaderHelper.hpp"
 
 #include <algorithm>
 #include <array>
@@ -47,13 +35,13 @@ inline unsigned int minElemCount = 50;     // skip draw commands below this inde
 namespace ImXkcd {
 namespace detail {
 
-inline GLuint g_program     = 0;
-inline GLint  g_locProj     = -1;
-inline GLint  g_locAmp      = -1;
-inline GLint  g_locFreq     = -1;
-inline GLint  g_locSeed     = -1;
-inline GLint  g_locTex      = -1;
-inline GLint  g_locUtilMaxY = -1;
+inline GLuint gProgram     = 0;
+inline GLint  gLocProj     = -1;
+inline GLint  gLocAmp      = -1;
+inline GLint  gLocFreq     = -1;
+inline GLint  gLocSeed     = -1;
+inline GLint  gLocTex      = -1;
+inline GLint  gLocUtilMaxY = -1;
 
 #ifdef __EMSCRIPTEN__
 static constexpr auto* kGlslPrefix = "#version 300 es\nprecision mediump float;\n";
@@ -131,21 +119,6 @@ void main() {
 }
 )glsl";
 
-inline GLuint compileShader(GLenum type, const char* prefix, const char* body) {
-    GLuint                     shader  = glCreateShader(type);
-    std::array<const char*, 2> sources = {prefix, body};
-    glShaderSource(shader, static_cast<GLsizei>(sources.size()), sources.data(), nullptr);
-    glCompileShader(shader);
-    GLint ok = 0;
-    glGetShaderiv(shader, GL_COMPILE_STATUS, &ok);
-    if (!ok) {
-        std::array<char, 1024> log{};
-        glGetShaderInfoLog(shader, static_cast<GLsizei>(log.size()), nullptr, log.data());
-        std::println(stderr, "[ImXkcd] {} shader compile error:\n{}", type == GL_VERTEX_SHADER ? "vertex" : "fragment", log.data());
-    }
-    return shader;
-}
-
 inline void enableCallback(const ImDrawList*, const ImDrawCmd*) {
     GLint currentProg = 0;
     glGetIntegerv(GL_CURRENT_PROGRAM, &currentProg);
@@ -156,7 +129,7 @@ inline void enableCallback(const ImDrawList*, const ImDrawCmd*) {
         glGetUniformfv(static_cast<GLuint>(currentProg), projLoc, proj.data());
     }
 
-    glUseProgram(g_program);
+    glUseProgram(gProgram);
 
     // ImGui's GLSL 130 variant has no layout qualifiers — locations are driver-assigned
     glEnableVertexAttribArray(0);
@@ -166,11 +139,11 @@ inline void enableCallback(const ImDrawList*, const ImDrawCmd*) {
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(ImDrawVert), reinterpret_cast<void*>(offsetof(ImDrawVert, uv)));
     glVertexAttribPointer(2, 4, GL_UNSIGNED_BYTE, GL_TRUE, sizeof(ImDrawVert), reinterpret_cast<void*>(offsetof(ImDrawVert, col)));
 
-    glUniformMatrix4fv(g_locProj, 1, GL_FALSE, proj.data());
-    glUniform1f(g_locAmp, amplitude);
-    glUniform1f(g_locFreq, frequency);
-    glUniform1f(g_locSeed, seed);
-    glUniform1i(g_locTex, 0);
+    glUniformMatrix4fv(gLocProj, 1, GL_FALSE, proj.data());
+    glUniform1f(gLocAmp, amplitude);
+    glUniform1f(gLocFreq, frequency);
+    glUniform1f(gLocSeed, seed);
+    glUniform1i(gLocTex, 0);
 
     // Y threshold covering all atlas utility data (white pixel + baked line textures)
     ImFontAtlas* atlas = ImGui::GetIO().Fonts;
@@ -179,7 +152,7 @@ inline void enableCallback(const ImDrawList*, const ImDrawCmd*) {
         maxY = std::max(maxY, atlas->TexUvLines[n].y);
         maxY = std::max(maxY, atlas->TexUvLines[n].w);
     }
-    glUniform1f(g_locUtilMaxY, maxY + 0.03f);
+    glUniform1f(gLocUtilMaxY, maxY + 0.03f);
 }
 
 } // namespace detail
@@ -187,49 +160,54 @@ inline void enableCallback(const ImDrawList*, const ImDrawCmd*) {
 inline void Init() {
     using namespace detail;
 
-    GLuint vs = compileShader(GL_VERTEX_SHADER, kGlslPrefix, kVertBody);
-    GLuint fs = compileShader(GL_FRAGMENT_SHADER, kGlslPrefix, kFragBody);
-
-    g_program = glCreateProgram();
-    glAttachShader(g_program, vs);
-    glAttachShader(g_program, fs);
-
-    // must match ImGui's vertex layout
-    glBindAttribLocation(g_program, 0, "Position");
-    glBindAttribLocation(g_program, 1, "UV");
-    glBindAttribLocation(g_program, 2, "Color");
-
-    glLinkProgram(g_program);
-
-    GLint ok = 0;
-    glGetProgramiv(g_program, GL_LINK_STATUS, &ok);
-    if (!ok) {
-        std::array<char, 1024> log{};
-        glGetProgramInfoLog(g_program, static_cast<GLsizei>(log.size()), nullptr, log.data());
-        std::println(stderr, "[ImXkcd] program link error:\n{}", log.data());
-        glDeleteProgram(g_program);
-        g_program = 0;
+    const GLuint vs = opendigitizer::shader::compileShader(GL_VERTEX_SHADER, detail::kGlslPrefix, kVertBody);
+    const GLuint fs = opendigitizer::shader::compileShader(GL_FRAGMENT_SHADER, detail::kGlslPrefix, kFragBody);
+    if (!vs || !fs) {
         glDeleteShader(vs);
         glDeleteShader(fs);
         return;
     }
 
-    g_locProj     = glGetUniformLocation(g_program, "ProjMtx");
-    g_locAmp      = glGetUniformLocation(g_program, "u_amplitude");
-    g_locFreq     = glGetUniformLocation(g_program, "u_frequency");
-    g_locSeed     = glGetUniformLocation(g_program, "u_seed");
-    g_locTex      = glGetUniformLocation(g_program, "Texture");
-    g_locUtilMaxY = glGetUniformLocation(g_program, "u_utilMaxY");
+    gProgram = glCreateProgram();
+    glAttachShader(gProgram, vs);
+    glAttachShader(gProgram, fs);
+
+    // must match ImGui's vertex layout
+    glBindAttribLocation(gProgram, 0, "Position");
+    glBindAttribLocation(gProgram, 1, "UV");
+    glBindAttribLocation(gProgram, 2, "Color");
+
+    glLinkProgram(gProgram);
+
+    GLint ok = 0;
+    glGetProgramiv(gProgram, GL_LINK_STATUS, &ok);
+    if (!ok) {
+        std::array<char, 1024> log{};
+        glGetProgramInfoLog(gProgram, static_cast<GLsizei>(log.size()), nullptr, log.data());
+        std::println(stderr, "[ImXkcd] program link error:\n{}", log.data());
+        glDeleteProgram(gProgram);
+        gProgram = 0;
+        glDeleteShader(vs);
+        glDeleteShader(fs);
+        return;
+    }
+
+    gLocProj     = glGetUniformLocation(gProgram, "ProjMtx");
+    gLocAmp      = glGetUniformLocation(gProgram, "u_amplitude");
+    gLocFreq     = glGetUniformLocation(gProgram, "u_frequency");
+    gLocSeed     = glGetUniformLocation(gProgram, "u_seed");
+    gLocTex      = glGetUniformLocation(gProgram, "Texture");
+    gLocUtilMaxY = glGetUniformLocation(gProgram, "u_utilMaxY");
 
     glDeleteShader(vs);
     glDeleteShader(fs);
 
-    std::println("[ImXkcd] initialised (program={}, uniforms: proj={} amp={} freq={} seed={} tex={} utilMaxY={})", g_program, g_locProj, g_locAmp, g_locFreq, g_locSeed, g_locTex, g_locUtilMaxY);
+    std::println("[ImXkcd] initialised (program={}, uniforms: proj={} amp={} freq={} seed={} tex={} utilMaxY={})", gProgram, gLocProj, gLocAmp, gLocFreq, gLocSeed, gLocTex, gLocUtilMaxY);
 }
 
 inline void Apply(ImDrawData* drawData) {
     using namespace detail;
-    if (!g_program || !drawData || !enabled) {
+    if (!gProgram || !drawData || !enabled) {
         return;
     }
 
@@ -266,9 +244,9 @@ inline void Apply(ImDrawData* drawData) {
 }
 
 inline void Shutdown() {
-    if (detail::g_program) {
-        glDeleteProgram(detail::g_program);
-        detail::g_program = 0;
+    if (detail::gProgram) {
+        glDeleteProgram(detail::gProgram);
+        detail::gProgram = 0;
     }
 }
 

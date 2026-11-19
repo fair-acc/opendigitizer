@@ -1,6 +1,5 @@
 #include <boost/ut.hpp>
 #include <chrono>
-#include <thread>
 
 // mock SDL for unit testing (avoid SDL dependency)
 #ifndef SDL_EVENTS_MOCK
@@ -23,7 +22,20 @@ using namespace std::chrono_literals;
 
 namespace {
 
-void markPendingFramesAsRendered(DigitizerUi::FramePacer& pacer) {
+struct ManualClock {
+    using duration   = std::chrono::nanoseconds;
+    using rep        = duration::rep;
+    using period     = duration::period;
+    using time_point = std::chrono::time_point<ManualClock>;
+
+    static inline time_point current{1s};
+    static time_point        now() { return current; }
+    static void              advance(duration step) { current += step; }
+};
+
+using Pacer = DigitizerUi::BasicFramePacer<ManualClock>;
+
+void markPendingFramesAsRendered(auto& pacer) {
     for (std::uint32_t i = 0U; i < DigitizerUi::FramePacer::minFramesNeededToResolveWidgetChanges; ++i) {
         pacer.rendered();
     }
@@ -72,18 +84,18 @@ const suite<"FramePacer basics"> _1 = [] {
 
 const suite<"FramePacer render logic"> _2 = [] {
     "should render when dirty and min period elapsed"_test = [] {
-        DigitizerUi::FramePacer pacer{1s, 5ms};
+        Pacer pacer{1s, 5ms};
         pacer.rendered(); // set lastRender to now
 
         pacer.requestFrame();
         expect(pacer.isDirty());
 
-        std::this_thread::sleep_for(6ms);
+        ManualClock::advance(6ms);
         expect(pacer.shouldRender());
     };
 
     "should not render when dirty but min period not elapsed"_test = [] {
-        DigitizerUi::FramePacer pacer{1s, 50ms};
+        Pacer pacer{1s, 50ms};
         pacer.rendered();
 
         pacer.requestFrame();
@@ -92,26 +104,26 @@ const suite<"FramePacer render logic"> _2 = [] {
     };
 
     "should render when_max period elapsed regardless of dirty"_test = [] {
-        DigitizerUi::FramePacer pacer{10ms, 5ms};
+        Pacer pacer{10ms, 5ms};
         markPendingFramesAsRendered(pacer);
         expect(!pacer.isDirty());
 
-        std::this_thread::sleep_for(12ms);
+        ManualClock::advance(12ms);
         expect(pacer.shouldRender()) << "forced refresh";
     };
 
     "rendered decrements requested frame count"_test = [] {
-        DigitizerUi::FramePacer pacer;
+        Pacer pacer;
         markPendingFramesAsRendered(pacer);
         expect(!pacer.isDirty());
 
         pacer.requestFrame();
-        expect(eq(pacer.pendingFrames(), DigitizerUi::FramePacer::minFramesNeededToResolveWidgetChanges));
+        expect(eq(pacer.pendingFrames(), Pacer::minFramesNeededToResolveWidgetChanges));
 
         pacer.rendered();
         expect(pacer.isDirty()) << "expected more than one frame to be requested with each requestFrame()";
 
-        for (std::uint32_t i = 1U; i < DigitizerUi::FramePacer::minFramesNeededToResolveWidgetChanges; ++i) {
+        for (std::uint32_t i = 1U; i < Pacer::minFramesNeededToResolveWidgetChanges; ++i) {
             pacer.rendered();
         }
         expect(!pacer.isDirty());
@@ -123,16 +135,16 @@ const suite<"FramePacer render logic"> _2 = [] {
 
 const suite<"FramePacer timeout calculation"> _3 = [] {
     "returns zero when should render immediately"_test = [] {
-        DigitizerUi::FramePacer pacer{10ms, 5ms};
+        Pacer pacer{10ms, 5ms};
         pacer.rendered();
         pacer.requestFrame();
 
-        std::this_thread::sleep_for(6ms);
+        ManualClock::advance(6ms);
         expect(eq(pacer.getWaitTimeoutMs(), 0));
     };
 
     "returns short timeout when dirty"_test = [] {
-        DigitizerUi::FramePacer pacer{1s, 20ms};
+        Pacer pacer{1s, 20ms};
         pacer.rendered();
         pacer.requestFrame();
 
@@ -142,7 +154,7 @@ const suite<"FramePacer timeout calculation"> _3 = [] {
     };
 
     "returns long timeout when clean"_test = [] {
-        DigitizerUi::FramePacer pacer{500ms, 16ms};
+        Pacer pacer{500ms, 16ms};
         markPendingFramesAsRendered(pacer);
         expect(!pacer.isDirty());
 
@@ -164,7 +176,7 @@ const suite<"FramePacer timeout calculation"> _3 = [] {
 
 const suite<"FramePacer statistics"> _4 = [] {
     "request count increments"_test = [] {
-        DigitizerUi::FramePacer pacer;
+        Pacer pacer;
         pacer.resetMeasurement();
 
         expect(eq(pacer.requestCount(), 0));
@@ -175,7 +187,7 @@ const suite<"FramePacer statistics"> _4 = [] {
     };
 
     "render count increments"_test = [] {
-        DigitizerUi::FramePacer pacer;
+        Pacer pacer;
         pacer.resetMeasurement();
 
         expect(eq(pacer.renderCount(), 0));
@@ -185,7 +197,7 @@ const suite<"FramePacer statistics"> _4 = [] {
     };
 
     "reset measurement clears counters"_test = [] {
-        DigitizerUi::FramePacer pacer;
+        Pacer pacer;
         pacer.requestFrame();
         pacer.rendered();
 
@@ -195,12 +207,12 @@ const suite<"FramePacer statistics"> _4 = [] {
     };
 
     "measured fps approximates actual rate"_test = [] {
-        DigitizerUi::FramePacer pacer{100ms, 10ms};
+        Pacer pacer{100ms, 10ms};
         pacer.resetMeasurement();
 
         for (int i = 0; i < 10; ++i) {
             pacer.rendered();
-            std::this_thread::sleep_for(10ms);
+            ManualClock::advance(10ms);
         }
 
         const double fps = pacer.measuredFps();

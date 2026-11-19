@@ -46,12 +46,6 @@ FetchContent_Declare(
                 ${CMAKE_CURRENT_LIST_DIR}/patches/imgui-node-editor-pin-draw-callbacks.patch EXCLUDE_FROM_ALL SYSTEM)
 
 FetchContent_Declare(
-  plf_colony
-  GIT_REPOSITORY https://github.com/mattreecebentley/plf_colony.git
-  GIT_TAG 41e387e281b8323ca5584e79f67d632964b24bbf # v7.11
-  EXCLUDE_FROM_ALL SYSTEM)
-
-FetchContent_Declare(
   # needed to load images in ImGui
   stb
   GIT_REPOSITORY https://github.com/nothings/stb.git
@@ -73,8 +67,7 @@ set(FETCH_CONTENT_UI_TARGETS
     imgui_toggle
     imgui-node-editor
     stb
-    opencmw-cpp
-    plf_colony)
+    opencmw-cpp)
 
 if(OPENDIGITIZER_ENABLE_TESTING)
   FetchContent_Declare(
@@ -271,6 +264,3 @@ target_link_libraries(imgui-node-editor PUBLIC imgui)
 
 add_library(stb INTERFACE)
 target_include_directories(stb SYSTEM INTERFACE ${stb_SOURCE_DIR})
-
-add_library(plf_colony INTERFACE)
-target_include_directories(plf_colony SYSTEM INTERFACE ${plf_colony_SOURCE_DIR})

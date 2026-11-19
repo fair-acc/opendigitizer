@@ -14,8 +14,6 @@
 
 namespace opendigitizer {
 
-GR_REGISTER_BLOCK(opendigitizer::SineOscillator, [T], [float])
-
 /// This block is intended to be used specifically for creating musical synthesizers, hence "oscillator" rather than "generator" in the name
 template<typename T>
 struct SineOscillator : gr::Block<SineOscillator<T>>, gr::BlockingSync<SineOscillator<T>> {
@@ -85,7 +83,5 @@ struct SineOscillator : gr::Block<SineOscillator<T>>, gr::BlockingSync<SineOscil
 };
 
 } // namespace opendigitizer
-
-inline auto registerPortamentoSineOscillator = gr::registerBlock<opendigitizer::SineOscillator, float>(gr::globalBlockRegistry());
 
 #endif // OPENDIGITIZER_BLOCKS_SINE_OSCILLATOR_HPP

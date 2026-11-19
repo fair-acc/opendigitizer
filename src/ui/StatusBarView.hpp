@@ -35,6 +35,7 @@ private:
 
     std::optional<gr::log::Level> _levelFilter;
     std::string                   _messageFilter;
+    int                           _selectionId = 0;
 
     struct SaveData {
         std::string                                  pendingText;

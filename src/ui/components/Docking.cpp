@@ -11,6 +11,27 @@
 
 using namespace DigitizerUi;
 
+namespace {
+struct GridShape {
+    std::size_t columns = 1UZ;
+    std::size_t rows    = 1UZ;
+};
+
+[[nodiscard]] GridShape gridShape(DockingLayoutType type, std::size_t windowCount) noexcept {
+    if (windowCount == 0UZ) {
+        return {};
+    }
+    switch (type) {
+    case DockingLayoutType::Row: return {.columns = windowCount, .rows = 1UZ};
+    case DockingLayoutType::Column: return {.columns = 1UZ, .rows = windowCount};
+    case DockingLayoutType::Grid:
+    case DockingLayoutType::Free: break;
+    }
+    const auto columns = static_cast<std::size_t>(std::ceil(std::sqrt(static_cast<double>(windowCount))));
+    return {.columns = columns, .rows = (windowCount + columns - 1UZ) / columns};
+}
+} // namespace
+
 constexpr const char* kDockspaceId  = "OpendigitizerDockspace";
 constexpr const char* kHostWindowId = "MainDockspace_Window";
 
@@ -56,24 +77,6 @@ static void dragWindow(ImGuiWindow* windowToDrag, ImRect boundingBox) {
     // the window frame height, where the tab bar is (see is_drag_docking in the aforementioned function).
     g.ActiveIdClickOffset.y = std::clamp(g.ActiveIdClickOffset.y, 0.f, std::max(0.f, ImGui::GetFrameHeight() - 1.f));
 };
-
-static void dockAtBottomIfWanted(const DockSpace::Windows& windows, ImGuiID dockspaceID, ImGuiDockNodeFlags nodeFlags) {
-    // if any windows request to be docked at the bottom, respect that
-    for (const auto& window : windows) {
-        if (window->wantsDockAtBottom) {
-            window->wantsDockAtBottom = false;
-            ImGuiID bottomId          = 0;
-            ImGuiID topId             = 0;
-            ImGui::DockBuilderSplitNode(dockspaceID, ImGuiDir_Down, .3f, &bottomId, &topId);
-
-            ImGui::DockBuilderDockWindow(window->name.data(), bottomId);
-            auto bottomNode = ImGui::DockBuilderGetNode(bottomId);
-            bottomNode->SetLocalFlags(nodeFlags);
-            ImGui::DockBuilderSetNodeSize(bottomId, ImVec2{bottomNode->Size.x, ImGui::GetFrameHeight() + ImGui::GetStyle().WindowPadding.y});
-            ImGui::DockBuilderFinish(dockspaceID);
-        }
-    }
-}
 
 void DockSpace::setLayoutType(DockingLayoutType type) {
     if (type != _layoutType) {
@@ -148,11 +151,11 @@ void DockSpace::captureFreeLayout() const {
 void DockSpace::renderWindows(const Windows& windows, bool isEditable, ImVec2 paneSize) {
     for (const auto& window : windows) {
         const float  floatingWindowMinSizeFractionOfViewport = LookAndFeel::instance().floatingWindowMinSizeFractionOfViewport;
-        const ImVec2 windowSizeMax                           = window->windowMaxSize.value_or(paneSize);
-        const ImVec2 windowSizeMin                           = window->windowMinSizeOverride.value_or(ImVec2{
+        const ImVec2 windowSizeMax                           = paneSize;
+        const ImVec2 windowSizeMin                           = ImVec2{
             std::max(1.f, windowSizeMax.x * floatingWindowMinSizeFractionOfViewport),
             std::max(1.f, windowSizeMax.y * floatingWindowMinSizeFractionOfViewport),
-        });
+        };
         ImGui::SetNextWindowSizeConstraints(windowSizeMin, windowSizeMax);
 
         ImGuiWindowFlags flags = ImGuiWindowFlags_NoCollapse;
@@ -254,20 +257,6 @@ void DockSpace::layoutInBox(const Windows& windows, ImGuiDir direction, bool isE
         }
         windowCount--;
     }
-}
-
-GridShape DigitizerUi::gridShape(DockingLayoutType type, std::size_t windowCount) noexcept {
-    if (windowCount == 0UZ) {
-        return {};
-    }
-    switch (type) {
-    case DockingLayoutType::Row: return {.columns = windowCount, .rows = 1UZ};
-    case DockingLayoutType::Column: return {.columns = 1UZ, .rows = windowCount};
-    case DockingLayoutType::Grid:
-    case DockingLayoutType::Free: break;
-    }
-    const auto columns = static_cast<std::size_t>(std::ceil(std::sqrt(static_cast<double>(windowCount))));
-    return {.columns = columns, .rows = (windowCount + columns - 1UZ) / columns};
 }
 
 std::vector<LayoutRect> DigitizerUi::autoLayoutRects(DockingLayoutType type, std::size_t windowCount) {
@@ -468,8 +457,6 @@ void DockSpace::relayout(const Windows& windows, bool isEditable, bool exactFree
             if (!restoreDockSpaceState(_lastFreeLayout, dockspaceID)) {
                 layoutInGrid(windows, isEditable);
             }
-
-            dockAtBottomIfWanted(windows, dockspaceID, nodeFlags(isEditable));
         }
     } else {
         layoutInGrid(windows, isEditable);

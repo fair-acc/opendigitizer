@@ -5,8 +5,7 @@
 
 using namespace boost;
 
-class TestApp : public DigitizerUi::test::ImGuiTestApp {
-private:
+struct TestApp : public DigitizerUi::test::ImGuiTestApp {
     using DigitizerUi::test::ImGuiTestApp::ImGuiTestApp;
 
     void registerTests() override {
@@ -23,7 +22,7 @@ private:
             ImGui::SetWindowSize(ImVec2(300, 300));
 
             auto& vars = ctx->GetVars<TestState>();
-            if (DigitizerUi::components::InputKeypad<>::edit("item_source", "label", &vars.value)) {
+            if (DigitizerUi::components::InputKeypad::edit("item_source", "label", &vars.value)) {
                 // do not override with false every frame
                 vars.edited = true;
             }
@@ -61,6 +60,24 @@ private:
                 ut::expect(vars.edited);
 
                 // no keypad now
+                ut::expect(g.OpenPopupStack.empty());
+            };
+
+            ut::test("operator button replaces a typed operator") = [ctx] {
+                ImGuiContext& g    = *GImGui;
+                auto&         vars = ctx->GetVars<TestState>();
+
+                ctx->SetRef("Test Window");
+                ctx->ItemClick("label");
+                ut::expect(g.OpenPopupStack.size() == 1);
+
+                ctx->SetRef(ctx->WindowInfo("//KeypadX/drawKeypad Input").Window->ID);
+                ctx->ItemInputValue("##hidden", "5*");
+                ctx->ItemClick("+");
+                ctx->ItemClick("3");
+                ctx->ItemClick("Enter"); // evaluates
+                ctx->ItemClick("Enter"); // accepts
+                ut::expect(vars.value == 8) << vars.value;
                 ut::expect(g.OpenPopupStack.empty());
             };
         };

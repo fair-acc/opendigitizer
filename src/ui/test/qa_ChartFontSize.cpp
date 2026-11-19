@@ -18,7 +18,7 @@ struct FontSizes {
 };
 } // namespace
 
-class TestApp : public DigitizerUi::test::ImGuiTestApp {
+struct TestApp : public DigitizerUi::test::ImGuiTestApp {
     using DigitizerUi::test::ImGuiTestApp::ImGuiTestApp;
 
     void registerTests() override {
@@ -56,9 +56,9 @@ class TestApp : public DigitizerUi::test::ImGuiTestApp {
 
         t->TestFunc = [](ImGuiTestContext* ctx) {
             ut::test("chart faces follow the host font size") = [ctx] {
-                ctx->Yield(2);
-                const auto&     sizes = ctx->GetVars<FontSizes>();
-                constexpr float kTol  = 1e-3f;
+                const auto& sizes = ctx->GetVars<FontSizes>();
+                opendigitizer::test::waitUntil(ctx, "a frame measured the sizes", [&sizes] { return sizes.hostNormalNoFonts > 0.f; });
+                constexpr float kTol = 1e-3f;
 
                 ut::expect(sizes.legacyTiny > 0.f && sizes.legacySmall > sizes.legacyTiny);
                 ut::expect(ut::approx(sizes.hostNormalTiny, sizes.legacyTiny, kTol)) << "standalone tiny size unchanged";

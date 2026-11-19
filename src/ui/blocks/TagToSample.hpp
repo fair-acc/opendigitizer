@@ -32,6 +32,4 @@ struct TagToSample : public gr::Block<TagToSample<T>> {
 
 } // namespace opendigitizer
 
-auto registerTagToSample = gr::registerBlock<opendigitizer::TagToSample, float>(gr::globalBlockRegistry());
-
 #endif

@@ -21,8 +21,6 @@
 
 namespace opendigitizer {
 
-GR_REGISTER_BLOCK(opendigitizer::PianoControl)
-
 struct PianoControl : DigitizerUi::ImControl<PianoControl> {
     using Description = gr::Doc<"UI control that draws a piano keyboard">;
 
@@ -88,7 +86,7 @@ struct PianoControl : DigitizerUi::ImControl<PianoControl> {
         const float         height        = DigitizerUi::LookAndFeel::instance().dashboardStyle.toolbarRowHeight - ImGui::GetStyle().ItemSpacing.y;
         const ImVec2        size          = {whiteKeyWidth * static_cast<float>(whiteKeyCount()), height};
         const SizeAndLayout layout        = prepareDraw(parsedConfig, size.x, size.x, labelWidth());
-        drawWithLabelAndTooltip(layout, [&](float) { drawKeys(whiteKeyWidth, size); });
+        drawWithLabel(layout, [&](float) { drawKeys(whiteKeyWidth, size); });
         return gr::work::Status::OK;
     }
 
@@ -146,7 +144,5 @@ struct PianoControl : DigitizerUi::ImControl<PianoControl> {
 };
 
 } // namespace opendigitizer
-
-inline auto registerPianoControl = gr::registerBlock<opendigitizer::PianoControl>(gr::globalBlockRegistry());
 
 #endif // OPENDIGITIZER_BLOCKS_PIANO_CONTROL_HPP

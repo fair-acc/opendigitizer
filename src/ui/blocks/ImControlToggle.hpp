@@ -27,11 +27,10 @@ struct ImControlToggle : ImControl<ImControlToggle> {
         const float         toggleWidth  = DigitizerUi::toggleSwitchWidth();
         const SizeAndLayout layout       = prepareDraw(parsedConfig, toggleWidth, toggleWidth, labelWidth());
         loadValueIfConnectionChanged(value, parsedConfig);
-        drawWithLabelAndTooltip(layout, [this](float) {
-            const std::string id = "##" + label;
+        drawWithLabel(layout, [this](float) {
+            const std::string id = widgetId();
             if (DigitizerUi::Checkbox(id.c_str(), &value)) {
-                std::ignore = settings().setStaged({{"value", value}});
-                sendToTargets(value);
+                commitValue(value);
             }
         });
         return gr::work::Status::OK;

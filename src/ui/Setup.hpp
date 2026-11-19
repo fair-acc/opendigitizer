@@ -14,6 +14,7 @@ void initialise(std::optional<LookAndFeel::Style> style = {}); // once, after th
 void registerDashboardBlocks(gr::BlockRegistry& registry);
 void registerVideoBlocks(gr::BlockRegistry& registry);        // SetupVideoBlocks.cpp: a translation unit of its own, for compile memory
 void registerLocalisationBlocks(gr::BlockRegistry& registry); // SetupLocalisationBlocks.cpp, likewise
+void registerSignalBlocks(gr::BlockRegistry& registry);       // SetupSignalBlocks.cpp, likewise
 
 void applyStyle(LookAndFeel::Style style);
 void applyTheme(LookAndFeel::Theme theme);

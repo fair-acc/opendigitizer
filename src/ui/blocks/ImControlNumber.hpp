@@ -78,13 +78,13 @@ private:
         return isNumber ? controlledType : std::string("float64");
     }
 
-    [[nodiscard]] static double significantStep(double number) { return components::computeIncrementNonZero(std::format("{:.4f}", number)); }
+    [[nodiscard]] static double significantStep(double number) { return components::incrementOf(std::format("{:.4f}", number), components::TrailingZeros::Ignored); }
 
     /// Given the constraints on the control, decide on the best style that is possible to use.
     /// While slider may be desired, ImGui does not support sliders for extremely large numeric ranges
     static NumberStyle getBestStyle(NumberStyle desiredStyle, double lowerLimit, double upperLimit) {
         using enum NumberStyle;
-        constexpr auto limit = std::numeric_limits<double>::max() / 2.;
+        constexpr auto limit = kImGuiSliderDoubleLimit;
         if ((desiredStyle == slider || desiredStyle == sliderSpinner) && (lowerLimit <= -limit || upperLimit >= limit)) {
             return field;
         }
@@ -118,7 +118,7 @@ private:
         const T           stepSize    = std::max(clampedTo<T>(step != 0. ? step : derivedStep), std::is_integral_v<T> ? T{1} : T{});
         const auto        dataType    = imguiDataType<T>();
         const std::string format      = control::printfFormat<T>(unit);
-        const std::string id          = "##" + label;
+        const std::string id          = widgetId();
         const auto [natural, minimum] = naturalAndMinimumWidgetWidth(drawnStyle, calculateNumberLabelWidthForRange(lower, upper, stepSize, format.c_str()));
         const SizeAndLayout layout    = prepareDraw(parsedConfig, natural, minimum, labelWidth());
         bool                typed     = false;
@@ -135,7 +135,7 @@ private:
             typed                     = action == SliderAction::TypedInTextField;
             changed                   = action != SliderAction::NotEdited;
         };
-        drawWithLabelAndTooltip(layout, [&](float width) {
+        drawWithLabel(layout, [&](float width) {
             switch (drawnStyle) {
             case NumberStyle::field: field(width); break;
             case NumberStyle::spinBox:
@@ -156,8 +156,8 @@ private:
 
     template<typename T>
     void setNumber(T number) {
-        value       = static_cast<double>(number);
-        std::ignore = settings().setStaged({{"value", value}});
+        value = static_cast<double>(number);
+        stageValue(value);
         sendToTargets(number);
     }
 };

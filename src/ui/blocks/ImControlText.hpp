@@ -26,13 +26,12 @@ struct ImControlText : ImControl<ImControlText> {
         const auto          parsedConfig = DrawableBlockConfig::fromMap(config);
         const SizeAndLayout layout       = prepareDraw(parsedConfig, LookAndFeel::instance().dashboardStyle.toolbarControlInputWidth, LookAndFeel::instance().dashboardStyle.toolbarControlMinimumWidth, labelWidth());
         loadValueIfConnectionChanged(value, parsedConfig);
-        drawWithLabelAndTooltip(layout, [this](float width) {
-            const std::string id = "##" + label;
+        drawWithLabel(layout, [this](float width) {
+            const std::string id = widgetId();
             ImGui::SetNextItemWidth(width);
             const bool entered = ImGui::InputText(id.c_str(), &value, ImGuiInputTextFlags_EnterReturnsTrue);
             if (entered || ImGui::IsItemDeactivatedAfterEdit()) { // the target follows the entered text, not every keystroke
-                std::ignore = settings().setStaged({{"value", value}});
-                sendToTargets(value);
+                commitValue(value);
             }
         });
         return gr::work::Status::OK;

@@ -116,35 +116,6 @@ public:
         return result;
     }
 
-    [[nodiscard]] bool hasSink(std::string_view uniqueName) const {
-        std::lock_guard lock(_mutex);
-        return _sinks.contains(std::string(uniqueName));
-    }
-
-    [[nodiscard]] std::vector<std::string> sinkNames() const {
-        std::lock_guard lock(_mutex);
-
-        std::vector<std::string> names;
-        names.reserve(_sinks.size());
-        for (const auto& [name, _] : _sinks) {
-            names.push_back(name);
-        }
-
-        return names;
-    }
-
-    [[nodiscard]] std::vector<std::shared_ptr<SignalSink>> allSinks() const {
-        std::lock_guard lock(_mutex);
-
-        std::vector<std::shared_ptr<SignalSink>> sinks;
-        sinks.reserve(_sinks.size());
-        for (const auto& [_, sink] : _sinks) {
-            sinks.push_back(sink);
-        }
-
-        return sinks;
-    }
-
     [[nodiscard]] std::size_t sinkCount() const {
         std::lock_guard lock(_mutex);
         return _sinks.size();

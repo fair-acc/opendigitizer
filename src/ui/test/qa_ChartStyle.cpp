@@ -59,7 +59,7 @@ std::unique_ptr<opendigitizer::charts::XYChart> makeChart(std::string name, std:
     return chart;
 }
 
-TestState* g_state = nullptr;
+TestState* gState = nullptr;
 
 constexpr ImVec4 kMagenta{1.f, 0.f, 1.f, 1.f};
 
@@ -90,11 +90,10 @@ bool isCurrentOrange(Rgb c) { return c.r > 150 && c.g > 20 && c.g < 110 && c.b <
 bool isWhite(Rgb c) { return c.r > 200 && c.g > 200 && c.b > 200; }
 bool isGrey(Rgb c) { return std::abs(c.r - c.g) <= 2 && std::abs(c.g - c.b) <= 2; }
 
-class Pixels {
+struct Pixels {
     DigitizerUi::test::ImGuiTestApp::CapturedPixels _image;
 
-public:
-    explicit Pixels(ImGuiTestContext* ctx) : _image(DigitizerUi::test::ImGuiTestApp::capturePixels(*ctx, ImRect(kChartPos, kChartPos + kChartSize))) {}
+    explicit Pixels(ImGuiTestContext* ctx) : _image(DigitizerUi::test::ImGuiTestApp::captureSettledPixels(*ctx, ImRect(kChartPos, kChartPos + kChartSize))) {}
 
     [[nodiscard]] Rgb at(int x, int y) const {
         const unsigned int pixel = _image.rgba[static_cast<std::size_t>(y * _image.width + x)];
@@ -149,10 +148,9 @@ DigitizerUi::ChartStyle chartStyle(auto configure) {
 }
 
 std::unique_ptr<Pixels> drawAndCapture(ImGuiTestContext* ctx, opendigitizer::charts::XYChart& chart, Mode mode, const DigitizerUi::ChartStyle& style) {
-    g_state->drawn                                         = std::addressof(chart);
-    g_state->mode                                          = mode;
+    gState->drawn                                          = std::addressof(chart);
+    gState->mode                                           = mode;
     DigitizerUi::LookAndFeel::mutableInstance().chartStyle = style;
-    ctx->Yield(3);
     auto pixels                                            = std::make_unique<Pixels>(ctx);
     DigitizerUi::LookAndFeel::mutableInstance().chartStyle = {};
     return pixels;
@@ -168,39 +166,38 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
         t->GuiFunc = [](ImGuiTestContext*) {
             ImGui::SetNextWindowPos(kChartPos);
             ImGui::SetNextWindowSize(kChartSize);
-            if (g_state->hostBackground) {
-                ImGui::PushStyleColor(ImGuiCol_WindowBg, *g_state->hostBackground);
+            if (gState->hostBackground) {
+                ImGui::PushStyleColor(ImGuiCol_WindowBg, *gState->hostBackground);
             }
             IMW::Window window("Chart", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
-            if (g_state->hostBackground) {
+            if (gState->hostBackground) {
                 ImGui::PopStyleColor();
             }
-            if (g_state->fontProbeStyle) {
-                const opendigitizer::charts::ScopedChartStyle style(*g_state->fontProbeStyle);
-                g_state->probedFont     = ImGui::GetFont();
-                g_state->probedFontSize = ImGui::GetStyle().FontSizeBase;
+            if (gState->fontProbeStyle) {
+                const opendigitizer::charts::ScopedChartStyle style(*gState->fontProbeStyle);
+                gState->probedFont     = ImGui::GetFont();
+                gState->probedFontSize = ImGui::GetStyle().FontSizeBase;
                 return;
             }
-            if (!g_state->drawn) {
+            if (!gState->drawn) {
                 return;
             }
-            std::ignore = g_state->drawn->draw(opendigitizer::charts::chartDrawConfig(g_state->mode));
+            std::ignore = gState->drawn->draw(opendigitizer::charts::chartDrawConfig(gState->mode));
         };
 
         t->TestFunc = [](ImGuiTestContext* ctx) {
             DigitizerUi::LookAndFeel::mutableInstance().autoHideLegends = false; // the captures below need a legend that stays
             ctx->MouseMoveToPos(ImVec2(5.f, 5.f));
-            ctx->Yield(10);
 
-            auto& state                                           = *g_state;
+            auto& state                                           = *gState;
             "the default style draws the reference captures"_test = [&] {
                 state.drawn = state.singleAxis.get();
                 state.mode  = Mode::View;
-                ctx->Yield(5);
+                std::ignore = Pixels(ctx);
                 captureScreenshot(*ctx, ImRect(kChartPos, kChartPos + kChartSize));
                 state.drawn = state.twoAxes.get();
                 state.mode  = Mode::Interaction;
-                ctx->Yield(5);
+                std::ignore = Pixels(ctx);
                 captureScreenshot(*ctx, ImRect(kChartPos, kChartPos + kChartSize));
             };
 
@@ -290,8 +287,8 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             "an auto-hiding legend fades without movement in its plot and returns when the mouse moves there"_test = [&] {
                 auto& look           = DigitizerUi::LookAndFeel::mutableInstance();
                 look.autoHideLegends = true;
-                g_state->drawn       = state.twoAxes.get();
-                g_state->mode        = Mode::Interaction;
+                gState->drawn        = state.twoAxes.get();
+                gState->mode         = Mode::Interaction;
                 auto& chart          = *state.twoAxes;
                 while (chart.legendVisibility() > 0.f) {
                     ctx->Yield();
@@ -345,11 +342,12 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 auto&         lnf  = DigitizerUi::LookAndFeel::mutableInstance();
                 ImFont* const face = lnf.fontTiny();
                 expect(face != nullptr && face != ImGui::GetFont()) << fatal << "a face other than the default";
+                state.probedFont     = nullptr;
                 state.fontProbeStyle = chartStyle([face](DigitizerUi::ChartStyle& s) {
                     s.labelFont     = face;
                     s.labelFontSize = 23.f;
                 });
-                ctx->Yield(2);
+                opendigitizer::test::waitUntil(ctx, "a frame probed the font", [&] { return state.probedFont != nullptr; });
                 state.fontProbeStyle.reset();
                 expect(state.probedFont == face);
                 expect(eq(state.probedFontSize, 23.f));
@@ -367,13 +365,12 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
 };
 
 int main(int argc, char* argv[]) {
-    TestState state;
-    g_state = std::addressof(state);
-
     auto options             = DigitizerUi::test::TestOptions::fromArgs(argc, argv);
     options.screenshotPrefix = "chart_style";
     TestApp app(options);
     app.initImGui();
+    TestState state;
+    gState = std::addressof(state);
 
     state.voltage    = makeSink("style_voltage", 0x00C000, "voltage", "V", 1.0, 0.0);
     state.current    = makeSink("style_current", 0xE04000, "current", "A", 2.0, 1.0);
@@ -381,10 +378,7 @@ int main(int argc, char* argv[]) {
     state.twoAxes    = makeChart("two axes", {"style_voltage", "style_current"}, true);
 
     const bool result = app.runTests();
-    state.singleAxis.reset();
-    state.twoAxes.reset();
-    std::ignore = opendigitizer::charts::SinkRegistry::instance().unregisterSink("style_voltage");
-    std::ignore = opendigitizer::charts::SinkRegistry::instance().unregisterSink("style_current");
-    g_state     = nullptr;
+    std::ignore       = opendigitizer::charts::SinkRegistry::instance().unregisterSink("style_voltage");
+    std::ignore       = opendigitizer::charts::SinkRegistry::instance().unregisterSink("style_current");
     return result ? 0 : 1;
 }

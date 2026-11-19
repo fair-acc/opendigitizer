@@ -5,11 +5,10 @@
 #include "../common/LookAndFeel.hpp"
 
 #include "../components/Dialog.hpp"
-#include "../components/ListBox.hpp"
 #include "../components/StyledStandardWidgets.hpp"
 
 #include "NewBlockSelectorFuzzySearch.hpp"
-#include "scope_exit.hpp"
+#include "tolower.hpp"
 
 #include <gnuradio-4.0/meta/utils.hpp>
 
@@ -17,6 +16,91 @@ using namespace std::string_literals;
 using DigitizerUi::components::FilterResult;
 using DigitizerUi::components::filterTypename;
 using DigitizerUi::components::NamespaceDelimitedSearchIterator;
+
+namespace DigitizerUi {
+namespace {
+void ensureItemVisible() {
+    auto scroll = ImGui::GetScrollY();
+    auto min    = ImGui::GetWindowContentRegionMin().y + scroll;
+    auto max    = ImGui::GetWindowContentRegionMax().y + scroll;
+
+    auto h = ImGui::GetItemRectSize().y;
+    auto y = ImGui::GetCursorPosY() - scroll;
+    if (y > max) {
+        ImGui::SetScrollHereY(1);
+    } else if (y - h < min) {
+        ImGui::SetScrollHereY(0);
+    }
+}
+
+[[nodiscard]] std::optional<std::string> filteredListBox(const char* id, const ImVec2& size, std::vector<std::string>& names, FilteredListState& state) {
+    IMW::ChangeStrId newId(id);
+
+    IMW::Group group;
+
+    auto x = ImGui::GetCursorPosX();
+    auto y = ImGui::GetCursorPosY();
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextUnformatted("Filter:");
+    ImGui::SameLine();
+    ImGui::SetCursorPosY(y);
+
+    if (ImGui::IsWindowAppearing() || state.filterInputReclaimFocus) {
+        ImGui::SetKeyboardFocusHere();
+        state.filterInputReclaimFocus = false;
+    }
+
+    IMW::ItemWidth newItemWidth(size.x - (ImGui::GetCursorPosX() - x));
+    const bool     shouldScrollToSelected = components::InputTextCompletion(names).inputText("##filterBlockType", &state.filterString);
+
+    if (auto listbox = IMW::ListBox("##Available Block types", ImVec2{size.x, size.y - (ImGui::GetCursorPosY() - y)})) {
+        const auto matchesFilter = [&state](std::string_view name) { return !name.empty() && Digitizer::utils::caseInsensitiveContains(name, state.filterString); };
+        if (state.selected && !matchesFilter(*state.selected)) {
+            state.selected.reset();
+        }
+
+        int  selectOffset     = 0;
+        bool scrollToSelected = shouldScrollToSelected;
+        if (state.selected) {
+            if (ImGui::IsKeyPressed(ImGuiKey_DownArrow)) {
+                selectOffset     = 1;
+                scrollToSelected = true;
+            } else if (ImGui::IsKeyPressed(ImGuiKey_UpArrow)) {
+                selectOffset     = -1;
+                scrollToSelected = true;
+            }
+        }
+
+        const auto filtered = names | std::views::filter(matchesFilter) | std::ranges::to<std::vector>();
+        for (auto it = filtered.begin(); it != filtered.end(); ++it) {
+            if (!state.selected) {
+                state.selected = *it;
+            }
+
+            if (const bool isLastIteration = (it + 1) == filtered.end(); !isLastIteration) {
+                if (selectOffset == -1 && *(it + 1) == *state.selected) {
+                    state.selected = *it;
+                    selectOffset   = 0;
+                } else if (selectOffset == 1 && *it == *state.selected) {
+                    state.selected.reset();
+                    selectOffset = 0;
+                }
+            }
+
+            if (DigitizerUi::Selectable(it->c_str(), state.selected && *it == *state.selected)) {
+                state.selected                = *it;
+                state.filterInputReclaimFocus = true;
+            }
+            if (state.selected && *state.selected == *it && scrollToSelected) {
+                ensureItemVisible();
+            }
+        }
+    }
+
+    return state.selected;
+}
+} // namespace
+} // namespace DigitizerUi
 
 struct Symbol {
     std::string_view    fullSymbolName;
@@ -37,7 +121,7 @@ struct Symbol {
         }
 
         if (wasSelected && scrollToSelected) {
-            DigitizerUi::components::detail::ensureItemVisible();
+            DigitizerUi::ensureItemVisible();
         }
 
         const auto fontSize = ImGui::GetFontSize();
@@ -251,7 +335,7 @@ void NewBlockSelector::draw() {
         m_wasOpenLastFrame = false;
         return;
     }
-    Digitizer::utils::scope_exit _([this] { this->m_wasOpenLastFrame = true; });
+    gr::on_scope_exit _([this] { this->m_wasOpenLastFrame = true; });
 
     auto listSize = windowSize - ImVec2(64, 64);
     listSize.x /= 2.f;
@@ -273,19 +357,8 @@ void NewBlockSelector::draw() {
                 m_selectedTypeParametrizationListName = "parametrizations_for_" + m_currentlySelectedType;
             }
 
-            auto parameterization = components::FilteredListBox(m_selectedTypeParametrizationListName.c_str(), listSize, //
-                typeIt->second, [index = 0](auto& parametrization) mutable -> std::pair<int, std::string> {
-                    index++;
-                    if (parametrization.empty()) {
-                        return std::pair{index, "default"s};
-                    } else {
-                        return std::pair{index, parametrization};
-                    }
-                });
-
-            if (parameterization) {
-                selectedParametrization = parameterization.value().second;
-            }
+            auto names              = typeIt->second | std::views::transform([](const std::string& parametrization) { return parametrization.empty() ? "default"s : parametrization; }) | std::ranges::to<std::vector>();
+            selectedParametrization = filteredListBox(m_selectedTypeParametrizationListName.c_str(), listSize, names, m_parametrizationLists[m_selectedTypeParametrizationListName]);
         }
     }
 

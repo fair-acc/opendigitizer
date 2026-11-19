@@ -58,40 +58,6 @@ WidgetSize CalcCheckboxSize(const char* label) {
         .normalized();
 }
 
-WidgetSize CalcColorEditorSize(const char* label, ImGuiColorEditFlags flags) {
-    const ImGuiStyle& style                 = ImGui::GetStyle();
-    const auto [labelMinSize, labelSize, _] = calculateLabelMinAndPreferredSize(label);
-    const float frameHeight                 = ImGui::GetFrameHeight();
-
-    const bool hasColorBox = (flags & ImGuiColorEditFlags_NoSmallPreview) == 0;
-    const bool hasInputs   = (flags & ImGuiColorEditFlags_NoInputs) == 0;
-    // treat controls as a fixed size thing, min == preferred, despite having text,
-    // to avoid having to calculate text and text width for each input and mimic a
-    // lot more of imgui internals here
-    float controlsWidth = 0.f;
-    if (hasInputs) {
-        const bool hex      = (flags & ImGuiColorEditFlags_DisplayHex) != 0;
-        const bool hasAlpha = (flags & ImGuiColorEditFlags_NoAlpha) == 0;
-        const int  nFrames  = hex ? 1 : (hasAlpha ? 4 : 3);
-
-        const auto singleInputWidth = ImGui::CalcTextSize("R:77.7").x + framePad().x;
-        controlsWidth               = (float(nFrames) * singleInputWidth) + float(nFrames - 1) * style.ItemInnerSpacing.x;
-    }
-
-    const float colorBoxWidth          = hasColorBox ? frameHeight : 0.f;
-    const float boxAndControlsSpacing  = (hasColorBox && hasInputs) ? style.ItemInnerSpacing.x : 0.f;
-    const auto  addLabelToConstantSize = [colorBoxWidth, boxAndControlsSpacing, controlsWidth, frameHeight](ImVec2 size) { //
-        return ImVec2{(colorBoxWidth + boxAndControlsSpacing + controlsWidth) + labelPlusSpacing(size).x, frameHeight};
-    };
-
-    return WidgetSize{
-        .min                 = addLabelToConstantSize(labelMinSize),
-        .preferred           = addLabelToConstantSize(labelSize),
-        .labelPreferredWidth = labelSize.x,
-    }
-        .normalized();
-}
-
 static WidgetSize CalcSliderOrDragSize(const char* label, std::size_t charsNeeded) {
     auto size                      = CalcFramedLabelSize(label);
     auto dragLabelWidth            = ImGui::CalcTextSize("W").x * static_cast<float>(std::max(charsNeeded, std::size_t{1}));
@@ -102,18 +68,7 @@ static WidgetSize CalcSliderOrDragSize(const char* label, std::size_t charsNeede
     return size.normalized();
 }
 
-WidgetSize CalcSliderSize(const char* label, std::size_t charsNeeded) { return CalcSliderOrDragSize(label, charsNeeded); }
 WidgetSize CalcDragSize(const char* label, std::size_t charsNeeded) { return CalcSliderOrDragSize(label, charsNeeded); }
-
-WidgetSize CalcTextInputSize(const char* label, const char* contents) {
-    auto labelSize = CalcFramedLabelSize(label);
-    auto inputSize = CalcFramedLabelSize(contents);
-    return WidgetSize{
-        .min                 = ImVec2{labelSize.min.x + inputSize.min.x + ImGui::GetStyle().ItemInnerSpacing.x, std::max(labelSize.min.y, inputSize.min.y)},
-        .preferred           = ImVec2{labelSize.preferred.x + inputSize.preferred.x + ImGui::GetStyle().ItemInnerSpacing.x, std::max(labelSize.preferred.y, inputSize.preferred.y)},
-        .labelPreferredWidth = labelSize.preferred.x,
-    };
-}
 
 WidgetSize CalcComboSize(const char* label, const char* previewValue, ImGuiComboFlags flags) {
     WidgetSize previewSize{};

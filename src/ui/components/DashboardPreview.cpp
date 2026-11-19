@@ -1,10 +1,12 @@
 #include "DashboardPreview.hpp"
 
+#include "../GraphModel.hpp"
 #include "../MapUtils.hpp"
 #include "../common/LookAndFeel.hpp"
+#include "../utils/ImGuiDockSpaceState.hpp"
 #include "../utils/TransparentStringHash.hpp"
-#include "ColourManager.hpp"
 #include "Docking.hpp"
+#include "SignalColours.hpp"
 
 #include <implot.h>
 #include <implot_internal.h>
@@ -70,7 +72,7 @@ FlowgraphSinks parseFlowgraphSinksFromYaml(const gr::property_map& flowgraphRoot
     }
     const auto namesOfBlocksWithInputs = getNamesOfAllBlocksWithAnInputConnection(flowgraphRoot);
 
-    opendigitizer::ColourManager manager;
+    opendigitizer::SignalColours colours;
     for (const auto& blockValue : *blocks) { // assumes that regular dashboard loading also loads blocks in order they appear in the file
         const auto        block      = blockValue.value_or<gr::property_map>(gr::property_map{});
         const auto        parameters = block.value_or<gr::property_map>("parameters", gr::property_map{});
@@ -81,19 +83,19 @@ FlowgraphSinks parseFlowgraphSinksFromYaml(const gr::property_map& flowgraphRoot
         sinks.allBlockNames.insert(name);
 
         const std::string id = block.value_or<std::string>("id", std::string{});
-        if (!id.starts_with("opendigitizer::ImPlotSink")) {
+        if (!isPlotSinkTypeName(id)) {
             continue;
         }
         const std::uint32_t explicitColor = getAndConvertNumber<std::uint32_t>(parameters, "color", 0U);
 
-        std::size_t slot = manager.getNextSlotIndex();
-        manager.releaseSlotIndex(slot);
-        slot = explicitColor == 0U ? manager.getNextSlotIndex() : manager.setColour(explicitColor);
+        std::size_t slot = colours.acquire();
+        colours.release(slot);
+        slot = explicitColor == 0U ? colours.acquire() : colours.acquire(explicitColor);
         PlotSinkDetails details{
             .signal =
                 {
-                    .color     = manager.getColourAtSlot(manager.getActivePalette(), slot),
-                    .isDataSet = id.starts_with("opendigitizer::ImPlotSink<gr::DataSet"),
+                    .color     = colours.colour(slot),
+                    .isDataSet = isDataSetPlotSinkTypeName(id),
                 },
             .hasInput = namesOfBlocksWithInputs.contains(name),
         };
@@ -108,15 +110,13 @@ struct ChartParsingContext {
     DashboardPreview&       outputPreview;
 };
 
-/// Somewhat duplicates some logic ImGuiDockSpaceState to go over all splits and resolve them into rect areas for a chart
 void parseDockedChartRectAreas(const ChartParsingContext& context, DashboardPreview::Rect area) {
-    const auto hsplit = context.inputYaml.get_if<gr::property_map>("hsplit");
-    const auto vsplit = context.inputYaml.get_if<gr::property_map>("vsplit");
-    if (!hsplit && !vsplit) {
+    const auto split = dock_space::findSplit(context.inputYaml);
+    if (!split) {
         return;
     }
-    const gr::property_map& inner = hsplit ? *hsplit : *vsplit;
-    const float             ratio = std::clamp(getAndConvertNumber(inner, "ratio", 1.f), 0.05f, 0.95f);
+    const gr::property_map& inner = split->inner;
+    const float             ratio = std::clamp(getAndConvertNumber(inner, dock_space::kRatio, 1.f), 0.05f, 0.95f);
 
     const auto placeChild = [&](std::string_view key, DashboardPreview::Rect childArea) {
         const auto child = inner.find_value(key);
@@ -144,12 +144,12 @@ void parseDockedChartRectAreas(const ChartParsingContext& context, DashboardPrev
     // first: left/top
     // second: right/bottom
     // value of ratio goes to the left node in hsplit or the bottom node in vsplit
-    if (hsplit) {
-        placeChild("first", {.x = area.x, .y = area.y, .w = area.w * ratio, .h = area.h});
-        placeChild("second", {.x = area.x + area.w * ratio, .y = area.y, .w = area.w * (1.f - ratio), .h = area.h});
+    if (split->horizontal) {
+        placeChild(dock_space::kFirst, {.x = area.x, .y = area.y, .w = area.w * ratio, .h = area.h});
+        placeChild(dock_space::kSecond, {.x = area.x + area.w * ratio, .y = area.y, .w = area.w * (1.f - ratio), .h = area.h});
     } else {
-        placeChild("first", {.x = area.x, .y = area.y, .w = area.w, .h = area.h * (1.f - ratio)});
-        placeChild("second", {.x = area.x, .y = area.y + area.h * (1.f - ratio), .w = area.w, .h = area.h * ratio});
+        placeChild(dock_space::kFirst, {.x = area.x, .y = area.y, .w = area.w, .h = area.h * (1.f - ratio)});
+        placeChild(dock_space::kSecond, {.x = area.x, .y = area.y + area.h * (1.f - ratio), .w = area.w, .h = area.h * ratio});
     }
 }
 
@@ -167,10 +167,10 @@ void parseFloatingChartRectAreas(const ChartParsingContext& context) {
         chart.isFloating               = true;
 
         chart.rect = {
-            .x = getAndConvertNumber(*window, "x", 0.f),
-            .y = getAndConvertNumber(*window, "y", 0.f),
-            .w = getAndConvertNumber(*window, "width", 0.f),
-            .h = getAndConvertNumber(*window, "height", 0.f),
+            .x = getAndConvertNumber(*window, dock_space::kX, 0.f),
+            .y = getAndConvertNumber(*window, dock_space::kY, 0.f),
+            .w = getAndConvertNumber(*window, dock_space::kWidth, 0.f),
+            .h = getAndConvertNumber(*window, dock_space::kHeight, 0.f),
         };
     }
 }
@@ -199,8 +199,8 @@ DashboardPreview::ChartType chartTypeFromName(std::string_view typeName) {
     if (typeName.contains("XYChart") || typeName.contains("YYChart")) {
         return Chart2D;
     }
-    for (const auto& [chartType, name] : magic_enum::enum_entries<DashboardPreview::ChartType>()) {
-        if (typeName.contains(name)) {
+    for (const auto chartType : gr::meta::enumValues<DashboardPreview::ChartType>()) {
+        if (const auto name = gr::meta::enumName(chartType); name && typeName.contains(*name)) {
             return chartType;
         }
     }
@@ -420,7 +420,7 @@ std::optional<DashboardPreview> DashboardPreview::fromFlowgraphYaml(std::string_
     }
 
     if (const auto windowLayout = dashboard->get_if<gr::property_map>("windowLayout")) {
-        if (const auto dockSpace = windowLayout->get_if<gr::property_map>("dockSpace")) {
+        if (const auto dockSpace = windowLayout->get_if<gr::property_map>(dock_space::kDockSpace)) {
             parseDockedChartRectAreas(
                 {
                     .inputYaml             = *dockSpace,
@@ -429,7 +429,7 @@ std::optional<DashboardPreview> DashboardPreview::fromFlowgraphYaml(std::string_
                 },
                 {.x = 0.f, .y = 0.f, .w = 1.f, .h = 1.f});
         }
-        if (const auto floatingWindows = windowLayout->get_if<gr::property_map>("floatingWindows")) {
+        if (const auto floatingWindows = windowLayout->get_if<gr::property_map>(dock_space::kFloatingWindows)) {
             parseFloatingChartRectAreas({
                 .inputYaml             = *floatingWindows,
                 .inputChartIndexByName = chartIndexByName,

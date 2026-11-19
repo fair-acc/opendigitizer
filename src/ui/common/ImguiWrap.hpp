@@ -31,10 +31,7 @@ void setItemTooltip(auto&&... args) {
     }
 }
 
-// We use different overloads of BeginChild, we will make separate RAII objects for them
 inline auto ImGuiBeginChild(const char* str_id, const ImVec2& size = ImVec2(0, 0), ImGuiChildFlags child_flags = 0, ImGuiWindowFlags window_flags = 0) { return ImGui::BeginChild(str_id, size, child_flags, window_flags); }
-
-inline auto ImGuiBeginIdChild(ImGuiID id, const ImVec2& size = ImVec2(0, 0), ImGuiChildFlags child_flags = 0, ImGuiWindowFlags window_flags = 0) { return ImGui::BeginChild(id, size, child_flags, window_flags); }
 
 template<auto* Fn>
 constexpr inline auto singlePop() {
@@ -42,9 +39,8 @@ constexpr inline auto singlePop() {
 }
 } // namespace detail
 
-using Window      = stdex::c_resource<bool, ImGui::Begin, ImGui::End, true>;
-using Child       = stdex::c_resource<bool, detail::ImGuiBeginChild, ImGui::EndChild, true>;
-using ChildWithId = stdex::c_resource<bool, detail::ImGuiBeginIdChild, ImGui::EndChild, true>;
+using Window = stdex::c_resource<bool, ImGui::Begin, ImGui::End, true>;
+using Child  = stdex::c_resource<bool, detail::ImGuiBeginChild, ImGui::EndChild, true>;
 
 using Disabled   = stdex::c_resource<bool, detail::ImGuiBeginDisabled, ImGui::EndDisabled>;
 using TabBar     = stdex::c_resource<bool, ImGui::BeginTabBar, ImGui::EndTabBar>;
@@ -53,7 +49,6 @@ using Group      = stdex::c_resource<void, ImGui::BeginGroup, ImGui::EndGroup, t
 using Popup      = stdex::c_resource<bool, ImGui::BeginPopup, ImGui::EndPopup>;
 using Menu       = stdex::c_resource<bool, ImGui::BeginMenu, ImGui::EndMenu>;
 using ModalPopup = stdex::c_resource<bool, ImGui::BeginPopupModal, ImGui::EndPopup>;
-using Combo      = stdex::c_resource<bool, ImGui::BeginCombo, ImGui::EndCombo>;
 using Table      = stdex::c_resource<bool, ImGui::BeginTable, ImGui::EndTable>;
 using ListBox    = stdex::c_resource<bool, ImGui::BeginListBox, ImGui::EndListBox>;
 using ToolTip    = stdex::c_resource<bool, ImGui::BeginTooltip, ImGui::EndTooltip>;
@@ -63,7 +58,6 @@ using ChangeId    = stdex::c_resource<void, static_cast<void (*)(int)>(ImGui::Pu
 using ChangeStrId = stdex::c_resource<void, static_cast<void (*)(const char*)>(ImGui::PushID), ImGui::PopID, true>;
 
 using DragDropSource = stdex::c_resource<bool, ImGui::BeginDragDropSource, ImGui::EndDragDropSource>;
-using DragDropTarget = stdex::c_resource<bool, ImGui::BeginDragDropTarget, ImGui::EndDragDropTarget>;
 
 using Font            = stdex::c_resource<void, static_cast<void (*)(ImFont*)>(&ImGui::PushFont), &ImGui::PopFont, true>;
 using FontWithSize    = stdex::c_resource<void, static_cast<void (*)(ImFont*, float)>(&ImGui::PushFont), &ImGui::PopFont, true>;
@@ -126,18 +120,11 @@ inline ImVec2 CalcAdjacentButtonSizes(const std::array<const char*, N>& labels, 
 }
 
 WidgetSize CalcCheckboxSize(const char* label);
-/// Minimum size of a labelled color editor, not the color picker popup
-WidgetSize CalcColorEditorSize(const char* label, ImGuiColorEditFlags flags);
-/// charsNeeded should be something like floating point precision, plus unit/suffix strlen
-WidgetSize CalcSliderSize(const char* label, std::size_t charsNeeded);
 /// charsNeeded should be something like floating point precision, plus unit/suffix strlen
 WidgetSize CalcDragSize(const char* label, std::size_t charsNeeded);
 /// Minimum size of a folded ImGui::BeginCombo() (label + arrow + small preview
 /// area). previewValue is only used if ImGuiComboFlags_WidthFitPreview is set
 WidgetSize CalcComboSize(const char* label, const char* previewValue, ImGuiComboFlags flags);
-/// Preferred minimum size of a single-line text input (room for ~4 characters
-/// + label).
-WidgetSize CalcTextInputSize(const char* label, const char* contents);
 
 } // namespace DigitizerUi::IMW
 #endif

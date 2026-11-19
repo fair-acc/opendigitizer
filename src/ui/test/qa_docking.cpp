@@ -13,7 +13,7 @@ struct TestState {
     DockSpace::Windows windows;
 };
 
-TestState g_testState;
+TestState* gState = nullptr;
 
 std::shared_ptr<DockSpace::Window> createWindow(const std::string& name) {
     auto window        = std::make_shared<DockSpace::Window>(name);
@@ -48,20 +48,18 @@ void createButtonGroup(DigitizerUi::DockSpace& dockspace) {
     if (ImGui::Button("add window")) {
         static int extraWinId = 1;
         extraWinId++;
-        g_testState.windows.push_back(createWindow(std::format("window-{}", extraWinId)));
+        gState->windows.push_back(createWindow(std::format("window-{}", extraWinId)));
     }
 
     ImGui::SameLine();
-    ImGui::Text("%s", dockingLayoutName(dockspace.layoutType()));
+    ImGui::TextUnformatted(std::string(gr::meta::enumName(dockspace.layoutType()).value_or("")).c_str());
 }
 
-class TestApp : public DigitizerUi::test::ImGuiTestApp {
-private:
+struct TestApp : public DigitizerUi::test::ImGuiTestApp {
     using DigitizerUi::test::ImGuiTestApp::ImGuiTestApp;
 
     void registerTests() override {
         ImGuiTest* t = IM_REGISTER_TEST(engine(), "docking", "docking layouts");
-        t->SetVarsDataType<TestState>();
 
         t->GuiFunc = [](ImGuiTestContext*) {
             ImGui::SetNextWindowPos(ImVec2(0, 0));
@@ -71,8 +69,8 @@ private:
                     ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |   //
                     ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus);
 
-            createButtonGroup(g_testState.dockspace);
-            g_testState.dockspace.render(g_testState.windows, ImGui::GetContentRegionAvail(), false);
+            createButtonGroup(gState->dockspace);
+            gState->dockspace.render(gState->windows, ImGui::GetContentRegionAvail(), false);
         };
 
         t->TestFunc = [](ImGuiTestContext* ctx) {
@@ -99,10 +97,11 @@ int main(int argc, char* argv[]) {
     auto options             = DigitizerUi::test::TestOptions::fromArgs(argc, argv);
     options.screenshotPrefix = "docking";
 
+    TestApp   app(options);
+    TestState state;
+    gState = std::addressof(state);
     for (int i = 0; i < 4; ++i) {
-        g_testState.windows.push_back(createWindow(std::format("dock{}", i)));
+        state.windows.push_back(createWindow(std::format("dock{}", i)));
     }
-
-    TestApp app(options);
     return app.runTests() ? 0 : 1;
 }

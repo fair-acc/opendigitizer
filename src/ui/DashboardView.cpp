@@ -6,7 +6,7 @@
 #include "common/ImguiWrap.hpp"
 #include "common/LookAndFeel.hpp"
 
-#include "scope_exit.hpp"
+#include <gnuradio-4.0/meta/utils.hpp>
 
 namespace DigitizerUi {
 
@@ -51,11 +51,10 @@ void DashboardView::processPendingRequests() {
 }
 
 DockingLayoutType DashboardView::shownLayoutType(DockingLayoutType stored) {
-    const LookAndFeel& lookAndFeel = LookAndFeel::instance();
-    if (!lookAndFeel.compact) {
+    if (!gAppState.compact) {
         return stored;
     }
-    return lookAndFeel.portrait ? DockingLayoutType::Column : DockingLayoutType::Grid;
+    return gAppState.portrait ? DockingLayoutType::Column : DockingLayoutType::Grid;
 }
 
 DashboardView::Result DashboardView::draw(Dashboard& dashboard, Mode mode) { return draw(dashboard, mode, Options{}); }
@@ -75,10 +74,10 @@ DashboardView::Result DashboardView::draw(Dashboard& dashboard, Mode mode, const
         _layoutApplied = _layoutApplied && _dashboard == nullptr;
         _dashboard     = std::addressof(dashboard);
     }
-    dashboard.handleMessages();
+    dashboard.session.handleMessages();
 
     ImGui::PushID(this);
-    Digitizer::utils::scope_exit popId = [] { ImGui::PopID(); };
+    gr::on_scope_exit popId = [] { ImGui::PopID(); };
 
     const DashboardStyle& style               = LookAndFeel::instance().dashboardStyle;
     const int             nTransparentColours = style.background ? 0 : 4;
@@ -88,7 +87,7 @@ DashboardView::Result DashboardView::draw(Dashboard& dashboard, Mode mode, const
         }
         ImPlot::PushStyleColor(ImPlotCol_FrameBg, ImVec4{});
     }
-    Digitizer::utils::scope_exit popTransparentColours = [nTransparentColours] {
+    gr::on_scope_exit popTransparentColours = [nTransparentColours] {
         ImGui::PopStyleColor(nTransparentColours);
         if (nTransparentColours > 0) {
             ImPlot::PopStyleColor();

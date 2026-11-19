@@ -14,8 +14,6 @@
 
 namespace opendigitizer {
 
-GR_REGISTER_BLOCK(opendigitizer::ImControlValue, [T], [ float, double ])
-
 template<typename T>
 struct ImControlValue : gr::Block<ImControlValue<T>, gr::Drawable<gr::UICategory::Toolbar, "ImGui">> {
     using Description = gr::Doc<"UI display of the last value its asynchronous input received: 'label: value unit', the number right-aligned in `width` digits">;

@@ -78,17 +78,10 @@ struct SpectrumDensity : gr::Block<SpectrumDensity, gr::Drawable<gr::UICategory:
 
     DensityHistogram             _density;
     TraceAccumulator             _traces;
-    std::vector<float>           _logRow; // scratch: linear spectrum re-binned onto log-spaced columns
     std::size_t                  _lastSampleCount = std::numeric_limits<std::size_t>::max();
     std::array<std::string, 6UZ> _unitStore{};
-    double                       _lastSetYMin         = std::numeric_limits<double>::quiet_NaN();
-    double                       _lastSetYMax         = std::numeric_limits<double>::quiet_NaN();
-    bool                         _yLimitsForceApplied = false;
 
     static constexpr std::string_view kChartTypeName = "SpectrumDensity";
-
-    [[nodiscard]] static constexpr std::string_view chartTypeName() noexcept { return kChartTypeName; }
-    [[nodiscard]] std::string_view                  uniqueId() const noexcept { return this->unique_name; }
 
     gr::work::Result work(std::size_t = std::numeric_limits<std::size_t>::max(), gr::device::DeviceContext& = gr::device::hostBackend()) noexcept { return {0UZ, 0UZ, gr::work::Status::OK}; }
 
@@ -114,25 +107,20 @@ struct SpectrumDensity : gr::Block<SpectrumDensity, gr::Drawable<gr::UICategory:
 
         // detect user zoom on Y-axis: if auto-fit is active and the actual plot limits
         // differ from what we programmatically set, the user zoomed → disable auto-fit
-        if (y_auto_scale.value && !_yLimitsForceApplied) {
+        if (y_auto_scale.value && !_limitsForceAppliedY[0]) {
             auto         plotLimits = ImPlot::GetPlotLimits();
-            const double range      = std::abs(_lastSetYMax - _lastSetYMin);
+            const double range      = std::abs(_prevYMax[0] - _prevYMin[0]);
             const double tol        = std::max(range * 1e-3, 1e-10);
-            if (std::abs(plotLimits.Y.Min - _lastSetYMin) > tol || std::abs(plotLimits.Y.Max - _lastSetYMax) > tol) {
+            if (std::abs(plotLimits.Y.Min - _prevYMin[0]) > tol || std::abs(plotLimits.Y.Max - _prevYMax[0]) > tol) {
                 y_auto_scale = false;
                 y_min        = plotLimits.Y.Min;
                 y_max        = plotLimits.Y.Max;
-                _lastSetYMin = plotLimits.Y.Min;
-                _lastSetYMax = plotLimits.Y.Max;
+                _prevYMin[0] = plotLimits.Y.Min;
+                _prevYMax[0] = plotLimits.Y.Max;
             }
         }
 
-        // register legend entries for each sink (enables legend display and D&D)
-        for (const auto& sink : _signalSinks) {
-            ImVec4 color = sinkColor(sink->color());
-            ImPlot::SetNextLineStyle(color);
-            ImPlot::PlotDummy(plotLabel(*sink).c_str());
-        }
+        plotLegendEntries();
 
         drawDensitySignals();
         drawFrequencyMarkers(0UZ);
@@ -161,19 +149,7 @@ struct SpectrumDensity : gr::Block<SpectrumDensity, gr::Drawable<gr::UICategory:
     }
 
     // effective Y-range considering dashboard config override (always finite, needed for histogram binning)
-    [[nodiscard]] std::pair<double, double> effectiveYRange() const {
-        double yMin = y_min.value;
-        double yMax = y_max.value;
-        if (auto dashCfg = parseAxisConfig(this->ui_constraints.value, false)) {
-            if (std::isfinite(dashCfg->min)) {
-                yMin = static_cast<double>(dashCfg->min);
-            }
-            if (std::isfinite(dashCfg->max)) {
-                yMax = static_cast<double>(dashCfg->max);
-            }
-        }
-        return {yMin, yMax};
-    }
+    [[nodiscard]] std::array<double, 2> effectiveYRange() const { return axisLimits(false, y_min.value, y_max.value, parseAxisConfig(this->ui_constraints.value, false), ConstrainedWhen::always); }
 
     void setupAxes(const ImVec2& plotSize, bool showGrid) {
         // x-axis: frequency
@@ -182,16 +158,7 @@ struct SpectrumDensity : gr::Block<SpectrumDensity, gr::Drawable<gr::UICategory:
             const AxisScale scale   = dashCfg ? dashCfg->scale.value_or(AxisScale::Linear) : AxisScale::Linear;
             const auto      format  = dashCfg ? dashCfg->format : LabelFormat::MetricInline;
 
-            double minLimit = x_auto_scale.value ? std::numeric_limits<double>::quiet_NaN() : x_min.value;
-            double maxLimit = x_auto_scale.value ? std::numeric_limits<double>::quiet_NaN() : x_max.value;
-            if (dashCfg) {
-                if (std::isfinite(dashCfg->min)) {
-                    minLimit = static_cast<double>(dashCfg->min);
-                }
-                if (std::isfinite(dashCfg->max)) {
-                    maxLimit = static_cast<double>(dashCfg->max);
-                }
-            }
+            const auto [minLimit, maxLimit] = axisLimits(x_auto_scale.value, x_min.value, x_max.value, dashCfg, ConstrainedWhen::always);
 
             auto [xQuantity, xUnit] = sinkAxisInfo(true);
             AxisCategory xCat{.quantity = xQuantity, .unit = xUnit};
@@ -206,17 +173,10 @@ struct SpectrumDensity : gr::Block<SpectrumDensity, gr::Drawable<gr::UICategory:
             const AxisScale scale   = dashCfg ? dashCfg->scale.value_or(AxisScale::Linear) : AxisScale::Linear;
             const auto      format  = dashCfg ? dashCfg->format : LabelFormat::Auto;
 
-            auto [yMin, yMax]       = effectiveYRange();
-            auto [yQuantity, yUnit] = sinkAxisInfo(false);
+            auto [yQuantity, yUnit]         = sinkAxisInfo(false);
+            const auto [minLimit, maxLimit] = y_auto_scale.value ? effectiveYRange() : std::array{y_min.value, y_max.value};
 
-            double minLimit = y_auto_scale.value ? yMin : y_min.value;
-            double maxLimit = y_auto_scale.value ? yMax : y_max.value;
-
-            bool limitsChanged   = (minLimit != _lastSetYMin || maxLimit != _lastSetYMax);
-            auto limitCond       = limitsChanged ? ImPlotCond_Always : ImPlotCond_Once;
-            _lastSetYMin         = minLimit;
-            _lastSetYMax         = maxLimit;
-            _yLimitsForceApplied = limitsChanged;
+            const auto limitCond = trackLimitsCond(false, minLimit, maxLimit);
 
             AxisCategory yCat{.quantity = yQuantity, .unit = yUnit};
             axis::setupAxis(ImAxis_Y1, yCat, format, axisLabelWidthOrDefault(dashCfg, defaultAxisLabelWidthFor(ImAxis_Y1, plotSize)), minLimit, maxLimit, 1UZ, scale, _unitStore, showGrid, /*foreground=*/true, limitCond);
@@ -236,17 +196,7 @@ struct SpectrumDensity : gr::Block<SpectrumDensity, gr::Drawable<gr::UICategory:
             }
 
             const std::size_t nNew = consumeNewData(_lastSampleCount, sink.totalSampleCount());
-            if (logRange) {
-                forEachNewSpectrum(f, nNew, [&](const SpectrumFrame& s) {
-                    _logRow.resize(kLogSpectrumColumns);
-                    buildLogBinnedRow(s.xValues, s.yValues, s.nBins, logRange->min, logRange->max, _logRow);
-                    _density.update(_logRow, kLogSpectrumColumns, ampBins, static_cast<double>(histogram_decay_tau_frames), effYMin, effYMax, colormap.value, gpu_acceleration);
-                });
-                _density.plot(logRange->min, logRange->max, effYMin, effYMax);
-            } else {
-                forEachNewSpectrum(f, nNew, [&](const SpectrumFrame& s) { _density.update(s.yValues, s.nBins, ampBins, static_cast<double>(histogram_decay_tau_frames), effYMin, effYMax, colormap.value, gpu_acceleration); });
-                _density.plot(f.xValues, effYMin, effYMax);
-            }
+            _density.accumulateAndPlot(f, nNew, logRange, ampBins, static_cast<double>(histogram_decay_tau_frames), effYMin, effYMax, colormap.value, gpu_acceleration);
 
             ImVec4 traceBase = sinkColor(trace_color);
             drawTraceOverlays(_traces, f, nNew, static_cast<double>(trace_decay_tau_frames), traceBase, show_max_hold, show_min_hold, show_average);
@@ -261,8 +211,5 @@ struct SpectrumDensity : gr::Block<SpectrumDensity, gr::Drawable<gr::UICategory:
 };
 
 } // namespace opendigitizer::charts
-
-GR_REGISTER_BLOCK("opendigitizer::charts::SpectrumDensity", opendigitizer::charts::SpectrumDensity)
-inline auto registerSpectrumDensityCompatibilities = opendigitizer::charts::registerChartSignalCompatibility<opendigitizer::charts::SpectrumDensity>();
 
 #endif // OPENDIGITIZER_CHARTS_SPECTRUMDENSITY_HPP

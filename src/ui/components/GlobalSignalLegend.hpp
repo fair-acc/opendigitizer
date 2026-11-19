@@ -207,7 +207,7 @@ struct GlobalSignalLegend {
                 ImVec4        col       = ImGui::ColorConvertU32ToFloat4(rgbToImGuiABGR(c));
                 float         rgb[3]{col.x, col.y, col.z};
                 if (ImGui::ColorPicker3("##color", rgb, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoSidePreview | ImGuiColorEditFlags_PickerHueBar)) {
-                    auto newColor = (static_cast<std::uint32_t>(rgb[0] * 255.0f) << 16) | (static_cast<std::uint32_t>(rgb[1] * 255.0f) << 8) | static_cast<std::uint32_t>(rgb[2] * 255.0f);
+                    auto newColor = float3ToRGB(rgb);
                     editingSink->setSetting("color", newColor);
                 }
             }

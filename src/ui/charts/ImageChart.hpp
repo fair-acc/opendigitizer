@@ -61,21 +61,19 @@ struct ImageTexture {
         if (_id == 0U) {
             return false;
         }
-        GLint previous = 0;
-        glGetIntegerv(GL_TEXTURE_BINDING_2D, &previous);
-        glBindTexture(GL_TEXTURE_2D, _id);
-        if (rows != _rows || columns != _columns) {
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, static_cast<GLsizei>(columns), static_cast<GLsizei>(rows), 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
-            _rows    = rows;
-            _columns = columns;
-        } else {
-            glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, static_cast<GLsizei>(columns), static_cast<GLsizei>(rows), GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
-        }
-        glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(previous));
+        withTextureBound(_id, [&] {
+            if (rows != _rows || columns != _columns) {
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+                glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, static_cast<GLsizei>(columns), static_cast<GLsizei>(rows), 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+                _rows    = rows;
+                _columns = columns;
+            } else {
+                glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, static_cast<GLsizei>(columns), static_cast<GLsizei>(rows), GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+            }
+        });
         return true;
     }
 };
@@ -143,10 +141,8 @@ Frames a sink received but the chart never showed are counted and indicated.)"">
     ImPlotRect                _plotLimits;
     ImVec2                    _fittedPlotSize{0.f, 0.f};
 
-    [[nodiscard]] static constexpr std::string_view chartTypeName() noexcept { return kChartTypeName; }
-    [[nodiscard]] std::string_view                  uniqueId() const noexcept { return this->unique_name; }
-    [[nodiscard]] std::span<const ImageLayer>       layers() const noexcept { return _layers; }
-    [[nodiscard]] bool                              rendersOnGpu() const noexcept { return !_layers.empty() && _layers.front().onGpu; }
+    [[nodiscard]] std::span<const ImageLayer> layers() const noexcept { return _layers; }
+    [[nodiscard]] bool                        rendersOnGpu() const noexcept { return !_layers.empty() && _layers.front().onGpu; }
 
     /// screen position of image coordinates (column, row) as last drawn; row 0 is on top
     [[nodiscard]] ImVec2 screenPosition(double column, double row) const noexcept {
@@ -181,10 +177,7 @@ Frames a sink received but the chart never showed are counted and indicated.)"">
         fitFrame();
         setupFinish();
 
-        for (const auto& sink : _signalSinks) {
-            ImPlot::SetNextLineStyle(sinkColor(sink->color()));
-            ImPlot::PlotDummy(plotLabel(*sink).c_str());
-        }
+        plotLegendEntries();
         for (std::size_t i = 0UZ; i < _layers.size(); ++i) {
             drawLayer(i);
         }
@@ -386,14 +379,7 @@ private:
         const ImPlotPoint bottomRight(origin.x + static_cast<double>(sizeReference.columns), origin.y + static_cast<double>(sizeReference.rows));
         const std::string id = std::format("##frame{}", index);
         if (layer.onGpu) {
-            const auto textureId = []<typename TexId = ImTextureID>(GLuint texture) -> TexId {
-                if constexpr (std::is_pointer_v<TexId>) {
-                    return reinterpret_cast<TexId>(static_cast<std::uintptr_t>(texture));
-                } else {
-                    return static_cast<TexId>(texture);
-                }
-            };
-            ImPlot::PlotImage(id.c_str(), textureId(layer.texture._id), topLeft, bottomRight, ImVec2(0.f, 1.f), ImVec2(1.f, 0.f)); // PlotImage puts uv0 at (x min, y max)
+            ImPlot::PlotImage(id.c_str(), toTextureId(layer.texture._id), topLeft, bottomRight, ImVec2(0.f, 1.f), ImVec2(1.f, 0.f)); // PlotImage puts uv0 at (x min, y max)
             return;
         }
         if (const auto [cutLo, cutHi] = transparencyRange(index); std::isfinite(cutLo) || std::isfinite(cutHi)) {
@@ -450,8 +436,5 @@ private:
 };
 
 } // namespace opendigitizer::charts
-
-GR_REGISTER_BLOCK("opendigitizer::charts::ImageChart", opendigitizer::charts::ImageChart)
-inline auto registerImageChartCompatibilities = opendigitizer::charts::registerChartSignalCompatibility<opendigitizer::charts::ImageChart>();
 
 #endif // OPENDIGITIZER_CHARTS_IMAGECHART_HPP

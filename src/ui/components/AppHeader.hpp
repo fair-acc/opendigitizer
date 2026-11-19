@@ -15,6 +15,7 @@
 #include "../components/ImGuiNotify.hpp"
 
 #include <SDL3/SDL_opengl.h>
+#include <gnuradio-4.0/meta/reflection.hpp>
 #include <magic_enum.hpp>
 #include <magic_enum_utility.hpp>
 #include <stb_image.h>
@@ -163,7 +164,7 @@ public:
         // draw title
         const ImVec2 localLogoSize = logoSize * (headerHeight / logoSize.y);
         ImVec2       posBeneathClock;
-        if (LookAndFeel::instance().compact) {
+        if (gAppState.compact) {
             const float spacing    = ImGui::GetStyle().ItemSpacing.x;
             const float titleLeft  = topLeft.x + (editable ? iconButtonSize + LookAndFeel::instance().appHeaderMenuToLogoGap : 0.f) + localLogoSize.x + spacing;
             const float titleRight = ImGui::GetWindowSize().x - clockRightInset - utcStringSize.x - spacing;
@@ -196,7 +197,7 @@ public:
         const float          menuHidden = !editable ? 0.f : menuAutoHide.update(ImRect(ImGui::GetWindowPos() + menuHome, ImGui::GetWindowPos() + menuHome + ImVec2{iconButtonSize, iconButtonSize}));
         ImGui::SetCursorPos(ImVec2{menuHome.x - menuHidden * (menuHome.x + iconButtonSize), menuHome.y});
 
-        const auto menuButtonPushed = editable && headerIconButton(LookAndFeel::instance().prototypeMode ? "" : "", palette.mainWindowButtonIcon.value_or(ImGui::GetStyleColorVec4(ImGuiCol_Text)));
+        const auto menuButtonPushed = editable && headerIconButton(gAppState.prototypeMode ? "" : "", palette.mainWindowButtonIcon.value_or(ImGui::GetStyleColorVec4(ImGuiCol_Text)));
 
         if ((menuButtonPushed || ImGui::IsItemHovered()) && editable) {
             using DigitizerUi::MenuButton;
@@ -244,10 +245,10 @@ public:
 
             {
                 rightMenu.addButton(
-                    LookAndFeel::instance().windowMode == FULLSCREEN ? "\uF066" : "\uF065",
+                    gAppState.windowMode == FULLSCREEN ? "\uF066" : "\uF065",
                     [&rightMenu](MenuButton& button) {
-                        LookAndFeel::mutableInstance().windowMode = LookAndFeel::instance().windowMode == FULLSCREEN ? RESTORED : FULLSCREEN;
-                        button.label                              = LookAndFeel::instance().windowMode == FULLSCREEN ? "\uF066" : "\uF065";
+                        gAppState.windowMode = gAppState.windowMode == FULLSCREEN ? RESTORED : FULLSCREEN;
+                        button.label         = gAppState.windowMode == FULLSCREEN ? "\uF066" : "\uF065";
                         rightMenu.forceClose();
                     },
                     LookAndFeel::instance().fontIconsSolidLarge, "toggle between fullscreen and windowed mode", palette.devMenuButton, palette.popupMenuButtonIcon);
@@ -269,31 +270,31 @@ public:
                     [this](MenuButton& button) {
                         const auto next = magic_enum::enum_next_value_circular(LookAndFeel::instance().theme);
                         requestApplicationSwitchTheme(next);
-                        button.toolTip = std::format("switch to the {} theme", magic_enum::enum_name(magic_enum::enum_next_value_circular(next)));
+                        button.toolTip = std::format("switch to the {} theme", gr::meta::enumName(magic_enum::enum_next_value_circular(next)).value_or(""));
                     },
-                    LookAndFeel::instance().fontIconsSolidBig, std::format("switch to the {} theme", magic_enum::enum_name(magic_enum::enum_next_value_circular(LookAndFeel::instance().theme))), palette.devMenuButton, palette.popupMenuButtonIcon);
+                    LookAndFeel::instance().fontIconsSolidBig, std::format("switch to the {} theme", gr::meta::enumName(magic_enum::enum_next_value_circular(LookAndFeel::instance().theme)).value_or("")), palette.devMenuButton, palette.popupMenuButtonIcon);
 
                 rightMenu.addButton(
-                    LookAndFeel::instance().prototypeMode ? "" : "",
+                    gAppState.prototypeMode ? "" : "",
                     [](MenuButton& button) {
-                        LookAndFeel::mutableInstance().prototypeMode = !LookAndFeel::instance().prototypeMode;
-                        button.label                                 = LookAndFeel::instance().prototypeMode ? "" : "";
-                        ImGui::GetIO().FontDefault                   = LookAndFeel::instance().fontNormal();
+                        gAppState.prototypeMode    = !gAppState.prototypeMode;
+                        button.label               = gAppState.prototypeMode ? "" : "";
+                        ImGui::GetIO().FontDefault = LookAndFeel::instance().fontNormal();
                     },
                     LookAndFeel::instance().fontIconsSolidBig, "switch between prototype and production mode", palette.devMenuButton, palette.popupMenuButtonIcon);
             }
 
             if (LookAndFeel::instance().isDesktop) {
-                rightMenu.addButton("", []() { LookAndFeel::mutableInstance().windowMode = MINIMISED; }, LookAndFeel::instance().fontIconsSolidBig, "minimise window", palette.devMenuButton, palette.popupMenuButtonIcon);
+                rightMenu.addButton("", []() { gAppState.windowMode = MINIMISED; }, LookAndFeel::instance().fontIconsSolidBig, "minimise window", palette.devMenuButton, palette.popupMenuButtonIcon);
                 rightMenu.addButton(
-                    LookAndFeel::instance().windowMode == RESTORED ? "" : "",
+                    gAppState.windowMode == RESTORED ? "" : "",
                     [&rightMenu](MenuButton& button) {
-                        LookAndFeel::mutableInstance().windowMode = LookAndFeel::instance().windowMode == MAXIMISED ? RESTORED : MAXIMISED;
-                        button.label                              = LookAndFeel::instance().windowMode == RESTORED ? "" : "";
-                        button.toolTip                            = LookAndFeel::instance().windowMode == MAXIMISED ? "restore window" : "maximise window";
+                        gAppState.windowMode = gAppState.windowMode == MAXIMISED ? RESTORED : MAXIMISED;
+                        button.label         = gAppState.windowMode == RESTORED ? "" : "";
+                        button.toolTip       = gAppState.windowMode == MAXIMISED ? "restore window" : "maximise window";
                         rightMenu.forceClose();
                     },
-                    LookAndFeel::instance().fontIconsSolidBig, LookAndFeel::instance().windowMode == MAXIMISED ? "restore window" : "maximise window", palette.devMenuButton, palette.popupMenuButtonIcon);
+                    LookAndFeel::instance().fontIconsSolidBig, gAppState.windowMode == MAXIMISED ? "restore window" : "maximise window", palette.devMenuButton, palette.popupMenuButtonIcon);
             }
 
             {

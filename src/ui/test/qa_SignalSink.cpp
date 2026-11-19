@@ -35,14 +35,6 @@ int main() {
 
         expect(std::abs(sink->xAt(0) - 0.0) < 1e-9);
         expect(std::abs(sink->xAt(49) - 0.49) < 1e-9);
-
-        auto pd = sink->plotData();
-        expect(!pd.empty());
-        expect(eq(pd.count, 50));
-        expect(pd.getter != nullptr);
-
-        auto point = pd.getter(0, pd.user_data);
-        expect(std::abs(point.x - 0.0) < 1e-9);
     };
 
     "TestStreamingSink circular buffer behavior"_test = [] {
@@ -81,11 +73,11 @@ int main() {
         sink->requestCapacity("chart2", 5000);
         expect(eq(sink->bufferCapacity(), 5000UZ));
 
-        sink->requestCapacity("chart3", 7000, std::chrono::seconds{0});
+        const auto now = opendigitizer::CapacityRequests::clock::now();
+        sink->requestCapacity("chart3", 7000, std::chrono::seconds{0}, now);
         expect(eq(sink->bufferCapacity(), 7000UZ));
 
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
-        sink->expireCapacityRequests();
+        sink->expireCapacityRequests(now + std::chrono::milliseconds(10));
         expect(eq(sink->bufferCapacity(), 5000UZ));
     };
 
@@ -119,10 +111,6 @@ int main() {
 
         expect(approx(sink->xAt(0), 0.0, 1e-6));
         expect(approx(sink->yAt(0), 1.0, 1e-6));
-
-        auto pd = sink->plotData();
-        expect(!pd.empty());
-        expect(eq(pd.count, 5));
     };
 
     "TestDataSetSink max capacity"_test = [] {
@@ -175,7 +163,7 @@ int main() {
         bool removedCalled = false;
 
         void* owner = reinterpret_cast<void*>(456);
-        registry.addListener(owner, [&](SignalSink& /*sink*/, bool isAdded) {
+        registry.addListener(owner, [&](opendigitizer::SignalSink& /*sink*/, bool isAdded) {
             if (isAdded) {
                 addedCalled = true;
             } else {
@@ -191,27 +179,6 @@ int main() {
         expect(removedCalled);
 
         registry.removeListener(owner);
-    };
-
-    "PlotData compatibility with ImPlot"_test = [] {
-        auto sink = std::make_shared<TestStreamingSink>("test_sink", 100);
-
-        for (int i = 0; i < 10; ++i) {
-            sink->pushSample(static_cast<double>(i), static_cast<float>(i * 2));
-        }
-
-        auto pd = sink->plotData();
-
-        expect(eq(pd.count, 10));
-        expect(pd.getter != nullptr);
-
-        auto p0 = pd.getter(0, pd.user_data);
-        expect(std::abs(p0.x - 0.0) < 1e-9);
-        expect(std::abs(p0.y - 0.0) < 1e-9);
-
-        auto p5 = pd.getter(5, pd.user_data);
-        expect(std::abs(p5.x - 5.0) < 1e-9);
-        expect(std::abs(p5.y - 10.0) < 1e-9);
     };
 
     return 0;

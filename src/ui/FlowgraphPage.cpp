@@ -31,7 +31,7 @@
 #include "components/StyledStandardWidgets.hpp"
 #include "components/YesNoPopup.hpp"
 
-#include "scope_exit.hpp"
+#include <gnuradio-4.0/meta/utils.hpp>
 
 #include <cmath>
 
@@ -97,8 +97,8 @@ bool isPendingMultiSelectConnection(const UiGraphBlock& control, std::string_vie
 }
 
 void drawDashedLink(ImDrawList* drawList, ImVec2 start, ImVec2 end, ImU32 color) {
-    const int                    previousDrawChannel = drawList->_Splitter._Current;
-    Digitizer::utils::scope_exit restoreDrawChannel  = [drawList, previousDrawChannel] { drawList->ChannelsSetCurrent(previousDrawChannel); };
+    const int         previousDrawChannel = drawList->_Splitter._Current;
+    gr::on_scope_exit restoreDrawChannel  = [drawList, previousDrawChannel] { drawList->ChannelsSetCurrent(previousDrawChannel); };
 
     // this is the "z index" (channel) that imgui node editor uses between edges and nodes. We need to use it to
     // guarantee that these dashed edges draw with the same behavior as regular edges (underneath nodes)
@@ -128,8 +128,6 @@ void drawDashedLink(ImDrawList* drawList, ImVec2 start, ImVec2 end, ImU32 color)
     const ImVec2 halfArrowWidth{0.f, lookAndFeel.pinArrowWidth * .5f};
     drawList->AddTriangleFilled(end, arrowBase + halfArrowWidth, arrowBase - halfArrowWidth, color);
 }
-
-} // namespace
 
 /// Style can be null if drawn client side (which node editor supports for rectangular port shapes)
 ImVec2 addPin(ax::NodeEditor::PinId id, ax::NodeEditor::PinKind kind, const ImVec2& p, ImVec2 size, const DataTypeStyle* style) {
@@ -214,6 +212,22 @@ PinDrawInfo calculatePinDrawInfo(const std::optional<std::string>& displayName, 
 
     return {.topLeft = {tabX, tabY}, .size = {tabW, tabH}, .font = font, .fontSize = fontSize};
 }
+
+// NavigateTo widens the rect by half of this fraction of its larger dimension per side
+constexpr float kNavigationZoomMargin = 0.1f;
+
+[[nodiscard]] gr::Message toScheduler(const FlowgraphEditor::SchedulerGraphPair& owner, std::string endpoint, gr::property_map data) {
+    data.insert_or_assign(std::pmr::string("_targetGraph"), owner.graph);
+    return makeMessage(gr::message::Command::Set, owner.scheduler, std::move(endpoint), std::move(data));
+}
+
+void navigateWithoutMargin(const ImRect& visible, ImVec2 visibleSize) {
+    const float viewMargin = std::max(visibleSize.x, visibleSize.y) * kNavigationZoomMargin / (2.f * (1.f + kNavigationZoomMargin));
+    auto*       editor     = reinterpret_cast<ax::NodeEditor::Detail::EditorContext*>(ax::NodeEditor::GetCurrentEditor());
+    editor->NavigateTo(ImRect(visible.Min + ImVec2(viewMargin, viewMargin), visible.Max - ImVec2(viewMargin, viewMargin)), true);
+}
+
+} // namespace
 
 FlowgraphEditor::Buttons FlowgraphEditor::drawButtons(const ImVec2& contentScreenTopLeft, const ImVec2& contentSize, Buttons buttons, float horizontalSplitRatio) {
     Buttons result;
@@ -577,24 +591,11 @@ void FlowgraphEditor::sendPinsConnectedGraphMessage(ax::NodeEditor::PinId startP
 
         if (ax::NodeEditor::AcceptNewItem()) {
             // AcceptNewItem() return true when user release mouse button.
-            gr::Message message;
-            message.cmd      = gr::message::Command::Set;
-            message.endpoint = gr::scheduler::property::kEmplaceEdge;
-            auto owner       = ownersForRoot();
+            auto owner = ownersForRoot();
             if (!owner) {
                 return;
             }
-            message.serviceName = owner->scheduler;
-
-            message.data = gr::property_map{                                                                                  //
-                {"_targetGraph", owner->graph},                                                                               //
-                {std::pmr::string(gr::serialization_fields::EDGE_SOURCE_BLOCK), outputPort->ownerBlock->blockUniqueName},     //
-                {std::pmr::string(gr::serialization_fields::EDGE_SOURCE_PORT), outputPort->portName},                         //
-                {std::pmr::string(gr::serialization_fields::EDGE_DESTINATION_BLOCK), inputPort->ownerBlock->blockUniqueName}, //
-                {std::pmr::string(gr::serialization_fields::EDGE_DESTINATION_PORT), inputPort->portName},                     //
-                {std::pmr::string(gr::serialization_fields::EDGE_MIN_BUFFER_SIZE), gr::Size_t(4096)},                         //
-                {std::pmr::string(gr::serialization_fields::EDGE_WEIGHT), 1},                                                 //
-                {std::pmr::string(gr::serialization_fields::EDGE_NAME), "edge"}};
+            gr::Message message = toScheduler(*owner, gr::scheduler::property::kEmplaceEdge, emplaceEdgeData(outputPort->ownerBlock->blockUniqueName, outputPort->portName, inputPort->ownerBlock->blockUniqueName, inputPort->portName));
 
             // an exported input port cannot also have an internal edge, so unexport it before connecting
             if (const auto exportedName = inputPort->getExportedName(exportPortTargetBlock())) {
@@ -655,7 +656,7 @@ void FlowgraphEditor::handlePinDrag(BoundingBox boundingBox, ImVec4 linkColor) {
                     .uniqueBlockName = port->ownerBlock ? port->ownerBlock->blockUniqueName : "UNKNOWN"s,
                     .portDirection   = port->portDirection == gr::PortDirection::INPUT ? "input"s : "output"s,
                     .portName        = port->portName,
-                    .exportedName    = (port->ownerBlock ? port->ownerBlock->blockName : "UNKNOWN"s) + "." + port->portName,
+                    .exportedName    = getDefaultExportedName(port),
                     .exportFlag      = true,
                 };
             }
@@ -716,16 +717,16 @@ std::optional<components::BlockDragConnectOverlay> FlowgraphEditor::drawGraph(co
     }
 
     // NodeEditor applies dragging when its Editor scope ends.
-    Digitizer::utils::scope_exit capturePositions = [&] {
+    gr::on_scope_exit capturePositions = [&] {
         for (const auto& block : graphBlocks) {
             const auto position = ax::NodeEditor::GetNodePosition(ax::NodeEditor::NodeId(block));
             block->storedXY     = UiGraphBlock::StoredXY{position.x, position.y};
         }
     };
-    const int                    nHiddenBorderColours = LookAndFeel::instance().flowgraph.canvasBorder ? 0 : 2;
-    Digitizer::utils::scope_exit showBorderAgain      = [nHiddenBorderColours] { ImGui::PopStyleColor(nHiddenBorderColours); };
-    IMW::NodeEditor::Editor      nodeEditor(_editorName.c_str(), size);
-    Digitizer::utils::scope_exit hideBorder = [nHiddenBorderColours] {
+    const int               nHiddenBorderColours = LookAndFeel::instance().flowgraph.canvasBorder ? 0 : 2;
+    gr::on_scope_exit       showBorderAgain      = [nHiddenBorderColours] { ImGui::PopStyleColor(nHiddenBorderColours); };
+    IMW::NodeEditor::Editor nodeEditor(_editorName.c_str(), size);
+    gr::on_scope_exit       hideBorder = [nHiddenBorderColours] {
         for (const ImGuiCol colour : {ImGuiCol_Border, ImGuiCol_BorderShadow}) {
             if (nHiddenBorderColours > 0) {
                 ImGui::PushStyleColor(colour, ImVec4{});
@@ -768,8 +769,8 @@ std::optional<components::BlockDragConnectOverlay> FlowgraphEditor::drawGraph(co
         const bool filteredOut = _filterBlock && !_graphModel->blockInTree(*block, *_filterBlock);
 
         // If filteredOut, set opacity to 25% until we exit the scope
-        float                        originalAlpha = std::exchange(ImGui::GetStyle().Alpha, (filteredOut ? LookAndFeel::instance().flowgraph.filteredOutBlockAlpha : ImGui::GetStyle().Alpha));
-        Digitizer::utils::scope_exit restoreStyle  = [&] { ImGui::GetStyle().Alpha = originalAlpha; };
+        float             originalAlpha = std::exchange(ImGui::GetStyle().Alpha, (filteredOut ? LookAndFeel::instance().flowgraph.filteredOutBlockAlpha : ImGui::GetStyle().Alpha));
+        gr::on_scope_exit restoreStyle  = [&] { ImGui::GetStyle().Alpha = originalAlpha; };
 
         if (filteredOut) {
             filteredOutNodes.push_back(blockId);
@@ -945,7 +946,7 @@ std::optional<components::BlockDragConnectOverlay> FlowgraphEditor::drawGraph(co
     return dragConnectOverlay;
 }
 
-void FlowgraphEditor::draw(const ImVec2& contentTopLeft, const ImVec2& contentSize, bool isCurrentEditor) {
+void FlowgraphEditor::draw(const ImVec2& contentTopLeft, const ImVec2& contentSize) {
     auto* rootBlock = this->rootBlock();
     if (!rootBlock) {
         // maybe the graph doesn't exist yet, can happen after exchanging the graph + we still have an out of date root block name from the old graph
@@ -966,16 +967,6 @@ void FlowgraphEditor::draw(const ImVec2& contentTopLeft, const ImVec2& contentSi
 
     ImGui::SetCursorPos(contentTopLeft);
     const ImVec2 contentScreenTopLeft = ImGui::GetCursorScreenPos(); // SetNextWindowPos takes screen coordinates
-
-    if (!isCurrentEditor) {
-        // If this is not the enabled (top level editor) just draw the
-        // flowgraph and no UI controls
-        IMW::Disabled enableOnlyCurrent(!isCurrentEditor);
-        if (const auto dragConnectOverlay = drawGraph(contentSize)) {
-            dragConnectOverlay->draw();
-        }
-        return;
-    }
 
     const bool  horizontalSplit   = contentSize.x > contentSize.y;
     const float splitterWidth     = LookAndFeel::instance().splitterWidth;
@@ -1268,7 +1259,7 @@ void FlowgraphEditor::drawBlockContextMenu() {
         requestBlockDeletion(_selectedBlock->blockUniqueName);
     }
 
-    if (_selectedBlock->blockCategory == "TransparentBlockGroup" || _selectedBlock->blockCategory == "ScheduledBlockGroup") {
+    if (_selectedBlock->isGraph() || _selectedBlock->isScheduler()) {
         if (ImGui::MenuItem("Edit block graph...")) {
             requestGraphEdit(_selectedBlock);
         }
@@ -1291,17 +1282,7 @@ void FlowgraphEditor::drawBlockContextMenu() {
             for (const auto& availableParametrization : *typeParams.availableParametrizations) {
                 if (availableParametrization != typeParams.parametrization && ImGui::MenuItem(availableParametrization.c_str())) {
                     if (auto owner = ownersFor(*_selectedBlock)) {
-                        gr::Message message;
-                        message.cmd         = gr::message::Command::Set;
-                        message.endpoint    = gr::scheduler::property::kReplaceBlock;
-                        message.serviceName = owner->scheduler;
-                        message.data        = gr::property_map{                                           //
-                            {"uniqueName", _selectedBlock->blockUniqueName},                       //
-                            {"type", std::move(typeParams.baseType) + availableParametrization},   //
-                            {"properties", gr::property_map{{"name", _selectedBlock->blockName}}}, //
-                            {"_targetGraph", owner->graph}};
-
-                        _graphModel->sendMessage(std::move(message));
+                        _graphModel->sendMessage(toScheduler(*owner, gr::scheduler::property::kReplaceBlock, {{"uniqueName", _selectedBlock->blockUniqueName}, {"type", std::move(typeParams.baseType) + availableParametrization}, {"properties", gr::property_map{{"name", _selectedBlock->blockName}}}}));
                     }
                 }
             }
@@ -1378,9 +1359,6 @@ void FlowgraphEditor::fitIntoView(const UiGraphBlock& rootBlock, float reservedB
     std::ranges::for_each(blocks, [&addNode](const UiGraphBlock* block) { addNode(block, 0.f); });
     std::ranges::for_each(controlBlocks, [&addNode](const UiGraphBlock* block) { addNode(block, LookAndFeel::instance().flowgraph.uiControlRegionGap); });
 
-    // NavigateTo widens the rect by half of this fraction of its larger dimension per side
-    constexpr float kNavigationZoomMargin = 0.1f;
-
     const ImVec2 viewSize      = ax::NodeEditor::GetScreenSize();
     const float  usableHeight  = std::max(1.f, viewSize.y - reservedBottomPixels);
     const float  contentMargin = std::max(bounds.GetWidth(), bounds.GetHeight()) * kNavigationZoomMargin * 0.5f;
@@ -1389,10 +1367,7 @@ void FlowgraphEditor::fitIntoView(const UiGraphBlock& rootBlock, float reservedB
     const ImVec2 visibleSize = viewSize / zoom;
     const float  visibleTop  = bounds.GetCenter().y - 0.5f * usableHeight / zoom;
     const ImRect visible(ImVec2(bounds.GetCenter().x - 0.5f * visibleSize.x, visibleTop), ImVec2(bounds.GetCenter().x + 0.5f * visibleSize.x, visibleTop + visibleSize.y));
-
-    const float viewMargin = std::max(visibleSize.x, visibleSize.y) * kNavigationZoomMargin / (2.f * (1.f + kNavigationZoomMargin));
-    auto*       editor     = reinterpret_cast<ax::NodeEditor::Detail::EditorContext*>(ax::NodeEditor::GetCurrentEditor());
-    editor->NavigateTo(ImRect(visible.Min + ImVec2(viewMargin, viewMargin), visible.Max - ImVec2(viewMargin, viewMargin)), true);
+    navigateWithoutMargin(visible, visibleSize);
 }
 
 void FlowgraphEditor::focusOnBlockWithDefaultZoomLevel(const UiGraphBlock& block) const {
@@ -1400,29 +1375,16 @@ void FlowgraphEditor::focusOnBlockWithDefaultZoomLevel(const UiGraphBlock& block
     const ImVec2 position = ax::NodeEditor::GetNodePosition(blockId);
     const ImVec2 size     = ax::NodeEditor::GetNodeSize(blockId);
 
-    // NavigateTo will add a margin around the navigated-to region. The margin is equal to its larger side times this fraction.
-    // We use this value to compensate for that so we actually see the target block at a zoom level of 1.0
-    constexpr float kNavigationZoomMargin = 0.1f;
-
     const ImVec2 viewSize = ax::NodeEditor::GetScreenSize();
     const ImVec2 centre   = position + size * 0.5f;
-    const ImRect visible(centre - viewSize * 0.5f, centre + viewSize * 0.5f);
-    const float  viewMargin = std::max(viewSize.x, viewSize.y) * kNavigationZoomMargin / (2.f * (1.f + kNavigationZoomMargin));
-    auto*        editor     = reinterpret_cast<ax::NodeEditor::Detail::EditorContext*>(ax::NodeEditor::GetCurrentEditor());
-    editor->NavigateTo(ImRect(visible.Min + ImVec2(viewMargin, viewMargin), visible.Max - ImVec2(viewMargin, viewMargin)), true);
+    navigateWithoutMargin(ImRect(centre - viewSize * 0.5f, centre + viewSize * 0.5f), viewSize);
 }
 
 void FlowgraphEditor::requestBlockDeletion(const std::string& blockName) {
     // Send message to delete block
     const UiGraphBlock* block = _graphModel->recursiveFindBlockByUniqueName(blockName).block;
     if (auto owner = block ? ownersFor(*block) : std::nullopt) {
-        gr::Message message;
-        message.endpoint    = gr::scheduler::property::kRemoveBlock;
-        message.serviceName = owner->scheduler;
-        message.data        = gr::property_map{//
-            {"uniqueName", blockName},  //
-            {"_targetGraph", owner->graph}};
-        _graphModel->sendMessage(std::move(message));
+        _graphModel->sendMessage(toScheduler(*owner, gr::scheduler::property::kRemoveBlock, {{"uniqueName", blockName}}));
     }
 }
 
@@ -1433,27 +1395,14 @@ void FlowgraphEditor::requestBlocksGrouping(std::string graphType, const std::ve
             names[i] = uniqueNames[i];
         }
 
-        gr::Message message;
-        message.cmd         = gr::message::Command::Set;
-        message.endpoint    = gr::scheduler::property::kGroupBlocks;
-        message.serviceName = owner->scheduler;
-        message.data        = gr::property_map{       //
-            {"type", std::move(graphType)},    //
-            {"uniqueNames", std::move(names)}, //
-            {"_targetGraph", owner->graph}};
-        _graphModel->sendMessage(std::move(message));
+        _graphModel->sendMessage(toScheduler(*owner, gr::scheduler::property::kGroupBlocks, {{"type", std::move(graphType)}, {"uniqueNames", std::move(names)}}));
     }
 }
 
 void FlowgraphEditor::requestBlocksUngrouping(const std::string& uniqueName) {
     const UiGraphBlock* block = _graphModel->recursiveFindBlockByUniqueName(uniqueName).block;
     if (auto owner = block ? ownersFor(*block) : std::nullopt) {
-        gr::Message message;
-        message.cmd         = gr::message::Command::Set;
-        message.endpoint    = gr::scheduler::property::kUngroupBlocks;
-        message.serviceName = owner->scheduler;
-        message.data        = gr::property_map{{"uniqueName", uniqueName}, {"_targetGraph", owner->graph}};
-        _graphModel->sendMessage(std::move(message));
+        _graphModel->sendMessage(toScheduler(*owner, gr::scheduler::property::kUngroupBlocks, {{"uniqueName", uniqueName}}));
     }
 }
 
@@ -1517,18 +1466,8 @@ void FlowgraphEditor::drawGroupingMenuItems(std::vector<std::string> uniqueNames
 }
 
 void FlowgraphEditor::requestExportPort(const ExportPortMessageData& request) {
-    gr::Message message;
-
-    message.cmd         = gr::message::Command::Set;
-    message.endpoint    = gr::graph::property::kSubgraphExportPort;
-    message.serviceName = _exportPortTargetBlockUniqueName;
-    message.data        = gr::property_map{                  //
-        {"uniqueBlockName", request.uniqueBlockName}, //
-        {"portDirection", request.portDirection},     //
-        {"portName", request.portName},               //
-        {"exportedName", request.exportedName},       //
-        {"exportFlag", request.exportFlag}};
-    graphModel()->sendMessage(std::move(message));
+    graphModel()->send(gr::message::Command::Set, _exportPortTargetBlockUniqueName, gr::graph::property::kSubgraphExportPort, //
+        {{"uniqueBlockName", request.uniqueBlockName}, {"portDirection", request.portDirection}, {"portName", request.portName}, {"exportedName", request.exportedName}, {"exportFlag", request.exportFlag}});
 }
 
 std::vector<const UiGraphEdge*> FlowgraphEditor::externalEdgesForExportedPort(const std::string& exportedName) const {
@@ -1563,28 +1502,12 @@ const UiGraphEdge* FlowgraphEditor::internalEdgeForInputPort(const ExportPortMes
 }
 
 void FlowgraphEditor::requestEdgeRemoval(const UiGraphEdge& edge) {
-    // This has a bug where it disconnects unrelated edges which share this output port. TODO: implement disconnecting edges by destination port in gnuradio
     auto* sourceBlock = edge.getBlock(UiGraphPort::Role::Source);
     if (!sourceBlock || !sourceBlock->parentBlock) {
         return;
     }
 
     components::Notification::error("Edge removal behavior is currently unimplemented");
-
-    // TODO: implement this message when a new message type is added to GR which
-    // uniquely identifies edges (this method selects by source port, which may
-    // include edges that are not connected to the exported port)
-    //
-    // auto* owningGraph = sourceBlock->parentBlock;
-    // gr::Message message;
-    // message.cmd         = gr::message::Command::Set;
-    // message.endpoint    = gr::scheduler::property::kRemoveEdge;
-    // message.serviceName = owningGraph->ownerSchedulerUniqueName();
-    // message.data        = gr::property_map{                                                                   //
-    //     {"_targetGraph", owningGraph->blockUniqueName},                                                //
-    //     {std::pmr::string(gr::serialization_fields::EDGE_SOURCE_BLOCK), sourceBlock->blockUniqueName}, //
-    //     {std::pmr::string(gr::serialization_fields::EDGE_SOURCE_PORT), edge.edgeSourcePort->portName}};
-    // _graphModel->sendMessage(std::move(message));
 }
 
 void FlowgraphEditor::exportAllUnusedPorts() {
@@ -1623,14 +1546,11 @@ void FlowgraphEditor::exportAllUnusedPorts() {
     }
 }
 
-void sendEmplaceBlockMessage(UiGraphModel& graphModel, const FlowgraphEditor::SchedulerGraphPair& owner, std::string type) {
-    gr::Message message;
-    message.cmd         = gr::message::Command::Set;
-    message.endpoint    = gr::scheduler::property::kEmplaceBlock;
-    message.serviceName = owner.scheduler;
-    message.data        = gr::property_map{{"type", type}, {"properties", gr::property_map{{"name", graphModel.nameRegistry.ensureNameIsUnique(type)}}}, {"_targetGraph", owner.graph}};
-    graphModel.sendMessage(std::move(message));
+namespace {
+void sendEmplaceBlockMessage(UiGraphModel& graphModel, const FlowgraphEditor::SchedulerGraphPair& owner, std::string type) { //
+    graphModel.sendMessage(toScheduler(owner, gr::scheduler::property::kEmplaceBlock, {{"type", type}, {"properties", gr::property_map{{"name", graphModel.nameRegistry.ensureNameIsUnique(type)}}}}));
 }
+} // namespace
 
 FlowgraphPage::~FlowgraphPage() = default;
 
@@ -1747,7 +1667,7 @@ void FlowgraphPage::drawNodeEditorTab() {
         }
 
         if (&editor == &_editors.back()) {
-            editor.draw(contentTopLeft, contentSize, &editor == &_editors.back());
+            editor.draw(contentTopLeft, contentSize);
 
             if (_remoteSignalSelector) {
                 for (const auto& selectedRemoteSignal : _remoteSignalSelector->drawAndReturnSelected()) {
@@ -1768,11 +1688,7 @@ void FlowgraphPage::drawLocalYamlTab() {
 
         if (!_editors.empty()) {
             if (auto owner = _editors.front().ownersForRoot()) {
-                gr::Message message;
-                message.cmd         = gr::message::Command::Get;
-                message.endpoint    = gr::scheduler::property::kGraphGRC;
-                message.serviceName = owner->scheduler;
-                _graphModel->sendMessage(std::move(message));
+                _graphModel->send(gr::message::Command::Get, owner->scheduler, gr::scheduler::property::kGraphGRC);
             }
         }
     }
@@ -1780,40 +1696,11 @@ void FlowgraphPage::drawLocalYamlTab() {
     ImGui::SameLine();
     if (DigitizerUi::TextButton("Apply")) {
         if (auto owner = _editors.front().ownersForRoot()) {
-            gr::Message message;
-            message.cmd         = gr::message::Command::Set;
-            message.endpoint    = gr::scheduler::property::kGraphGRC;
-            message.data        = gr::property_map{{"value", _graphModel->m_localFlowgraphGrc}};
-            message.serviceName = owner->scheduler;
-            _graphModel->sendMessage(std::move(message));
+            _graphModel->send(gr::message::Command::Set, owner->scheduler, gr::scheduler::property::kGraphGRC, {{"value", _graphModel->m_localFlowgraphGrc}});
         }
     }
 
     ImGui::InputTextMultiline("##grc", &_graphModel->m_localFlowgraphGrc, ImGui::GetContentRegionAvail());
-}
-
-void FlowgraphPage::drawRemoteYamlTab(Dashboard::Service& service) {
-    std::string tabTitle = "Remote YAML for " + service.name;
-    if (auto item = IMW::TabItem(tabTitle.c_str(), nullptr, 0)) {
-        if (DigitizerUi::TextButton("Reload from service")) {
-            service.reload();
-        }
-        ImGui::SameLine();
-        if (DigitizerUi::TextButton("Execute on service")) {
-            service.execute();
-        }
-
-        // TODO: For demonstration purposes only, remove
-        // once we have a proper server-side graph editor
-        // if (::getenv("DIGITIZER_UI_SHOW_SERVER_TEST_BUTTONS")) {
-        ImGui::SameLine();
-        if (DigitizerUi::TextButton("Create a block")) {
-            service.emplaceBlock("gr::basic::DataSink", "float");
-        }
-        // }
-
-        ImGui::InputTextMultiline("##grc", &service.grc, ImGui::GetContentRegionAvail());
-    }
 }
 
 void FlowgraphPage::draw() noexcept {
@@ -1834,13 +1721,6 @@ void FlowgraphPage::draw() noexcept {
 
     if (auto item = IMW::TabItem("Local - YAML", nullptr, 0)) {
         drawLocalYamlTab();
-    }
-
-    if (_dashboard == nullptr) {
-        return;
-    }
-    for (auto& service : _dashboard->services) {
-        drawRemoteYamlTab(service);
     }
 }
 

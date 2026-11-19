@@ -1,12 +1,13 @@
 #ifndef OPENDIGITIZER_UI_COMPONENTS_SELECTED_LABELS_VIEW_HPP_
 #define OPENDIGITIZER_UI_COMPONENTS_SELECTED_LABELS_VIEW_HPP_
 
-#include <span>
+#include <array>
 #include <string>
 #include <vector>
 
 #include "../common/ImguiWrap.hpp"
 #include "../common/LookAndFeel.hpp"
+#include "FilterComboBoxes.hpp"
 
 #include <format>
 
@@ -20,12 +21,6 @@ inline auto XLabelExpectedWidth(const char* label) {
     return labelSize.x + labelSize.y + 3 * padding;
 }
 
-#if 0
-inline bool XLabel(const char* label, const ImColor& color, const ImVec2& size_arg = {}) {
-    return ImGui::Button(label, size_arg);
-}
-
-#else
 inline bool XLabel(const char* label, const ImColor& color, const ImVec2& size_arg = {}) {
     ImGuiWindow* window = ImGui::GetCurrentWindow();
     if (window->SkipItems) {
@@ -75,48 +70,28 @@ inline bool XLabel(const char* label, const ImColor& color, const ImVec2& size_a
 
     return pressed;
 }
-#endif
 
-template<typename LabelData>
-class SelectedLabelsView {
-public:
+struct SelectedLabelsView {
     struct LabelInfo {
         std::string            display;
-        LabelData              data;
+        FilterTag*             data  = nullptr;
         std::array<ImColor, 2> color = {};
     };
 
-private:
-    std::vector<LabelInfo> m_labels;
+    std::vector<LabelInfo> labels;
 
-public:
-    explicit SelectedLabelsView(std::vector<LabelInfo> labels = {}) : m_labels(std::move(labels)) {}
-
-    const std::vector<LabelInfo>& labels() { return m_labels; }
-
-    void clear() { m_labels.clear(); }
-
-    void addLabel(LabelInfo label) { m_labels.emplace_back(std::move(label)); }
-
-    bool removeLabel(LabelData data) {
-        auto it = std::ranges::find_if(m_labels, [&data](const auto& label) { return label.data == data; });
-
-        if (it == m_labels.end()) {
-            return false;
-        }
-
-        m_labels.erase(it);
-        return true;
+    bool removeLabel(const FilterTag* data) {
+        return std::erase_if(labels, [data](const LabelInfo& label) { return label.data == data; }) > 0UZ;
     }
 
-    auto draw() {
+    [[nodiscard]] FilterTag* draw() {
         auto contentWidth          = ImGui::GetContentRegionAvail().x;
         auto remainingContentWidth = contentWidth;
         bool first                 = true;
 
-        std::optional<LabelData> toRemove;
+        FilterTag* toRemove = nullptr;
 
-        for (const auto& label : m_labels) {
+        for (const auto& label : labels) {
             auto desiredWidth = XLabelExpectedWidth(label.display.c_str());
             if (!first && remainingContentWidth > desiredWidth * 1.2f) {
                 ImGui::SameLine();
@@ -132,7 +107,7 @@ public:
         }
 
         if (toRemove) {
-            removeLabel(*toRemove);
+            removeLabel(toRemove);
         }
 
         return toRemove;

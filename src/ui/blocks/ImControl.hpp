@@ -104,7 +104,7 @@ public:
         } else {
             return;
         }
-        std::ignore = this->settings().setStaged({{"value", value}});
+        stageValue(value);
     }
 
     template<typename TValue>
@@ -143,22 +143,9 @@ public:
         [[nodiscard]] const std::string& selectedLabel() { return shouldUseIcon() ? _self->icon : _self->label; }
     };
 
-    /// Draw something with a label before it and support shrinking it into a tooltip if the label wouldn't fit
-    void drawWithLabelAndTooltip(const SizeAndLayout& layout, auto drawWidget) {
+    /// Draw something with a label before it
+    void drawWithLabel(const SizeAndLayout& layout, auto drawWidget) {
         IMW::ChangeStrId scope(this->unique_name.value().c_str());
-
-        const auto setTooltip = [this] {
-            (void)this;
-            // TODO: fix tooltips not drawing correctly in the flowgraph. this is
-            // the same issue as ImControlChoice being disabled when drawn in the
-            // flowgraph.
-            // if (!tooltip.empty()) {
-            //     IMW::Font font(LookAndFeel::instance().fontIconsSolid);
-            //     ImGui::SetItemTooltip("%s", tooltip.c_str());
-            // } else if (!label.empty() && !layout.showLabel) {
-            //     ImGui::SetItemTooltip("%s", label.c_str());
-            // }
-        };
 
         {
             LabelAndFont labelAndFont(*this);
@@ -168,18 +155,23 @@ public:
                 ImGui::SameLine(0.f, ImGui::GetStyle().ItemInnerSpacing.x);
             }
         }
-        setTooltip();
 
         {
             IMW::Group    widgets;
             IMW::Disabled disconnected(!layout.hasAnyConnection);
             drawWidget(layout.width);
         }
-        setTooltip();
     }
 
     /// Send a settings update message to every block identified by the target_map
     void sendToTargets(const auto& payload) { toolbar::sendToTargets(this->msgOut, target_map, payload); } // an ill-formed map is reported during settingsChanged()
+
+    void stageValue(const auto& value) { std::ignore = this->settings().setStaged({{"value", value}}); }
+    void commitValue(const auto& value) {
+        stageValue(value);
+        sendToTargets(value);
+    }
+    [[nodiscard]] std::string widgetId() const { return "##" + label; }
 
     /// Sends each "BlockA,BlockB:property" key's value, every block's settings in one message
     void sendByTarget(const gr::property_map& valuesByTarget) {

@@ -2,6 +2,7 @@
 #define GRAPHMODEL_H
 
 #include <cstdint>
+#include <deque>
 #include <expected>
 #include <functional>
 #include <map>
@@ -27,7 +28,16 @@ struct TestDashboardRunner;
 
 namespace DigitizerUi {
 
-[[nodiscard]] constexpr bool isChartTypeName(std::string_view typeName) { return typeName.starts_with("opendigitizer::charts::"); }
+/// a block type's name without its template parameters, e.g. "opendigitizer::ImPlotSink" for ImPlotSink<float>
+template<typename TBlock>
+[[nodiscard]] consteval std::string_view baseTypeName() {
+    constexpr std::string_view name = gr::meta::type_name<TBlock>();
+    return name.substr(0UZ, name.find('<'));
+}
+
+[[nodiscard]] bool isChartTypeName(std::string_view typeName);
+[[nodiscard]] bool isPlotSinkTypeName(std::string_view typeName);
+[[nodiscard]] bool isDataSetPlotSinkTypeName(std::string_view typeName);
 
 class UiGraphModel;
 struct UiGraphBlock;
@@ -110,9 +120,6 @@ struct UiGraphBlock {
     std::string blockName;
     std::string blockTypeName;
     std::string blockCategory;
-    std::string blockUiCategory;
-
-    bool blockIsBlocking = false;
 
     std::vector<UiGraphPort> _inputPorts;
     std::vector<UiGraphPort> _outputPorts;
@@ -138,8 +145,8 @@ struct UiGraphBlock {
     /// blocks can change their ports due to changes in exported/imported ports.
     void graphResolveEdgePortPointersAndRemoveIfInvalid();
 
-    [[nodiscard]] constexpr bool isPlotSink() const { return this->blockTypeName.starts_with("opendigitizer::ImPlotSink"); }
-    [[nodiscard]] constexpr bool isChart() const { return isChartTypeName(blockTypeName); }
+    [[nodiscard]] bool           isPlotSink() const { return isPlotSinkTypeName(blockTypeName); }
+    [[nodiscard]] bool           isChart() const { return isChartTypeName(blockTypeName); }
     [[nodiscard]] bool           isUiControl() const;
     [[nodiscard]] bool           isViewOnlyUiControl() const;
     [[nodiscard]] bool           usesTargetMap() const { return blockSettings.contains("target_map"); }
@@ -167,11 +174,10 @@ struct UiGraphBlock {
 
     bool newGraphDataBeingSet = false;
 
-    // Handlers for graph and schdeuler events
-    void handleChildBlockEmplaced(const gr::property_map& blockData);
-    void handleChildEdgeEmplaced(const gr::property_map& data);
-    bool handleChildBlockRemoved(const std::string& uniqueName);
-    void handleChildEdgeRemoved(const gr::property_map& data);
+    void emplaceChild(const gr::property_map& blockData);
+    void emplaceEdge(const gr::property_map& data);
+    bool removeChild(const std::string& uniqueName);
+    void applySettings(const gr::property_map& data);
 
     UiGraphBlock* findBlockByUniqueName(const std::string& uniqueName);
 
@@ -257,25 +263,16 @@ public:
 
     void addContext(const ContextTime& contextTime);
     void removeContext(const ContextTime& contextTime);
-
-    bool isConnected() const;
 };
 
-inline void forEachBlockRecursive(UiGraphBlock& root, auto&& fn) {
-    for (const auto& child : root.childBlocks) {
-        fn(*child);
-        forEachBlockRecursive(*child, fn);
-    }
+[[nodiscard]] inline gr::Message makeMessage(gr::message::Command cmd, std::string serviceName, std::string endpoint, gr::property_map data = {}, std::string clientRequestID = {}) { //
+    return gr::Message{.cmd = cmd, .serviceName = std::move(serviceName), .clientRequestID = std::move(clientRequestID), .endpoint = std::move(endpoint), .data = std::move(data)};
 }
 
-[[nodiscard]] inline gr::Message subscriptionMessageForAllBlocksSettings() {
-    gr::Message message;
-    message.cmd             = gr::message::Command::Subscribe;
-    message.serviceName     = "";
-    message.clientRequestID = "UI";
-    message.endpoint        = gr::block::property::kSetting;
-    return message;
-}
+[[nodiscard]] inline gr::Message subscriptionMessageForAllBlocksSettings() { return makeMessage(gr::message::Command::Subscribe, "", gr::block::property::kSetting, {}, "UI"); }
+
+/// the kEmplaceEdge payload the UI sends: minimum buffer 4096, weight 1, name "edge"
+[[nodiscard]] gr::property_map emplaceEdgeData(std::string sourceBlock, std::string sourcePort, std::string destinationBlock, std::string destinationPort);
 
 class UiGraphModel {
 public:
@@ -284,9 +281,9 @@ public:
 
     UiGraphModel() : rootBlock(this, nullptr) {}
 
-    std::function<void(gr::Message, std::source_location)> sendMessage_;
+    std::function<void(gr::Message)> sendMessage;
 
-    void sendMessage(gr::Message message, std::source_location location = std::source_location::current()) { sendMessage_(std::move(message), std::move(location)); }
+    void send(gr::message::Command cmd, std::string serviceName, std::string endpoint, gr::property_map data = {}, std::string clientRequestID = {}) { sendMessage(makeMessage(cmd, std::move(serviceName), std::move(endpoint), std::move(data), std::move(clientRequestID))); }
 
     UiGraphBlock rootBlock;
 
@@ -307,12 +304,9 @@ public:
 
     std::uint64_t topologyGeneration = 0;
 
-    /**
-     * @return true if consumed the message
-     */
-    bool processMessage(const gr::Message& message);
+    bool apply(const gr::Message& message); // true if consumed
 
-    void handleTopologyUpdated();
+    void onTopologyChanged();
     void rebuildNameRegistry();
     void requestFullUpdate(std::source_location location = std::source_location::current());
     void requestAvailableBlocksTypesUpdate();
@@ -333,11 +327,46 @@ public:
     struct FindBlockResult {
         operator bool() const { return block != nullptr; }
 
-        UiGraphBlock*                                 parentGraph        = nullptr;
-        UiGraphBlock*                                 block              = nullptr;
-        decltype(UiGraphBlock::childBlocks)*          owningCollection   = nullptr;
-        decltype(UiGraphBlock::childBlocks)::iterator owningCollectionIt = {};
+        UiGraphBlock* parentGraph = nullptr;
+        UiGraphBlock* block       = nullptr;
     };
+
+    enum class VisitorResult {
+        Recurse,  // recurse into children
+        Continue, // continue to sibling and ignore children of this block
+        Break,
+    };
+
+    /// breadth-first from rootBlock (included); `fn` returns a VisitorResult or nothing (= Recurse)
+    template<typename Fn>
+    void recursiveForEachBlock(Fn&& fn) {
+        const auto visit = [&fn](const FindBlockResult& element) {
+            if constexpr (std::is_void_v<std::invoke_result_t<Fn&, const FindBlockResult&>>) {
+                fn(element);
+                return VisitorResult::Recurse;
+            } else {
+                return fn(element);
+            }
+        };
+        if (visit({.block = std::addressof(rootBlock)}) != VisitorResult::Recurse) {
+            return;
+        }
+        std::deque<UiGraphBlock*> toProcess{std::addressof(rootBlock)};
+        while (!toProcess.empty()) {
+            UiGraphBlock* currentGraph = toProcess.front();
+            toProcess.pop_front();
+            for (const auto& block : currentGraph->childBlocks) {
+                switch (visit({.parentGraph = currentGraph, .block = block.get()})) {
+                case VisitorResult::Break: return;
+                case VisitorResult::Continue: continue;
+                case VisitorResult::Recurse: break;
+                }
+                if (!block->childBlocks.empty()) {
+                    toProcess.push_back(block.get());
+                }
+            }
+        }
+    }
     FindBlockResult recursiveFindBlockByUniqueName(std::string_view uniqueName);
     FindBlockResult recursiveFindBlockByName(std::string_view name);
 
@@ -388,36 +417,14 @@ public:
     std::unique_ptr<UiGraphBlock> makeGraphBlock(UiGraphBlock* parent, const gr::property_map& blockData, const std::string& ownerSchedulerUniqueName, const std::string& ownerGraphUniqueName);
 
 private:
-    void handleBlockDataUpdated(const std::string& uniqueName, const gr::property_map& blockData);
-    void handleBlockSettingsChanged(const std::string& uniqueName, const gr::property_map& data);
-    void handleBlockSettingsStaged(const std::string& uniqueName, const gr::property_map& data);
-    void handleBlockActiveContext(const std::string& uniqueName, const gr::property_map& data);
-    void handleBlockAllContexts(const std::string& uniqueName, const gr::property_map& data);
-    void handleBlockAddOrRemoveContext(const std::string& uniqueName, const gr::property_map& data);
-    void handleAvailableGraphBlockTypes(const gr::property_map& data);
-    void handleAvailableGraphSchedulerTypes(const gr::property_map& data);
-
     bool blockInTree(const UiGraphBlock& block, const UiGraphBlock& tree, UiGraphPort::Role direction) const;
-
-    enum class VisitorResult {
-        Recurse,  // recurse into children
-        Continue, // continue to sibling and ignore children of this block
-        Break,
-    };
-    void recursiveForEachBlock(const std::function<VisitorResult(const FindBlockResult& element)>& callback);
 
     /// only used by tests to wait for a reponse from the scheduler  TODO: #if defined(TESTING_...) ?
     std::unordered_map<std::size_t, std::function<void(const gr::Message&)>> _testResponseSubscriptions;
+    std::size_t                                                              _lastResponseSubscriptionId = 0;
 
-    std::size_t subscribeToResponses(std::function<void(const gr::Message& incoming)> listener) {
-        static std::size_t lastUsedId = 0;
-        ++lastUsedId;
-        auto [iterator, wasEmplaced] = _testResponseSubscriptions.try_emplace(lastUsedId, std::move(listener));
-        assert(wasEmplaced);
-        return iterator->first;
-    }
-
-    void unsubscribeFromResponses(std::size_t subscriptionId) { _testResponseSubscriptions.erase(subscriptionId); }
+    std::size_t subscribeToResponses(std::function<void(const gr::Message& incoming)> listener);
+    void        unsubscribeFromResponses(std::size_t subscriptionId);
 
     // used by tests
     [[nodiscard]] static DrawableBlockConfig::ControlledProperty firstControlledPropertyConfig(std::span<const BlockPointerPropertyNamePair> controlled);

@@ -13,8 +13,7 @@
 
 #include "shared/imgui_app.h"
 
-#include <gnuradio-4.0/BlockRegistry.hpp>
-#include <gnuradio-4.0/PluginLoader.hpp>
+#include <gnuradio-4.0/Scheduler.hpp>
 
 #include <algorithm>
 #include <charconv>
@@ -39,7 +38,7 @@ void registerDefaultThreadPool() {
     Manager::instance().replacePool(std::string(kDefaultIoPoolId), std::make_shared<ThreadPoolWrapper>(std::make_unique<BasicThreadPool>(std::string(kDefaultIoPoolId), TaskType::IO_BOUND, 0U), "IO"));
 }
 
-inline static ImGuiTestApp* g_testApp = nullptr;
+inline static ImGuiTestApp* gTestApp = nullptr;
 
 inline static bool ImGuiApp_CreateWindow(ImGuiApp* /*app*/, const char* windowTitle, ImVec2 windowSize) {
     std::string glslVersion;
@@ -64,7 +63,7 @@ inline static void ImGuiApp_InitBackends(ImGuiApp* app) {
 }
 
 inline static bool ImGuiApp_NewFrame(ImGuiApp* /*app*/) {
-    if (!imgui_helper::processEvents()) {
+    if (!imgui_helper::processEvents().running) {
         std::println("[TestApp] requested close");
         return false;
     }
@@ -113,9 +112,9 @@ inline static bool ImGuiApp_CaptureFramebuffer(ImGuiApp* app, ImGuiViewport* vie
 } // namespace
 
 ImGuiTestApp::ImGuiTestApp(const TestOptions& options) : _options(options) {
-    assert(g_testApp == nullptr);
+    assert(gTestApp == nullptr);
     registerDefaultThreadPool();
-    g_testApp = this;
+    gTestApp = this;
 }
 
 ImGuiTestApp::~ImGuiTestApp() {
@@ -127,7 +126,7 @@ ImGuiTestApp::~ImGuiTestApp() {
 
     _app->Destroy(&(*_app));
 
-    g_testApp = nullptr;
+    gTestApp = nullptr;
 }
 
 void ImGuiTestApp::initImGui() {
@@ -148,7 +147,7 @@ void ImGuiTestApp::initImGui() {
     _app->ClearColor      = ImVec4(0.120f, 0.120f, 0.120f, 1.000f);
     _app->InitCreateWindow(&(*_app), "Test", _options.windowSize);
     if (_options.useInteractiveMode || _options.keepGui || std::getenv("OPENDIGITIZER_RUN_TESTS_ON_SCREEN") != nullptr) {
-        SDL_ShowWindow(imgui_helper::g_Window);
+        SDL_ShowWindow(imgui_helper::gWindow);
     }
     _app->InitBackends(&(*_app));
 
@@ -253,13 +252,13 @@ void resetCaptureWithNextFileName(ImGuiTestContext& ctx, const char* prefix) {
 } // namespace
 
 void ImGuiTestApp::captureScreenshot(ImGuiTestContext& ctx, ImGuiTestRef ref, int captureFlags) {
-    resetCaptureWithNextFileName(ctx, g_testApp->_options.screenshotPrefix);
+    resetCaptureWithNextFileName(ctx, gTestApp->_options.screenshotPrefix);
     ctx.CaptureAddWindow(ref);
     ctx.CaptureScreenshot(captureFlags);
 }
 
 void ImGuiTestApp::captureScreenshot(ImGuiTestContext& ctx, const ImRect& screenRect) {
-    resetCaptureWithNextFileName(ctx, g_testApp->_options.screenshotPrefix);
+    resetCaptureWithNextFileName(ctx, gTestApp->_options.screenshotPrefix);
     ctx.CaptureArgs->InCaptureRect = screenRect;
     ctx.CaptureScreenshot(ImGuiCaptureFlags_Instant | ImGuiCaptureFlags_HideMouseCursor);
 }
@@ -271,6 +270,18 @@ ImGuiTestApp::CapturedPixels ImGuiTestApp::capturePixels(ImGuiTestContext& ctx, 
     ctx.CaptureArgs->InOutputImageBuf = std::addressof(image);
     ctx.CaptureScreenshot(ImGuiCaptureFlags_Instant | ImGuiCaptureFlags_HideMouseCursor | ImGuiCaptureFlags_NoSave);
     return {.width = image.Width, .height = image.Height, .rgba = std::vector<unsigned int>(image.Data, image.Data + static_cast<std::size_t>(image.Width) * static_cast<std::size_t>(image.Height))};
+}
+
+ImGuiTestApp::CapturedPixels ImGuiTestApp::captureSettledPixels(ImGuiTestContext& ctx, const ImRect& screenRect) {
+    CapturedPixels previous;
+    while (true) {
+        ctx.Yield();
+        CapturedPixels current = capturePixels(ctx, screenRect);
+        if (current.width == previous.width && current.height == previous.height && current.rgba == previous.rgba) {
+            return current;
+        }
+        previous = std::move(current);
+    }
 }
 
 TestOptions TestOptions::fromArgs(int argc, char* argv[]) {
@@ -332,8 +343,3 @@ void ImGuiTestApp::printWindows() {
 }
 
 ImGuiTestContext* ImGuiTestApp::testContext() const { return _engine ? _engine->TestContext : nullptr; }
-
-std::shared_ptr<gr::PluginLoader> ImGuiTestApp::createPluginLoader() {
-    auto loader = std::make_shared<gr::PluginLoader>(gr::globalBlockRegistry(), gr::globalSchedulerRegistry(), std::span<const std::string>());
-    return loader;
-}

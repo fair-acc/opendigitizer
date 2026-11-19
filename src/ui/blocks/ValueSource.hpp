@@ -11,8 +11,6 @@
 
 namespace opendigitizer {
 
-GR_REGISTER_BLOCK(opendigitizer::ValueSource, [T], [ float, double ])
-
 template<typename T>
 struct ValueSource : gr::Block<ValueSource<T>> {
     using Description = gr::Doc<"Publishes its `value` setting as one asynchronous sample each time it is set, dated by the wall clock at publication, e.g. a chart's dragged range sent by message">;

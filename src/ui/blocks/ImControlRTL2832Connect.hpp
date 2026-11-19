@@ -43,7 +43,7 @@ Browsers without WebUSB, cannot open the dongle; the native build opens it by it
         const float         button = ImGui::CalcTextSize(text.c_str()).x + 2.f * ImGui::GetStyle().FramePadding.x;
         const SizeAndLayout layout = prepareDraw(parsedConfig, button, button, 0.f);
 
-        drawWithLabelAndTooltip(layout, [&](float width) {
+        drawWithLabel(layout, [&](float width) {
             IMW::Disabled busy(connection != Connection::Idle);
             if (DigitizerUi::Button(text.c_str(), ImVec2(width, 0.f))) {
 #if defined(__EMSCRIPTEN__)

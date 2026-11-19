@@ -2,7 +2,6 @@
 #include "StandaloneUiControl.hpp"
 #include "TestDashboardRunner.hpp"
 #include "TestPropertySetterButton.hpp"
-#include "TestingBlockInspectionUtils.hpp"
 #include "UiControlCompatibilityTarget.hpp"
 
 #include <boost/ut.hpp>
@@ -58,9 +57,7 @@ struct TestState : TestDashboardRunner {
     bool                                                               includeControlledPropertyInConfig = true;
 };
 
-TestState g_state;
-
-TESTING_BLOCK_INSPECTION_UTILS_MAKE_ALL_GLOBAL_STATE_AWARE_OVERLOADS(g_state.dashboard->session)
+TestState* gState = nullptr;
 
 template<typename T>
 std::size_t countMatchingSettingsMessages(const std::vector<gr::Message>& messages, std::string_view target, const std::string& key, const T& expected) {
@@ -98,23 +95,14 @@ std::size_t countMessagesSettingKey(const std::vector<gr::Message>& messages, st
     return static_cast<std::size_t>(std::ranges::count_if(messages, [key](const gr::Message& message) { return message.data && message.data->contains(key); }));
 }
 
-void sendSetting(const std::string& block, const std::string& key, const std::string& value) {
-    gr::Message message;
-    message.cmd         = gr::message::Command::Set;
-    message.serviceName = block;
-    message.endpoint    = gr::block::property::kSetting;
-    message.data        = gr::property_map{{key, value}};
-    g_state.dashboard->session.sendMessage(std::move(message));
-}
-
-void sendSetTargetMapMessage(const std::string& control, const std::string& targetMap) { sendSetting(control, "target_map", targetMap); }
+void sendSetTargetMapMessage(const std::string& control, const std::string& targetMap) { gState->sendSetting(control, {{"target_map", targetMap}}); }
 } // namespace
 
 struct TestApp : public DigitizerUi::test::ImGuiTestApp {
     using DigitizerUi::test::ImGuiTestApp::ImGuiTestApp;
 
     static DrawableBlockConfig::ControlledProperty getFirstControlledProperty(std::string_view controlName) {
-        auto&                            model   = g_state.dashboard->session.graphModel;
+        auto&                            model   = gState->dashboard->session.graphModel;
         const DigitizerUi::UiGraphBlock* control = model.recursiveFindBlockByName(controlName).block;
         expect(control != nullptr) << fatal << controlName;
         return DigitizerUi::UiGraphModel::firstControlledPropertyConfig(model.resolveControlledProperties(*control).value_or(std::vector<DigitizerUi::UiGraphModel::BlockPointerPropertyNamePair>{}));
@@ -127,10 +115,10 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             {
                 IMW::Window window("Host", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
                 // draw the toolbar for the dashboard, if the dashboard is active
-                if (g_state.dashboard) {
-                    g_state.dashboard->handleMessages();
-                    if (g_state.dashboard->isInitialised) {
-                        g_state.view.draw(g_state.dashboard->session, false);
+                if (gState->dashboard) {
+                    gState->dashboard->session.handleMessages();
+                    if (gState->dashboard->isInitialised) {
+                        gState->view.draw(gState->dashboard->session, false);
                     }
                 }
 
@@ -140,16 +128,16 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 {
                     IMW::Window uiControlPanel("uiControlPanel", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
                     // makeConfig() here needs a targetValue to be provided just to tell the control that it is connected to something. controls which do not receive a value are drawn disabled.
-                    const auto makeConfig = [](gr::pmt::Value targetValue) { return DrawableBlockConfig{.firstControlledProperty = {.value = std::move(targetValue)}, .showLabel = g_state.showLabels}.toMap().value_or(gr::property_map{}); };
-                    std::ignore           = g_state.toggle->block.draw(makeConfig(false));
+                    const auto makeConfig = [](gr::pmt::Value targetValue) { return DrawableBlockConfig{.firstControlledProperty = {.value = std::move(targetValue)}, .showLabel = gState->showLabels}.toMap().value_or(gr::property_map{}); };
+                    std::ignore           = gState->toggle->block.draw(makeConfig(false));
                     ImGui::SameLine();
-                    std::ignore = g_state.trigger->block.draw(makeConfig(false));
+                    std::ignore = gState->trigger->block.draw(makeConfig(false));
                     ImGui::SameLine();
-                    std::ignore = g_state.text->block.draw(makeConfig(std::string("start")));
+                    std::ignore = gState->text->block.draw(makeConfig(std::string("start")));
                     ImGui::SameLine();
-                    std::ignore = g_state.choice->block.draw(g_state.includeControlledPropertyInConfig ? controlledConfig("Sin", {"Sin", "Cos", "Square"}) : gr::property_map{});
+                    std::ignore = gState->choice->block.draw(gState->includeControlledPropertyInConfig ? controlledConfig("Sin", {"Sin", "Cos", "Square"}) : gr::property_map{});
                     ImGui::SameLine();
-                    std::ignore = g_state.readout->block.draw(controlledConfig(std::int32_t{42}));
+                    std::ignore = gState->readout->block.draw(controlledConfig(std::int32_t{42}));
                 }
 
                 ImGui::SetNextWindowPos(kPianoWindowPos);
@@ -157,8 +145,8 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 {
                     IMW::Window pianoPanel("pianoPanel", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
                     const auto  connectedConfig = DrawableBlockConfig{.firstControlledProperty = {.value = false}}.toMap().value_or(gr::property_map{});
-                    std::ignore                 = g_state.piano->block.draw(connectedConfig);
-                    std::ignore                 = g_state.pianoWithoutGenerator->block.draw(connectedConfig);
+                    std::ignore                 = gState->piano->block.draw(connectedConfig);
+                    std::ignore                 = gState->pianoWithoutGenerator->block.draw(connectedConfig);
                 }
             }
         };
@@ -169,27 +157,29 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             t->GuiFunc = commonGuiFunc;
 
             t->TestFunc = [](ImGuiTestContext* ctx) {
-                g_state.reload(cmrc::ui_test_assets::get_filesystem(), "examples/qa_imcontrol_conflicting_init_values.grc", "conflicting_init_values");
-                g_state.waitForScheduler(ctx);
+                gState->reload(cmrc::ui_test_assets::get_filesystem(), "examples/qa_imcontrol_conflicting_init_values.grc", "conflicting_init_values");
+                gState->waitForScheduler(ctx);
 
                 "the control blocks get their init values from blocks and do not modify the blocks"_test = [&] {
-                    using namespace std::chrono_literals;
-                    // As updates are delivered via messages, time to delivery is not deterministic, so we can spin and make sure the asserts continue to be true
-                    for (const auto start = std::chrono::steady_clock::now(); std::chrono::steady_clock::now() - start < 2s;) {
-                        expect(blockHasBasicTypeKeyValuePair<bool>("testCase1DefaultTrueBlock", "visible", true)) << "block keeps its default despite state of control";
-                        expect(blockHasBasicTypeKeyValuePair<bool>("testCase1DefaultFalseBlock", "visible", false)) << "block keeps its default despite state of control";
-                        expect(blockHasBasicTypeKeyValuePair<bool>("testCase2DefaultTrueBlock", "visible", true)) << "block keeps its default despite state of control";
-                        expect(blockHasBasicTypeKeyValuePair<bool>("testCase2DefaultFalseBlock", "visible", false)) << "block keeps its default despite state of control";
-                        expect(blockHasBasicTypeKeyValuePair<bool>("testCase3DefaultTrueBlock", "visible", true)) << "block keeps its default despite state of control";
-                        expect(blockHasBasicTypeKeyValuePair<bool>("testCase3DefaultFalseBlock", "visible", false)) << "block keeps its default despite state of control";
-                        ctx->Yield();
+                    const auto controlsTookTheirTargetsValues = [] {
+                        return gState->blockHasBasicTypeKeyValuePair<bool>("testCase1ToggleTrueToTrue", "value", true) && gState->blockHasBasicTypeKeyValuePair<bool>("testCase1ToggleFalseToFalse", "value", false) && //
+                               gState->blockHasBasicTypeKeyValuePair<bool>("testCase3ToggleTrueToFalse", "value", true) && gState->blockHasBasicTypeKeyValuePair<bool>("testCase3ToggleFalseToTrue", "value", false);
+                    };
+                    gState->waitUntil(ctx, "the controls took their targets' values", controlsTookTheirTargetsValues);
+                    for (const std::string_view target : {"testCase1DefaultTrueBlock", "testCase1DefaultFalseBlock", "testCase2DefaultTrueBlock", "testCase2DefaultFalseBlock", "testCase3DefaultTrueBlock", "testCase3DefaultFalseBlock"}) {
+                        gState->waitUntilApplied(ctx, target);
                     }
+                    expect(gState->blockHasBasicTypeKeyValuePair<bool>("testCase1DefaultTrueBlock", "visible", true)) << "block keeps its default despite state of control";
+                    expect(gState->blockHasBasicTypeKeyValuePair<bool>("testCase1DefaultFalseBlock", "visible", false)) << "block keeps its default despite state of control";
+                    expect(gState->blockHasBasicTypeKeyValuePair<bool>("testCase2DefaultTrueBlock", "visible", true)) << "block keeps its default despite state of control";
+                    expect(gState->blockHasBasicTypeKeyValuePair<bool>("testCase2DefaultFalseBlock", "visible", false)) << "block keeps its default despite state of control";
+                    expect(gState->blockHasBasicTypeKeyValuePair<bool>("testCase3DefaultTrueBlock", "visible", true)) << "block keeps its default despite state of control";
+                    expect(gState->blockHasBasicTypeKeyValuePair<bool>("testCase3DefaultFalseBlock", "visible", false)) << "block keeps its default despite state of control";
 
-                    // at any point during the above wait, the opposite should have occurred, and the controls should have received info about their initial values / defaults
-                    expect(blockHasBasicTypeKeyValuePair<bool>("testCase1ToggleTrueToTrue", "value", true)) << "control value matches attached block's value";
-                    expect(blockHasBasicTypeKeyValuePair<bool>("testCase1ToggleFalseToFalse", "value", false)) << "control value matches attached block's value";
-                    expect(blockHasBasicTypeKeyValuePair<bool>("testCase3ToggleTrueToFalse", "value", true)) << "control value matches attached block's value";
-                    expect(blockHasBasicTypeKeyValuePair<bool>("testCase3ToggleFalseToTrue", "value", false)) << "control value matches attached block's value";
+                    expect(gState->blockHasBasicTypeKeyValuePair<bool>("testCase1ToggleTrueToTrue", "value", true)) << "control value matches attached block's value";
+                    expect(gState->blockHasBasicTypeKeyValuePair<bool>("testCase1ToggleFalseToFalse", "value", false)) << "control value matches attached block's value";
+                    expect(gState->blockHasBasicTypeKeyValuePair<bool>("testCase3ToggleTrueToFalse", "value", true)) << "control value matches attached block's value";
+                    expect(gState->blockHasBasicTypeKeyValuePair<bool>("testCase3ToggleFalseToTrue", "value", false)) << "control value matches attached block's value";
                 };
             };
         }
@@ -200,22 +190,22 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             t->GuiFunc = commonGuiFunc;
 
             t->TestFunc = [](ImGuiTestContext* ctx) {
-                g_state.reload(cmrc::ui_test_assets::get_filesystem(), "examples/qa_imcontrol_initial_value.grc", "initial_value");
-                g_state.waitForScheduler(ctx);
-                g_state.waitUntil(ctx, "graph loads as expected", [] { return blockHasStringKeyValuePair("sineSink1", "signal_name", "sine 1"); });
-                expect(blockHasStringKeyValuePair("controlText", "value", "")) << fatal << "the text control starts out empty";
+                gState->reload(cmrc::ui_test_assets::get_filesystem(), "examples/qa_imcontrol_initial_value.grc", "initial_value");
+                gState->waitForScheduler(ctx);
+                gState->waitUntil(ctx, "graph loads as expected", [] { return gState->blockHasStringKeyValuePair("sineSink1", "signal_name", "sine 1"); });
+                expect(gState->blockHasStringKeyValuePair("controlText", "value", "")) << fatal << "the text control starts out empty";
 
                 sendSetTargetMapMessage("controlText", "sineSink1:signal_name");
-                g_state.waitUntil(ctx, "the UI returns the correct target for the controlText block", [] { return getFirstControlledProperty("controlText").has_value(); });
-                g_state.waitUntil(ctx, "the text control takes the value of its target", [] { return blockHasStringKeyValuePair("controlText", "value", "sine 1"); });
-                expect(blockHasStringKeyValuePair("sineSink1", "signal_name", "sine 1")) << "connecting does not modify the target";
+                gState->waitUntil(ctx, "the UI returns the correct target for the controlText block", [] { return getFirstControlledProperty("controlText").has_value(); });
+                gState->waitUntil(ctx, "the text control takes the value of its target", [] { return gState->blockHasStringKeyValuePair("controlText", "value", "sine 1"); });
+                expect(gState->blockHasStringKeyValuePair("sineSink1", "signal_name", "sine 1")) << "connecting does not modify the target";
 
                 "changing a connection from one property to another with identical hints still causes the control block to reload the value"_test = [&] {
                     sendSetTargetMapMessage("controlText", "sineSink2:signal_name"); // same property, same target block type, but going to a difference block instance
-                    g_state.waitUntil(ctx, "UI received update to controlText target_map", [] { return getFirstControlledProperty("controlText").value.value_or(std::string{}) == "sine 2"; });
-                    g_state.waitUntil(ctx, "the value has been loaded upon connection", [] { return blockHasStringKeyValuePair("controlText", "value", "sine 2"); });
-                    expect(blockHasStringKeyValuePair("sineSink1", "signal_name", "sine 1")) << "moving the connection does not modify the old target";
-                    expect(blockHasStringKeyValuePair("sineSink2", "signal_name", "sine 2")) << "moving the connection does not modify the new target";
+                    gState->waitUntil(ctx, "UI received update to controlText target_map", [] { return getFirstControlledProperty("controlText").value.value_or(std::string{}) == "sine 2"; });
+                    gState->waitUntil(ctx, "the value has been loaded upon connection", [] { return gState->blockHasStringKeyValuePair("controlText", "value", "sine 2"); });
+                    expect(gState->blockHasStringKeyValuePair("sineSink1", "signal_name", "sine 1")) << "moving the connection does not modify the old target";
+                    expect(gState->blockHasStringKeyValuePair("sineSink2", "signal_name", "sine 2")) << "moving the connection does not modify the new target";
                 };
             };
         }
@@ -226,9 +216,9 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             t->GuiFunc = commonGuiFunc;
 
             t->TestFunc = [](ImGuiTestContext* ctx) { // NOSONAR test lambda length
-                g_state.reload(cmrc::ui_test_assets::get_filesystem(), "examples/qa_imcontrol.grc", "controls");
-                g_state.waitForScheduler(ctx);
-                g_state.waitUntil(ctx, "flowgraph appears to be initialized and running", [] { return blockHasStringKeyValuePair("plotSink1", "signal_name", "first"); });
+                gState->reload(cmrc::ui_test_assets::get_filesystem(), "examples/qa_imcontrol.grc", "controls");
+                gState->waitForScheduler(ctx);
+                gState->waitUntil(ctx, "flowgraph appears to be initialized and running", [] { return gState->blockHasStringKeyValuePair("plotSink1", "signal_name", "first"); });
 
                 "some controls are drawn, at least"_test = [&] {
                     for (const char* item : {"**/##Visible", "**/Show", "**/##Name", "**/##Live"}) {
@@ -238,32 +228,32 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 };
 
                 "checkbox loads as checked, based on the state of the block. then test basic functionality"_test = [&] {
-                    expect(blockHasBasicTypeKeyValuePair<bool>("plotSink1", "visible", true)) << fatal << "the target starts true";
-                    g_state.waitUntil(ctx, "checkbox is checked, informed by target block", [] { return blockHasBasicTypeKeyValuePair<bool>("controlToggle", "value", true); });
+                    expect(gState->blockHasBasicTypeKeyValuePair<bool>("plotSink1", "visible", true)) << fatal << "the target starts true";
+                    gState->waitUntil(ctx, "checkbox is checked, informed by target block", [] { return gState->blockHasBasicTypeKeyValuePair<bool>("controlToggle", "value", true); });
                     ctx->ItemClick("**/##Visible");
-                    g_state.waitUntil(ctx, "checkbox is unchecked", [] { return blockHasBasicTypeKeyValuePair<bool>("plotSink1", "visible", false) && blockHasBasicTypeKeyValuePair<bool>("controlToggle", "value", false); });
+                    gState->waitUntil(ctx, "checkbox is unchecked", [] { return gState->blockHasBasicTypeKeyValuePair<bool>("plotSink1", "visible", false) && gState->blockHasBasicTypeKeyValuePair<bool>("controlToggle", "value", false); });
                     ctx->ItemClick("**/##Visible");
-                    g_state.waitUntil(ctx, "checkbox is re-checked", [] { return blockHasBasicTypeKeyValuePair<bool>("plotSink1", "visible", true) && blockHasBasicTypeKeyValuePair<bool>("controlToggle", "value", true); });
+                    gState->waitUntil(ctx, "checkbox is re-checked", [] { return gState->blockHasBasicTypeKeyValuePair<bool>("plotSink1", "visible", true) && gState->blockHasBasicTypeKeyValuePair<bool>("controlToggle", "value", true); });
                 };
 
                 "trigger basic functionality"_test = [&] {
-                    expect(blockHasBasicTypeKeyValuePair<bool>("plotSink2", "visible", false)) << fatal << "the target starts false";
+                    expect(gState->blockHasBasicTypeKeyValuePair<bool>("plotSink2", "visible", false)) << fatal << "the target starts false";
                     ctx->ItemClick("**/Show");
-                    g_state.waitUntil(ctx, "the click sends a set:true message", [] { return blockHasBasicTypeKeyValuePair<bool>("plotSink2", "visible", true); });
+                    gState->waitUntil(ctx, "the click sends a set:true message", [] { return gState->blockHasBasicTypeKeyValuePair<bool>("plotSink2", "visible", true); });
                 };
 
                 "the text input sets the string on each named block"_test = [&] {
-                    expect(blockHasStringKeyValuePair("plotSink1", "signal_name", "first")) << fatal << "signal name starts at \"first\", as is written in the .grc";
-                    expect(blockHasStringKeyValuePair("plotSink2", "signal_name", "second")) << fatal << "signal name starts at \"second\", as is written in the .grc";
+                    expect(gState->blockHasStringKeyValuePair("plotSink1", "signal_name", "first")) << fatal << "signal name starts at \"first\", as is written in the .grc";
+                    expect(gState->blockHasStringKeyValuePair("plotSink2", "signal_name", "second")) << fatal << "signal name starts at \"second\", as is written in the .grc";
                     // not sure whether it is really an important contract that the first block listed in the target_map is the one that determines the default value for the control, but for now that is the behavior
-                    g_state.waitUntil(ctx, "text input should inherit the initial value from its first target", [] { return blockHasStringKeyValuePair("controlText", "value", "first"); });
+                    gState->waitUntil(ctx, "text input should inherit the initial value from its first target", [] { return gState->blockHasStringKeyValuePair("controlText", "value", "first"); });
                     ctx->ItemInputValue("**/##Name", "foo bar"); // ui control block with name "controlText" has label "Name"
-                    g_state.waitUntil(ctx, "text input got propagated to all target blocks", [] { return blockHasStringKeyValuePair("plotSink1", "signal_name", "foo bar") && blockHasStringKeyValuePair("plotSink2", "signal_name", "foo bar"); });
+                    gState->waitUntil(ctx, "text input got propagated to all target blocks", [] { return gState->blockHasStringKeyValuePair("plotSink1", "signal_name", "foo bar") && gState->blockHasStringKeyValuePair("plotSink2", "signal_name", "foo bar"); });
                 };
 
                 "controls in the toolbar receive the current value and enum choices of the first targeted property"_test = [&] {
                     DrawableBlockConfig::ControlledProperty controlled;
-                    expect(g_state.waitUntil(ctx, "the UI knows and sends the choice values for signal_type", [&] {
+                    expect(gState->waitUntil(ctx, "the UI knows and sends the choice values for signal_type", [&] {
                         controlled = getFirstControlledProperty("controlChoice");
                         return controlled.has_value();
                     })) << fatal;
@@ -274,79 +264,79 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 };
 
                 "picking a choice sets the enum on the target and stores it in the control block"_test = [&] {
-                    expect(blockHasStringKeyValuePair("signalGenerator1", "signal_type", "Sin")) << fatal;
-                    const DigitizerUi::UiGraphBlock* control = g_state.dashboard->session.graphModel.recursiveFindBlockByName("controlChoice").block;
+                    expect(gState->blockHasStringKeyValuePair("signalGenerator1", "signal_type", "Sin")) << fatal;
+                    const DigitizerUi::UiGraphBlock* control = gState->dashboard->session.graphModel.recursiveFindBlockByName("controlChoice").block;
                     expect(control != nullptr) << fatal;
                     ctx->ItemClick(controlItemId(ctx, "//Host/##Toolbar", control->blockUniqueName, "##Shape"));
                     ctx->ItemClick("//$FOCUSED/Cos");
-                    expect(g_state.waitUntil(ctx, "both the target and the control block contain the newly set value", [] { return blockHasStringKeyValuePair("signalGenerator1", "signal_type", "Cos") && blockHasStringKeyValuePair("controlChoice", "value", "Cos"); }));
+                    expect(gState->waitUntil(ctx, "both the target and the control block contain the newly set value", [] { return gState->blockHasStringKeyValuePair("signalGenerator1", "signal_type", "Cos") && gState->blockHasStringKeyValuePair("controlChoice", "value", "Cos"); }));
                 };
 
                 "an ImControlChoice with explicit choices sends the chosen value: a Selector rerouted"_test = [&] {
                     const auto routedFrom = [](gr::Size_t input) {
-                        const gr::pmt::Value mapIn = setting("selector", "map_in");
+                        const gr::pmt::Value mapIn = gState->setting("selector", "map_in");
                         const auto           typed = mapIn.get_if<gr::TensorView<gr::Size_t>>();
                         return typed.has_value() && typed->size() == 1UZ && *typed->begin() == input;
                     };
-                    expect(g_state.waitUntil(ctx, "the selector routes input 0 as the .grc says", [&] { return routedFrom(0U); })) << fatal;
-                    const DigitizerUi::UiGraphBlock* control = g_state.dashboard->session.graphModel.recursiveFindBlockByName("controlRoute").block;
+                    expect(gState->waitUntil(ctx, "the selector routes input 0 as the .grc says", [&] { return routedFrom(0U); })) << fatal;
+                    const DigitizerUi::UiGraphBlock* control = gState->dashboard->session.graphModel.recursiveFindBlockByName("controlRoute").block;
                     expect(control != nullptr) << fatal;
                     ctx->ItemClick(controlItemId(ctx, "//Host/##Toolbar", control->blockUniqueName, "##Route"));
                     for (const char* offered : {"first", "second"}) {
                         expect(ctx->ItemExists(std::format("//$FOCUSED/{}", offered).c_str())) << offered;
                     }
                     ctx->ItemClick("//$FOCUSED/second");
-                    expect(g_state.waitUntil(ctx, "the selector routes input 1 and the control holds the label", [&] { return routedFrom(1U) && blockHasStringKeyValuePair("controlRoute", "value", "second"); }));
+                    expect(gState->waitUntil(ctx, "the selector routes input 1 and the control holds the label", [&] { return routedFrom(1U) && gState->blockHasStringKeyValuePair("controlRoute", "value", "second"); }));
                 };
 
                 "an ImControlChoice without target_map sends each key's value to its blocks, the selected one at start"_test = [&] {
-                    const auto preset = [](float amplitude, std::string_view name) { return blockHasBasicTypeKeyValuePair<float>("signalGenerator1", "amplitude", amplitude) && blockHasBasicTypeKeyValuePair<float>("signalGenerator2", "amplitude", amplitude) && blockHasStringKeyValuePair("plotSink3", "signal_name", name); };
-                    expect(g_state.waitUntil(ctx, "'quiet' applied at start, overriding the .grc amplitudes", [&] { return preset(0.5f, "routed quietly"); })) << fatal;
-                    const DigitizerUi::UiGraphBlock* control = g_state.dashboard->session.graphModel.recursiveFindBlockByName("controlPreset").block;
+                    const auto preset = [](float amplitude, std::string_view name) { return gState->blockHasBasicTypeKeyValuePair<float>("signalGenerator1", "amplitude", amplitude) && gState->blockHasBasicTypeKeyValuePair<float>("signalGenerator2", "amplitude", amplitude) && gState->blockHasStringKeyValuePair("plotSink3", "signal_name", name); };
+                    expect(gState->waitUntil(ctx, "'quiet' applied at start, overriding the .grc amplitudes", [&] { return preset(0.5f, "routed quietly"); })) << fatal;
+                    const DigitizerUi::UiGraphBlock* control = gState->dashboard->session.graphModel.recursiveFindBlockByName("controlPreset").block;
                     expect(control != nullptr) << fatal;
                     ctx->ItemClick(controlItemId(ctx, "//Host/##Toolbar", control->blockUniqueName, "##Preset"));
                     ctx->ItemClick("//$FOCUSED/loud");
-                    expect(g_state.waitUntil(ctx, "'loud' sets both generators and the sink", [&] { return preset(8.f, "routed loudly") && blockHasStringKeyValuePair("controlPreset", "value", "loud"); }));
+                    expect(gState->waitUntil(ctx, "'loud' sets both generators and the sink", [&] { return preset(8.f, "routed loudly") && gState->blockHasStringKeyValuePair("controlPreset", "value", "loud"); }));
                 };
 
                 "an ImControlDevice lists its entries above the target's available_devices; a device sends its id selector and device_values"_test = [&] {
-                    expect(g_state.waitUntil(ctx, "the entry 'off' applied at start", [] { return blockHasStringKeyValuePair("deviceTarget", "route", "off"); })) << fatal;
-                    const DigitizerUi::UiGraphBlock* control = g_state.dashboard->session.graphModel.recursiveFindBlockByName("controlDevice").block;
+                    expect(gState->waitUntil(ctx, "the entry 'off' applied at start", [] { return gState->blockHasStringKeyValuePair("deviceTarget", "route", "off"); })) << fatal;
+                    const DigitizerUi::UiGraphBlock* control = gState->dashboard->session.graphModel.recursiveFindBlockByName("controlDevice").block;
                     expect(control != nullptr) << fatal;
                     const auto pick = [&](const char* item) {
                         ctx->ItemClick(controlItemId(ctx, "//Host/##Toolbar", control->blockUniqueName, "##device"));
                         ctx->ItemClick(std::format("//$FOCUSED/{}", item).c_str());
                     };
                     pick("Second microphone [b], 16 channels");
-                    expect(g_state.waitUntil(ctx, "the device's id selector and the device_values", [] { return blockHasStringKeyValuePair("deviceTarget", "device", "@id:b") && blockHasStringKeyValuePair("deviceTarget", "route", "device") && blockHasStringKeyValuePair("controlDevice", "value", "@id:b"); }));
+                    expect(gState->waitUntil(ctx, "the device's id selector and the device_values", [] { return gState->blockHasStringKeyValuePair("deviceTarget", "device", "@id:b") && gState->blockHasStringKeyValuePair("deviceTarget", "route", "device") && gState->blockHasStringKeyValuePair("controlDevice", "value", "@id:b"); }));
                     pick("off");
-                    expect(g_state.waitUntil(ctx, "the entry's values; the device stays", [] { return blockHasStringKeyValuePair("deviceTarget", "route", "off") && blockHasStringKeyValuePair("deviceTarget", "device", "@id:b"); }));
+                    expect(gState->waitUntil(ctx, "the entry's values; the device stays", [] { return gState->blockHasStringKeyValuePair("deviceTarget", "route", "off") && gState->blockHasStringKeyValuePair("deviceTarget", "device", "@id:b"); }));
                 };
 
                 "an ImControlDevice falls back to its fallback entry while the target's device is not open, and returns to the device"_test = [&] {
-                    const DigitizerUi::UiGraphBlock* control = g_state.dashboard->session.graphModel.recursiveFindBlockByName("controlDevice").block;
+                    const DigitizerUi::UiGraphBlock* control = gState->dashboard->session.graphModel.recursiveFindBlockByName("controlDevice").block;
                     expect(control != nullptr) << fatal;
                     const ImGuiID comboId = controlItemId(ctx, "//Host/##Toolbar", control->blockUniqueName, "##device");
-                    sendSetting("deviceTarget", "device_state", "open");
+                    gState->sendSetting("deviceTarget", {{"device_state", std::string("open")}});
                     ctx->ItemClick(comboId);
                     ctx->ItemClick("//$FOCUSED/Second microphone [b], 16 channels");
-                    expect(g_state.waitUntil(ctx, "the device picked", [] { return blockHasStringKeyValuePair("deviceTarget", "route", "device") && blockHasStringKeyValuePair("controlDevice", "value", "@id:b"); })) << fatal;
-                    sendSetting("deviceTarget", "device_state", "waiting");
-                    expect(g_state.waitUntil(ctx, "the fallback's values while the device is missing; the pick is kept", [] { return blockHasStringKeyValuePair("deviceTarget", "route", "off") && blockHasStringKeyValuePair("controlDevice", "value", "@id:b"); }));
-                    sendSetting("deviceTarget", "device_state", "open");
-                    expect(g_state.waitUntil(ctx, "the device's values once it is open again", [] { return blockHasStringKeyValuePair("deviceTarget", "route", "device") && blockHasStringKeyValuePair("deviceTarget", "device", "@id:b"); }));
+                    expect(gState->waitUntil(ctx, "the device picked", [] { return gState->blockHasStringKeyValuePair("deviceTarget", "route", "device") && gState->blockHasStringKeyValuePair("controlDevice", "value", "@id:b"); })) << fatal;
+                    gState->sendSetting("deviceTarget", {{"device_state", std::string("waiting")}});
+                    expect(gState->waitUntil(ctx, "the fallback's values while the device is missing; the pick is kept", [] { return gState->blockHasStringKeyValuePair("deviceTarget", "route", "off") && gState->blockHasStringKeyValuePair("controlDevice", "value", "@id:b"); }));
+                    gState->sendSetting("deviceTarget", {{"device_state", std::string("open")}});
+                    expect(gState->waitUntil(ctx, "the device's values once it is open again", [] { return gState->blockHasStringKeyValuePair("deviceTarget", "route", "device") && gState->blockHasStringKeyValuePair("deviceTarget", "device", "@id:b"); }));
                     ctx->ItemClick(comboId);
                     ctx->ItemClick("//$FOCUSED/off");
-                    expect(g_state.waitUntil(ctx, "back on the entry", [] { return blockHasStringKeyValuePair("deviceTarget", "route", "off"); }));
+                    expect(gState->waitUntil(ctx, "back on the entry", [] { return gState->blockHasStringKeyValuePair("deviceTarget", "route", "off"); }));
                 };
 
                 "the graph model should ignore invalid selectors when parsing target_map"_test = [&] {
-                    expect(g_state.waitUntil(ctx, "initially controlChoice has a target", [] { return getFirstControlledProperty("controlChoice").has_value(); }));
+                    expect(gState->waitUntil(ctx, "initially controlChoice has a target", [] { return getFirstControlledProperty("controlChoice").has_value(); }));
                     sendSetTargetMapMessage("controlChoice", "noSuchBlock:signal_type");
-                    expect(g_state.waitUntil(ctx, "after getting an invalid target_map, the control no longer has target + metadata, at least according to the UI side", [] { return !getFirstControlledProperty("controlChoice").has_value(); }));
+                    expect(gState->waitUntil(ctx, "after getting an invalid target_map, the control no longer has target + metadata, at least according to the UI side", [] { return !getFirstControlledProperty("controlChoice").has_value(); }));
                     sendSetTargetMapMessage("controlChoice", "noSuchBlock:signal_type;signalGenerator2:frequency");
                     DrawableBlockConfig::ControlledProperty secondTargetControlledProperty;
-                    expect(g_state.waitUntil(ctx, "we should recognize the second item but not the first", [&secondTargetControlledProperty] {
+                    expect(gState->waitUntil(ctx, "we should recognize the second item but not the first", [&secondTargetControlledProperty] {
                         secondTargetControlledProperty = getFirstControlledProperty("controlChoice");
                         return secondTargetControlledProperty.has_value();
                     })) << fatal;
@@ -355,19 +345,15 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 };
 
                 "changing the target of a control"_test = [&] {
-                    expect(blockHasBasicTypeKeyValuePair<bool>("plotSink1", "visible", true)) << fatal << "visible targets of toggle start out visible";
-                    expect(blockHasBasicTypeKeyValuePair<bool>("plotSink2", "visible", true)) << fatal << "visible targets of toggle start out visible";
+                    expect(gState->blockHasBasicTypeKeyValuePair<bool>("plotSink1", "visible", true)) << fatal << "visible targets of toggle start out visible";
+                    expect(gState->blockHasBasicTypeKeyValuePair<bool>("plotSink2", "visible", true)) << fatal << "visible targets of toggle start out visible";
                     sendSetTargetMapMessage("controlToggle", "plotSink2:visible");
-                    g_state.waitUntil(ctx, "the new target_map appears in the block settings", [] { return setting("controlToggle", "target_map").value_or(std::string{}) == "plotSink2:visible"; });
+                    gState->waitUntil(ctx, "the new target_map appears in the block settings", [] { return gState->setting("controlToggle", "target_map").value_or(std::string{}) == "plotSink2:visible"; });
                     ctx->ItemClick("**/##Visible");
-                    g_state.waitUntil(ctx, "the new target is set", [] { return blockHasBasicTypeKeyValuePair<bool>("plotSink2", "visible", false); });
+                    gState->waitUntil(ctx, "the new target is set", [] { return gState->blockHasBasicTypeKeyValuePair<bool>("plotSink2", "visible", false); });
 
-                    // state of old block seems to continue to be good, though this is not a complete test
-                    using namespace std::chrono_literals;
-                    for (const auto start = std::chrono::steady_clock::now(); std::chrono::steady_clock::now() - start < 2s;) {
-                        expect(blockHasBasicTypeKeyValuePair<bool>("plotSink1", "visible", true)) << "no longer targeted block is not affected by control";
-                        ctx->Yield();
-                    }
+                    gState->waitUntilApplied(ctx, "plotSink1");
+                    expect(gState->blockHasBasicTypeKeyValuePair<bool>("plotSink1", "visible", true)) << "no longer targeted block is not affected by control";
                 };
             };
         }
@@ -378,15 +364,15 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             t->GuiFunc = commonGuiFunc;
 
             t->TestFunc = [](ImGuiTestContext* ctx) { // NOSONAR test lambda length
-                g_state.reload(cmrc::ui_test_assets::get_filesystem(), "examples/qa_imcontrol_color.grc", "color");
-                g_state.waitForScheduler(ctx);
+                gState->reload(cmrc::ui_test_assets::get_filesystem(), "examples/qa_imcontrol_color.grc", "color");
+                gState->waitForScheduler(ctx);
 
-                auto&                            model   = g_state.dashboard->session.graphModel;
+                auto&                            model   = gState->dashboard->session.graphModel;
                 const DigitizerUi::UiGraphBlock* control = model.recursiveFindBlockByName("controlColor").block;
                 const DigitizerUi::UiGraphBlock* target  = model.recursiveFindBlockByName("target").block;
                 const DigitizerUi::UiGraphBlock* sink    = model.recursiveFindBlockByName("sink1").block;
                 expect(control != nullptr && target != nullptr && sink != nullptr) << fatal;
-                g_state.waitUntil(ctx, "model has the correct units", [control, target, sink] { return !control->uiControlCompatibleTypeMap().empty() && target->blockSettingsMetaInformation.contains("no_unit_number") && sink->blockSettingsMetaInformation.contains("color"); });
+                gState->waitUntil(ctx, "model has the correct units", [control, target, sink] { return !control->uiControlCompatibleTypeMap().empty() && target->blockSettingsMetaInformation.contains("no_unit_number") && sink->blockSettingsMetaInformation.contains("color"); });
 
                 "colors are uint32_t with either Color or RGB units"_test = [&] {
                     std::vector<std::string> connectable = target->connectableProperties(control->uiControlCompatibleTypeMap());
@@ -414,56 +400,56 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
 
             t->TestFunc = [](ImGuiTestContext* ctx) { // NOSONAR test lambda length
                 "a toggle sends a bool to each named block, checked and unchecked"_test = [&] {
-                    std::ignore = g_state.toggle->takeSent();
+                    std::ignore = gState->toggle->takeSent();
                     ctx->ItemClick("**/##Enabled");
-                    const auto messagesAfterCheck = g_state.toggle->takeSent();
+                    const auto messagesAfterCheck = gState->toggle->takeSent();
                     expect(containsMatchingMessage(messagesAfterCheck, "TargetA", "enabled", true) && containsMatchingMessage(messagesAfterCheck, "TargetB", "enabled", true)) << "sends true to TargetA and TargetB";
                     ctx->ItemClick("**/##Enabled");
-                    const auto messagesAfterUncheck = g_state.toggle->takeSent();
+                    const auto messagesAfterUncheck = gState->toggle->takeSent();
                     expect(containsMatchingMessage(messagesAfterUncheck, "TargetA", "enabled", false) && containsMatchingMessage(messagesAfterUncheck, "TargetB", "enabled", false)) << "sends false to TargetA and TargetB";
                 };
 
                 "trigger sending a message per click"_test = [&] {
-                    std::ignore = g_state.trigger->takeSent();
+                    std::ignore = gState->trigger->takeSent();
                     for (int click = 0; click < 3; ++click) {
                         ctx->ItemClick("**/Fire");
                     }
-                    const auto sent = g_state.trigger->takeSent();
+                    const auto sent = gState->trigger->takeSent();
                     expect(eq(countMatchingSettingsMessages(sent, "TargetA", "fire", true), 3UZ)) << std::format("three clicks, {} messages", sent.size());
                     expect(sent.size() == 3UZ) << "Excess messages sent by ui control, its only job is to send set messages";
                 };
 
                 "text input control only sends a message when the user presses enter or the control is unfocused"_test = [&] {
-                    std::ignore = g_state.text->takeSent();
-                    expect(g_state.text->block.value != std::string("ramp")) << fatal << "test's input string must be different than initial string";
+                    std::ignore = gState->text->takeSent();
+                    expect(gState->text->block.value != std::string("ramp")) << fatal << "test's input string must be different than initial string";
                     ctx->ItemInput("**/##Title");
                     ctx->KeyCharsReplace("ramp");
-                    g_state.waitUntil(ctx, "text input stores the edited value", [] { return g_state.text->block.value == std::string("ramp"); });
-                    expect(g_state.text->takeSent().empty()) << "nothing sent because text is still focused";
+                    gState->waitUntil(ctx, "text input stores the edited value", [] { return gState->text->block.value == std::string("ramp"); });
+                    expect(gState->text->takeSent().empty()) << "nothing sent because text is still focused";
                     ctx->KeyPress(ImGuiKey_Enter);
                     // text block should synchronously output the set text message, no need to yield or wait
-                    expect(containsMatchingMessage<std::string>(g_state.text->takeSent(), "TargetA", "caption", std::string("ramp"))) << "Enter sends the text";
+                    expect(containsMatchingMessage<std::string>(gState->text->takeSent(), "TargetA", "caption", std::string("ramp"))) << "Enter sends the text";
                 };
 
                 "ImControlChoice has all its options and sends the expected settings message"_test = [&] {
-                    std::ignore = g_state.choice->takeSent();
-                    expect(g_state.choice->block.value == "Sin") << fatal << "choice is initialized with the value of the target (this is passed to controlledConfig())";
-                    ctx->ItemClick(controlItemId(ctx, "//uiControlPanel", g_state.choice->block.unique_name, "##Waveform"));
+                    std::ignore = gState->choice->takeSent();
+                    expect(gState->choice->block.value == "Sin") << fatal << "choice is initialized with the value of the target (this is passed to controlledConfig())";
+                    ctx->ItemClick(controlItemId(ctx, "//uiControlPanel", gState->choice->block.unique_name, "##Waveform"));
                     for (const char* expectedComboEntry : {"Sin", "Cos", "Square"}) {
                         expect(ctx->ItemExists(std::format("//$FOCUSED/{}", expectedComboEntry).c_str())) << expectedComboEntry;
                     }
                     ctx->ItemClick("//$FOCUSED/Square");
-                    const auto sent = g_state.choice->takeSent();
+                    const auto sent = gState->choice->takeSent();
                     expect(eq(countMatchingSettingsMessages<std::string>(sent, "TargetA", "shape", std::string("Square")), 1UZ)) << std::format("{} messages", sent.size());
-                    expect(g_state.choice->block.value == std::string("Square"));
+                    expect(gState->choice->block.value == std::string("Square"));
                 };
 
                 "if an ImControlChoice does not have options then it is just disabled"_test = [&] {
-                    const auto                   disabled  = [&] { return (ctx->ItemInfo(controlItemId(ctx, "//uiControlPanel", g_state.choice->block.unique_name, "##Waveform")).ItemFlags & ImGuiItemFlags_Disabled) != 0; };
-                    Digitizer::utils::scope_exit tellAgain = [] { g_state.includeControlledPropertyInConfig = true; };
+                    const auto        disabled  = [&] { return (ctx->ItemInfo(controlItemId(ctx, "//uiControlPanel", gState->choice->block.unique_name, "##Waveform")).ItemFlags & ImGuiItemFlags_Disabled) != 0; };
+                    gr::on_scope_exit tellAgain = [] { gState->includeControlledPropertyInConfig = true; };
                     expect(!disabled()) << fatal << "enabled while draw() is told the choices";
-                    g_state.includeControlledPropertyInConfig = false; // pretend it is not connected to anything
-                    expect(g_state.waitUntil(ctx, "the dropdown is disabled when disconnected from any target property", disabled));
+                    gState->includeControlledPropertyInConfig = false; // pretend it is not connected to anything
+                    expect(gState->waitUntil(ctx, "the dropdown is disabled when disconnected from any target property", disabled));
                 };
 
                 "ImControlReadout shows expected text"_test = [&] {
@@ -478,10 +464,10 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 };
 
                 "ImControl derivative widgets responsively render with or without labels depending on available space"_test = [&] {
-                    const float                  labelWidth      = ImGui::CalcTextSize("Enabled").x + ImGui::GetStyle().ItemInnerSpacing.x;
-                    const float                  labelledWidth   = ctx->ItemInfo("**/##Enabled").RectFull.Min.x;
-                    Digitizer::utils::scope_exit resetShowLabels = [old = g_state.showLabels] { g_state.showLabels = old; };
-                    g_state.showLabels                           = false;
+                    const float       labelWidth      = ImGui::CalcTextSize("Enabled").x + ImGui::GetStyle().ItemInnerSpacing.x;
+                    const float       labelledWidth   = ctx->ItemInfo("**/##Enabled").RectFull.Min.x;
+                    gr::on_scope_exit resetShowLabels = [old = gState->showLabels] { gState->showLabels = old; };
+                    gState->showLabels                = false;
                     ctx->Yield(); // redraw with new config that looks at showLabels
                     const float unlabelledWidth = ctx->ItemInfo("**/##Enabled").RectFull.Min.x;
                     expect(std::abs(labelledWidth - unlabelledWidth - labelWidth) < 0.5f) << std::format("the checkbox moved left by the label's {} px: {} -> {}", labelWidth, labelledWidth, unlabelledWidth);
@@ -550,7 +536,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 const auto centerOfKey = [](const Key& key) { return ImVec2{.5f * (key.min.x + key.max.x), .5f * (key.min.y + key.max.y)}; };
 
                 "pressing, sliding across, and releasing the keys"_test = [&] {
-                    auto&      piano       = *g_state.piano;
+                    auto&      piano       = *gState->piano;
                     const auto keys        = calculateExpectedKeyLocationsFromActualDrawnItemSize(piano.block);
                     const int  firstNote   = piano.block.firstNote(); // C key
                     const int  secondNote  = firstNote + 4;           // E key
@@ -576,7 +562,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 };
 
                 "dragging off the keyboard closes the envelope"_test = [&] {
-                    auto&        piano = *g_state.piano;
+                    auto&        piano = *gState->piano;
                     const auto   keys  = calculateExpectedKeyLocationsFromActualDrawnItemSize(piano.block);
                     const ImRect rect  = pianoKeyboardInfo(ctx, piano.block).RectFull;
                     ctx->MouseTeleportToPos(centerOfKey(keys.front()));
@@ -589,7 +575,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 };
 
                 "white keys are clipped by black keys"_test = [&] {
-                    auto&       piano                     = *g_state.piano;
+                    auto&       piano                     = *gState->piano;
                     const auto  keys                      = calculateExpectedKeyLocationsFromActualDrawnItemSize(piano.block);
                     const int   whiteNote                 = piano.block.firstNote();
                     const int   blackNote                 = whiteNote + 1; // C#
@@ -616,7 +602,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 };
 
                 "piano only sends frequency messages if there is a target signal generator"_test = [&] {
-                    auto&      gate = *g_state.pianoWithoutGenerator;
+                    auto&      gate = *gState->pianoWithoutGenerator;
                     const auto keys = calculateExpectedKeyLocationsFromActualDrawnItemSize(gate.block);
                     ctx->MouseTeleportToPos(centerOfKey(keys.front()));
                     std::ignore = gate.takeSent();
@@ -637,23 +623,24 @@ int main(int argc, char* argv[]) {
     TestApp app(options);
 
     app.initImGui();
+    TestState state;
+    gState = std::addressof(state);
 
     auto& registry = gr::globalBlockRegistry();
     gr::blocklib::initGrBasicBlocks(registry);
     gr::blocklib::initGrTestingBlocks(registry);
     gr::registerBlock<opendigitizer::test::UiControlCompatibilityTarget>(registry);
     gr::registerBlock<opendigitizer::test::UiControlDeviceTarget>(registry);
-    g_state.toggle  = std::make_unique<StandaloneControl<DigitizerUi::ImControlToggle>>(gr::property_map{{"name", "standalone_toggle"}, {"label", "Enabled"}, {"value", false}, {"target_map", "TargetA,TargetB:enabled"}});
-    g_state.trigger = std::make_unique<StandaloneControl<DigitizerUi::ImControlTrigger>>(gr::property_map{{"name", "standalone_trigger"}, {"label", "Fire"}, {"target_map", "TargetA:fire"}});
-    g_state.text    = std::make_unique<StandaloneControl<DigitizerUi::ImControlText>>(gr::property_map{{"name", "standalone_text"}, {"label", "Title"}, {"value", "start"}, {"target_map", "TargetA:caption"}});
+    state.toggle  = std::make_unique<StandaloneControl<DigitizerUi::ImControlToggle>>(gr::property_map{{"name", "standalone_toggle"}, {"label", "Enabled"}, {"value", false}, {"target_map", "TargetA,TargetB:enabled"}});
+    state.trigger = std::make_unique<StandaloneControl<DigitizerUi::ImControlTrigger>>(gr::property_map{{"name", "standalone_trigger"}, {"label", "Fire"}, {"target_map", "TargetA:fire"}});
+    state.text    = std::make_unique<StandaloneControl<DigitizerUi::ImControlText>>(gr::property_map{{"name", "standalone_text"}, {"label", "Title"}, {"value", "start"}, {"target_map", "TargetA:caption"}});
 
-    g_state.choice  = std::make_unique<StandaloneControl<DigitizerUi::ImControlChoice>>(gr::property_map{{"name", "standalone_choice"}, {"label", "Waveform"}, {"target_map", "TargetA:shape"}});
-    g_state.readout = std::make_unique<StandaloneControl<DigitizerUi::ImPropertyReadout>>(gr::property_map{{"name", "standalone_readout"}, {"label", "Reading"}, {"target_map", "TargetA:shape"}});
+    state.choice  = std::make_unique<StandaloneControl<DigitizerUi::ImControlChoice>>(gr::property_map{{"name", "standalone_choice"}, {"label", "Waveform"}, {"target_map", "TargetA:shape"}});
+    state.readout = std::make_unique<StandaloneControl<DigitizerUi::ImPropertyReadout>>(gr::property_map{{"name", "standalone_readout"}, {"label", "Reading"}, {"target_map", "TargetA:shape"}});
 
-    g_state.piano                 = std::make_unique<StandaloneControl<opendigitizer::PianoControl>>(gr::property_map{{"name", "standalone_piano"}, {"label", "Keys"}, {"target_map", "Envelope:pressed"}, {"signal_generator_name", "Oscillator"}});
-    g_state.pianoWithoutGenerator = std::make_unique<StandaloneControl<opendigitizer::PianoControl>>(gr::property_map{{"name", "standalone_piano_without_generator"}, {"label", "Gate"}, {"target_map", "Envelope:pressed"}});
+    state.piano                 = std::make_unique<StandaloneControl<opendigitizer::PianoControl>>(gr::property_map{{"name", "standalone_piano"}, {"label", "Keys"}, {"target_map", "Envelope:pressed"}, {"signal_generator_name", "Oscillator"}});
+    state.pianoWithoutGenerator = std::make_unique<StandaloneControl<opendigitizer::PianoControl>>(gr::property_map{{"name", "standalone_piano_without_generator"}, {"label", "Gate"}, {"target_map", "Envelope:pressed"}});
 
     const bool result = app.runTests();
-    g_state.unloadDashboard(); // ensure scheduler cleanup before global teardown
     return result ? 0 : 1;
 }

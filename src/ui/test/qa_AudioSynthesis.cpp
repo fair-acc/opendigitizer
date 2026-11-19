@@ -446,4 +446,4 @@ const suite<"SineOscillator"> sineOscillatorTests = [] {
     };
 };
 
-int main() { return 0; }
+int main() { return boost::ut::cfg<boost::ut::override>.run(); }

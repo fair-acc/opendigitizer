@@ -18,7 +18,7 @@
 #include <gnuradio-4.0/Scheduler.hpp>
 #include <gnuradio-4.0/testing/NullSources.hpp>
 
-#include <scope_exit.hpp>
+#include <gnuradio-4.0/meta/utils.hpp>
 
 #include <boost/ut.hpp>
 
@@ -30,10 +30,10 @@ using namespace boost;
 using namespace boost::ut;
 using namespace std::string_literals;
 
-opendigitizer::test::TestDashboardRunner g_state;
+opendigitizer::test::TestDashboardRunner* gState = nullptr;
 
-void reloadSubgraph() { g_state.reload(cmrc::ui_test_assets::get_filesystem(), "examples/qa_subgraph.grc", "subgraph_test"); }
-void reloadGrouping() { g_state.reload(cmrc::ui_test_assets::get_filesystem(), "examples/qa_grouping.grc", "grouping_test"); }
+void reloadSubgraph() { gState->reloadSubgraph(); }
+void reloadGrouping() { gState->reloadGrouping(); }
 
 struct SubgraphBlockTypenameAndDescription {
     std::string_view description;
@@ -48,30 +48,13 @@ constexpr std::array kSubgraphBlockTypenameAndDescriptions{
 struct TestApp : public DigitizerUi::test::ImGuiTestApp {
     using DigitizerUi::test::ImGuiTestApp::ImGuiTestApp;
 
-    static bool awaitCondition(ImGuiTestContext* ctx, const std::function<bool()>& condition, std::chrono::milliseconds timeout = std::chrono::seconds(10)) {
-        const auto start = std::chrono::high_resolution_clock::now();
-        while (!condition() && (std::chrono::high_resolution_clock::now() - start < timeout)) {
-            ctx->Yield();
-            std::this_thread::sleep_for(std::chrono::milliseconds(16));
-        }
-        return condition();
-    }
-
-    [[nodiscard]] static bool waitForReplyOnEndpoint(ImGuiTestContext* ctx, std::string_view endpoint, std::size_t count = 1UZ) {
-        const bool replied = awaitCondition(ctx, [endpoint, count] { //
-            return static_cast<std::size_t>(std::ranges::count_if(g_state.collectedMessages, [endpoint](const gr::Message& message) { return message.endpoint == endpoint; })) >= count;
-        });
-        g_state.clearMessages(); // each wait only sees messages since the last wait
-        return replied;
-    }
-
     static UiGraphBlock* rootGraph() {
-        auto& rootChildren = g_state.dashboard->session.graphModel.rootBlock.childBlocks;
+        auto& rootChildren = gState->dashboard->session.graphModel.rootBlock.childBlocks;
         expect(rootChildren.size() == 1UZ) << fatal;
         return rootChildren[0].get();
     }
 
-    static UiGraphBlock* findByName(std::string_view name) { return g_state.dashboard->session.graphModel.recursiveFindBlockByName(name).block; }
+    static UiGraphBlock* findByName(std::string_view name) { return gState->dashboard->session.graphModel.recursiveFindBlockByName(name).block; }
 
     static std::vector<std::string> takeAllErrorNotifications() {
         const auto result = std::move(ImGui::notifications)                                                                        //
@@ -117,56 +100,26 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
         for (std::size_t i = 0; i < uniqueNames.size(); ++i) {
             names[i] = uniqueNames[i];
         }
-        gr::Message message;
-        message.cmd         = gr::message::Command::Set;
-        message.endpoint    = gr::scheduler::property::kGroupBlocks;
-        message.serviceName = owners.scheduler;
-        message.data        = gr::property_map{{"type", graphType}, {"uniqueNames", std::move(names)}, {"_targetGraph", owners.graph}};
-        g_state.dashboard->session.graphModel.sendMessage(std::move(message));
+        gState->dashboard->session.graphModel.send(gr::message::Command::Set, owners.scheduler, std::string(gr::scheduler::property::kGroupBlocks), {{"type", graphType}, {"uniqueNames", std::move(names)}, {"_targetGraph", owners.graph}});
     }
 
-    static void sendUngroupBlocks(const std::string& subgraphUniqueName, const Owners& owners) {
-        gr::Message message;
-        message.cmd         = gr::message::Command::Set;
-        message.endpoint    = gr::scheduler::property::kUngroupBlocks;
-        message.serviceName = owners.scheduler;
-        message.data        = gr::property_map{{"uniqueName", subgraphUniqueName}, {"_targetGraph", owners.graph}};
-        g_state.dashboard->session.graphModel.sendMessage(std::move(message));
-    }
+    static void sendUngroupBlocks(const std::string& subgraphUniqueName, const Owners& owners) { gState->dashboard->session.graphModel.send(gr::message::Command::Set, owners.scheduler, std::string(gr::scheduler::property::kUngroupBlocks), {{"uniqueName", subgraphUniqueName}, {"_targetGraph", owners.graph}}); }
 
-    static void sendRemoveBlock(const std::string& uniqueName, const Owners& owners) {
-        gr::Message message;
-        message.cmd         = gr::message::Command::Set;
-        message.endpoint    = gr::scheduler::property::kRemoveBlock;
-        message.serviceName = owners.scheduler;
-        message.data        = gr::property_map{{"uniqueName", uniqueName}, {"_targetGraph", owners.graph}};
-        g_state.dashboard->session.graphModel.sendMessage(std::move(message));
-    }
+    static void sendRemoveBlock(const std::string& uniqueName, const Owners& owners) { gState->dashboard->session.graphModel.send(gr::message::Command::Set, owners.scheduler, std::string(gr::scheduler::property::kRemoveBlock), {{"uniqueName", uniqueName}, {"_targetGraph", owners.graph}}); }
 
-    static void sendEmplaceBlock(const std::string& type, const Owners& owners) {
-        gr::Message message;
-        message.cmd         = gr::message::Command::Set;
-        message.endpoint    = gr::scheduler::property::kEmplaceBlock;
-        message.serviceName = owners.scheduler;
-        message.data        = gr::property_map{{"type", type}, {"_targetGraph", owners.graph}};
-        g_state.dashboard->session.graphModel.sendMessage(std::move(message));
-    }
+    static void sendEmplaceBlock(const std::string& type, const Owners& owners) { gState->dashboard->session.graphModel.send(gr::message::Command::Set, owners.scheduler, std::string(gr::scheduler::property::kEmplaceBlock), {{"type", type}, {"_targetGraph", owners.graph}}); }
 
     static void sendEmplaceEdge(const std::string& sourceUniqueName, const std::string& sourcePort, const std::string& destinationUniqueName, const std::string& destinationPort, const Owners& owners) {
-        gr::Message message;
-        message.cmd         = gr::message::Command::Set;
-        message.endpoint    = gr::scheduler::property::kEmplaceEdge;
-        message.serviceName = owners.scheduler;
-        message.data        = gr::property_map{                                                                 //
-            {"_targetGraph", owners.graph},                                                              //
-            {std::pmr::string(gr::serialization_fields::EDGE_SOURCE_BLOCK), sourceUniqueName},           //
-            {std::pmr::string(gr::serialization_fields::EDGE_SOURCE_PORT), sourcePort},                  //
-            {std::pmr::string(gr::serialization_fields::EDGE_DESTINATION_BLOCK), destinationUniqueName}, //
-            {std::pmr::string(gr::serialization_fields::EDGE_DESTINATION_PORT), destinationPort},        //
-            {std::pmr::string(gr::serialization_fields::EDGE_MIN_BUFFER_SIZE), gr::Size_t(4096)},        //
-            {std::pmr::string(gr::serialization_fields::EDGE_WEIGHT), 1},                                //
-            {std::pmr::string(gr::serialization_fields::EDGE_NAME), "edge"s}};
-        g_state.dashboard->session.graphModel.sendMessage(std::move(message));
+        gState->dashboard->session.graphModel.send(gr::message::Command::Set, owners.scheduler, std::string(gr::scheduler::property::kEmplaceEdge),
+            {                                                                                                //
+                {"_targetGraph", owners.graph},                                                              //
+                {std::pmr::string(gr::serialization_fields::EDGE_SOURCE_BLOCK), sourceUniqueName},           //
+                {std::pmr::string(gr::serialization_fields::EDGE_SOURCE_PORT), sourcePort},                  //
+                {std::pmr::string(gr::serialization_fields::EDGE_DESTINATION_BLOCK), destinationUniqueName}, //
+                {std::pmr::string(gr::serialization_fields::EDGE_DESTINATION_PORT), destinationPort},        //
+                {std::pmr::string(gr::serialization_fields::EDGE_MIN_BUFFER_SIZE), gr::Size_t(4096)},        //
+                {std::pmr::string(gr::serialization_fields::EDGE_WEIGHT), 1},                                //
+                {std::pmr::string(gr::serialization_fields::EDGE_NAME), "edge"s}});
     }
 
     static const UiGraphEdge* findEdge(const UiGraphBlock* graph, std::string_view sourceBlockUniqueName, std::string_view destinationBlockUniqueName) {
@@ -185,7 +138,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
 
     // does a block with the given name exist, and is it a child of the root graph
     static bool isRootChild(std::string_view name) {
-        const auto found = g_state.dashboard->session.graphModel.recursiveFindBlockByName(name);
+        const auto found = gState->dashboard->session.graphModel.recursiveFindBlockByName(name);
         return found.block != nullptr && found.parentGraph == rootGraph();
     }
 
@@ -202,7 +155,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
 
     // qa_grouping.grc has a counting sink in it, find the actual BlockModel so we can read the # of samples processed
     static CountingSink* findCountingSink(std::string_view uniqueName) {
-        auto blocks     = g_state.dashboard->session.graph().blocks();
+        auto blocks     = gState->dashboard->session.graph().blocks();
         auto findResult = std::ranges::find(blocks, uniqueName, &gr::BlockModel::uniqueName);
         return findResult == std::end(blocks) ? nullptr : static_cast<CountingSink*>((*findResult)->raw());
     }
@@ -211,13 +164,13 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
 
     static bool waitForSamples(ImGuiTestContext* ctx, CountingSink* sink) {
         const gr::Size_t baseline = sampleCount(sink);
-        return awaitCondition(ctx, [sink, baseline] { return sampleCount(sink) > baseline; });
+        return gState->waitUntil(ctx, "the graph model follows", [sink, baseline] { return sampleCount(sink) > baseline; });
     }
 
     /// Returns true if any edges are pointing to blocks that don't exist
     [[nodiscard]] static bool hasInvalidEdges() {
         bool hasInvalid = false;
-        g_state.dashboard->session.graphModel.recursiveForEachBlock([&hasInvalid](const UiGraphModel::FindBlockResult& element) {
+        gState->dashboard->session.graphModel.recursiveForEachBlock([&hasInvalid](const UiGraphModel::FindBlockResult& element) {
             for (const UiGraphEdge& edge : element.block->childEdges) {
                 if (edge.edgeSourcePort == nullptr || edge.edgeDestinationPort == nullptr) {
                     hasInvalid = true;
@@ -230,7 +183,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
     }
 
     static void expectGraphRunningAndConnected(ImGuiTestContext* ctx, CountingSink* sink, std::string_view stage) {
-        expect(gr::lifecycle::isActive(g_state.dashboard->session.state())) << std::format("{}: the scheduler should still be active", stage);
+        expect(gr::lifecycle::isActive(gState->dashboard->session.state())) << std::format("{}: the scheduler should still be active", stage);
         expect(!hasInvalidEdges()) << std::format("{}: every edge should resolve to real ports, unresolved", stage);
         expect(waitForSamples(ctx, sink)) << std::format("{}: samples should keep arriving at the counting sink", stage);
     }
@@ -252,9 +205,11 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                     expect(!getOptionalProperty<Tensor>(gr::property_map{{"blocks", "not a tensor"}}, "blocks"));
                 };
                 "registry type decoding"_test = [] {
-                    UiGraphModel           model;
+                    UiGraphModel model;
+                    model.sendMessage               = [](gr::Message) {};
+                    model.rootBlock.blockUniqueName = "root";
                     const gr::property_map data{{"types", gr::Tensor<gr::pmt::Value>(gr::data_from, {gr::pmt::Value("gr::basic::SignalGenerator<float32>")})}};
-                    model.handleAvailableGraphBlockTypes(data);
+                    expect(model.apply(makeMessage(gr::message::Command::Notify, "root", gr::graph::property::kRegistryBlockTypes, data)));
                     expect(eq(model.knownBlockTypes.size(), 1UZ));
                     const auto type = model.knownBlockTypes.find("gr::basic::SignalGenerator");
                     expect(type != model.knownBlockTypes.end()) << fatal;
@@ -262,7 +217,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                     expect(type->second.contains("<float32>"));
 
                     const gr::property_map schedulerData{{"types", gr::Tensor<gr::pmt::Value>(gr::data_from, {gr::pmt::Value("gr::scheduler::Simple<gr::scheduler::ExecutionPolicy::singleThreaded>")})}};
-                    model.handleAvailableGraphSchedulerTypes(schedulerData);
+                    expect(model.apply(makeMessage(gr::message::Command::Notify, "root", gr::graph::property::kRegistrySchedulerTypes, schedulerData)));
                     const std::map<std::string, std::set<std::string>> expectedSchedulers{{"gr::Graph", {"<>"}}, {"gr::scheduler::Simple", {"<gr::scheduler::ExecutionPolicy::singleThreaded>"}}};
                     expect(model.knownSchedulerTypes == expectedSchedulers);
                 };
@@ -270,24 +225,23 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
         }
         {
             ImGuiTest* t = IM_REGISTER_TEST(engine(), "flowgraph", "port exporting from subgraphs");
-            t->SetVarsDataType<opendigitizer::test::TestDashboardRunner>();
 
             t->GuiFunc = [](ImGuiTestContext*) {
                 IMW::Window window("Test Window", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoSavedSettings);
                 ImGui::SetWindowPos({0, 0});
                 ImGui::SetWindowSize(ImVec2(800, 800));
-                g_state.dashboard->handleMessages();
+                gState->dashboard->session.handleMessages();
             };
 
             t->TestFunc = [](ImGuiTestContext* ctx) { // NOSONAR test lambda length
                 reloadAndWait(ctx, reloadSubgraph);
-                Digitizer::utils::scope_exit stopScheduler = [] { g_state.stopScheduler(); };
+                gr::on_scope_exit stopScheduler = [] { gState->stopScheduler(); };
 
-                UiGraphBlock* rootBlock = g_state.dashboard->session.graphModel.recursiveFindBlockByName("simpleScheduler").block;
+                UiGraphBlock* rootBlock = gState->dashboard->session.graphModel.recursiveFindBlockByName("simpleScheduler").block;
                 expect(rootBlock) << fatal;
 
                 // block with outputs
-                UiGraphBlock* outputsBlock = g_state.dashboard->session.graphModel.recursiveFindBlockByName("subgraphSignalGenerator").block;
+                UiGraphBlock* outputsBlock = gState->dashboard->session.graphModel.recursiveFindBlockByName("subgraphSignalGenerator").block;
                 expect(outputsBlock) << fatal;
 
                 "returns not-exported for port with no exports"_test = [rootBlock, outputsBlock] {
@@ -356,7 +310,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                     expect(!source->_outputPorts.front().isExportedTo(nullptr));
                 };
 
-                g_state.stopScheduler();
+                gState->stopScheduler();
             };
         }
 
@@ -368,15 +322,15 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             expect(subgraph != nullptr && innerSource != nullptr) << fatal;
 
             sendExportPort(subgraph->blockUniqueName, innerSource->blockUniqueName, "output", "out", "sigOut");
-            expect(waitForReplyOnEndpoint(ctx, gr::graph::property::kSubgraphExportedPort)) << "scheduler never replied about the port export";
+            expect(gState->waitForReplies(ctx, gr::graph::property::kSubgraphExportedPort)) << "scheduler never replied about the port export";
 
             const auto subgraphHasExportedPort = [uniqueName = subgraph->blockUniqueName] {
-                UiGraphBlock* block = g_state.dashboard->session.graphModel.recursiveFindBlockByUniqueName(uniqueName).block;
+                UiGraphBlock* block = gState->dashboard->session.graphModel.recursiveFindBlockByUniqueName(uniqueName).block;
                 return block && std::ranges::count(block->outputPorts(), "sigOut", &DigitizerUi::UiGraphPort::portName) == 1;
             };
-            expect(awaitCondition(ctx, subgraphHasExportedPort)) << "exported port did not show up on the subgraph block";
+            expect(gState->waitUntil(ctx, "the graph model follows", subgraphHasExportedPort)) << "exported port did not show up on the subgraph block";
 
-            g_state.stopScheduler();
+            gState->stopScheduler();
         });
 
         registerMessageTest("connect to an exported port", [](ImGuiTestContext* ctx) { // NOSONAR (cognitive complexity)
@@ -388,10 +342,10 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             const auto& subgraphUniqueName = subgraph->blockUniqueName;
 
             sendExportPort(subgraph->blockUniqueName, innerSource->blockUniqueName, "output", "out", "sigOut");
-            expect(waitForReplyOnEndpoint(ctx, gr::graph::property::kSubgraphExportedPort)) << "scheduler never replied about the port export";
-            expect(awaitCondition(ctx,
+            expect(gState->waitForReplies(ctx, gr::graph::property::kSubgraphExportedPort)) << "scheduler never replied about the port export";
+            expect(gState->waitUntil(ctx, "the graph model follows",
                 [subgraphUniqueName] {
-                    UiGraphBlock* block = g_state.dashboard->session.graphModel.recursiveFindBlockByUniqueName(subgraphUniqueName).block;
+                    UiGraphBlock* block = gState->dashboard->session.graphModel.recursiveFindBlockByUniqueName(subgraphUniqueName).block;
                     return block && !block->outputPorts().empty();
                 }))
                 << fatal << "exported port did not show up on the subgraph block";
@@ -405,19 +359,19 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 });
                 return it == children.end() ? nullptr : it->get();
             };
-            expect(awaitCondition(ctx, [&] { return findOuterSink() != nullptr; })) << fatal << "emplaced sink did not show up in the root graph";
+            expect(gState->waitUntil(ctx, "the graph model follows", [&] { return findOuterSink() != nullptr; })) << fatal << "emplaced sink did not show up in the root graph";
             const auto& outerSinkUniqueName = findOuterSink()->blockUniqueName;
 
             sendEmplaceEdge(subgraphUniqueName, "sigOut", outerSinkUniqueName, "in", rootOwners());
 
-            expect(waitForReplyOnEndpoint(ctx, gr::scheduler::property::kEdgeEmplaced)) << "edge should be reported as emplaced by the scheduler";
+            expect(gState->waitForReplies(ctx, gr::scheduler::property::kEdgeEmplaced)) << "edge should be reported as emplaced by the scheduler";
 
-            expect(awaitCondition(ctx, [&] {
+            expect(gState->waitUntil(ctx, "the graph model follows", [&] {
                 const UiGraphEdge* edge = findEdge(rootGraph(), subgraphUniqueName, outerSinkUniqueName);
                 return edge && edge->edgeSourcePort && edge->edgeDestinationPort && edge->edgeSourcePort->portName == "sigOut";
             })) << "edge did not get created to exported port in our graph model";
 
-            g_state.stopScheduler();
+            gState->stopScheduler();
         });
 
         registerGroupingTest("group middle blocks of a chain", [](ImGuiTestContext* ctx) { // NOSONAR (cognitive complexity)
@@ -430,7 +384,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             UiGraphBlock* subgraph = groupAndWait(ctx, {uniqueNameOf("middleA"), uniqueNameOf("middleB")});
             expect(subgraph != nullptr) << fatal;
             expect(isManagedVariant(ctx) ? subgraph->isScheduler() : subgraph->isGraph()) << fatal << "grouping did not create the expected type of block";
-            expect(awaitCondition(ctx, [] { return rootGraph()->childEdges.size() == 2UZ; })) << fatal << "boundary edges did not show up in the root graph";
+            expect(gState->waitUntil(ctx, "the graph model follows", [] { return rootGraph()->childEdges.size() == 2UZ; })) << fatal << "boundary edges did not show up in the root graph";
 
             UiGraphBlock* interior = getGraph(subgraph);
             expect(interior != nullptr) << fatal;
@@ -465,7 +419,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             const auto errors = takeAllErrorNotifications();
             expect(errors.empty()) << std::format("grouping reported errors: {}", errors);
 
-            g_state.stopScheduler();
+            gState->stopScheduler();
         });
 
         registerGroupingTest("group and ungroup a single block", [](ImGuiTestContext* ctx) { // NOSONAR (cognitive complexity)
@@ -482,7 +436,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             expect(eq(interior->childBlocks.size(), 1UZ)) << "only middleA should have moved into the subgraph";
             expect(interior->childEdges.empty()) << "a single grouped block cannot have interior edges";
 
-            expect(awaitCondition(ctx, [] { return rootGraph()->childEdges.size() == 3UZ; })) << fatal << "the chain should still have three edges, now routed through the subgraph";
+            expect(gState->waitUntil(ctx, "the graph model follows", [] { return rootGraph()->childEdges.size() == 3UZ; })) << fatal << "the chain should still have three edges, now routed through the subgraph";
             expect(subgraph->inputPorts().size() == 1UZ) << fatal << "middleA's input should be exported";
             expect(subgraph->outputPorts().size() == 1UZ) << fatal << "middleA's output should be exported";
             expect(findEdge(rootGraph(), uniqueNameOf("source"), subgraphUniqueName) != nullptr) << "source should feed the subgraph";
@@ -493,11 +447,11 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
 
             ungroupAndWait(ctx, subgraphUniqueName);
 
-            expect(awaitCondition(ctx, [] { return isRootChild("middleA") && rootGraph()->childEdges.size() == 3UZ; })) << fatal << "middleA and the original chain should be restored";
+            expect(gState->waitUntil(ctx, "the graph model follows", [] { return isRootChild("middleA") && rootGraph()->childEdges.size() == 3UZ; })) << fatal << "middleA and the original chain should be restored";
             expectEdges_qa_grouping();
             expectGraphRunningAndConnected(ctx, sink, "after ungrouping a single block");
 
-            g_state.stopScheduler();
+            gState->stopScheduler();
         });
 
         registerGroupingTest("group and ungroup unconnected blocks", [](ImGuiTestContext* ctx) { // NOSONAR (cognitive complexity)
@@ -527,11 +481,11 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
 
             ungroupAndWait(ctx, subgraphUniqueName);
 
-            expect(awaitCondition(ctx, [] { return isRootChild("loner1") && isRootChild("loner2"); })) << "ungrouped blocks should return to the root graph";
+            expect(gState->waitUntil(ctx, "the graph model follows", [] { return isRootChild("loner1") && isRootChild("loner2"); })) << "ungrouped blocks should return to the root graph";
             expectEdges_qa_grouping();
             expectGraphRunningAndConnected(ctx, sink, "after ungrouping unconnected blocks");
 
-            g_state.stopScheduler();
+            gState->stopScheduler();
         });
 
         registerGroupingTest("ungroup restores boundary connections", [](ImGuiTestContext* ctx) { // NOSONAR (cognitive complexity)
@@ -544,11 +498,11 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
 
             ungroupAndWait(ctx, subgraph->blockUniqueName);
 
-            expect(awaitCondition(ctx, [] { return isRootChild("middleA") && rootGraph()->childEdges.size() == 3UZ; })) << fatal << "chain was not restored in the root graph";
+            expect(gState->waitUntil(ctx, "the graph model follows", [] { return isRootChild("middleA") && rootGraph()->childEdges.size() == 3UZ; })) << fatal << "chain was not restored in the root graph";
             expectEdges_qa_grouping();
             expectGraphRunningAndConnected(ctx, sink, "after ungrouping");
 
-            g_state.stopScheduler();
+            gState->stopScheduler();
         });
 
         registerGroupingTest("group blocks inside a subgraph", [](ImGuiTestContext* ctx) { // NOSONAR (cognitive complexity)
@@ -584,7 +538,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             expect(eq(inner->inputPorts().size(), 1UZ)) << fatal << "only middleB's input goes between the inner subgraph and outer subgraph";
             expect(inner->outputPorts().empty());
 
-            UiGraphBlock* reOuterInterior = g_state.dashboard->session.graphModel.recursiveFindBlockByUniqueName(outerInteriorUniqueName).block;
+            UiGraphBlock* reOuterInterior = gState->dashboard->session.graphModel.recursiveFindBlockByUniqueName(outerInteriorUniqueName).block;
             expect(reOuterInterior != nullptr) << fatal;
             expect(eq(reOuterInterior->childBlocks.size(), 2UZ)) << "middleA and the new inner subgraph";
             expect(eq(reOuterInterior->childEdges.size(), 1UZ));
@@ -592,7 +546,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             expect(eq(rootGraph()->childEdges.size(), 1UZ)) << "the root graph looks the same";
             expectGraphRunningAndConnected(ctx, sink, "after making a nested group");
 
-            g_state.stopScheduler();
+            gState->stopScheduler();
         });
 
         registerGroupingTest("exported ports are removed when unexporting a port in a subgraph", [](ImGuiTestContext* ctx) { // NOSONAR (cognitive complexity)
@@ -607,10 +561,10 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
 
             // unexporting takes the internal port name, see FlowgraphEditor::drawPortsMenu
             sendExportPort(subgraphUniqueName, uniqueNameOf("middleA"), "input", "in", "", /*exportFlag*/ false);
-            expect(waitForReplyOnEndpoint(ctx, gr::graph::property::kSubgraphExportedPort)) << "scheduler did not confirm unexporting";
+            expect(gState->waitForReplies(ctx, gr::graph::property::kSubgraphExportedPort)) << "scheduler did not confirm unexporting";
 
-            const auto findSubgraphBlock = [subgraphUniqueName] { return g_state.dashboard->session.graphModel.recursiveFindBlockByUniqueName(subgraphUniqueName).block; };
-            expect(awaitCondition(ctx,
+            const auto findSubgraphBlock = [subgraphUniqueName] { return gState->dashboard->session.graphModel.recursiveFindBlockByUniqueName(subgraphUniqueName).block; };
+            expect(gState->waitUntil(ctx, "the graph model follows",
                 [&findSubgraphBlock] {
                     UiGraphBlock* block = findSubgraphBlock();
                     return block && block->inputPorts().empty();
@@ -624,9 +578,9 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             expect(findEdge(rootGraph(), uniqueNameOf("source"), subgraphUniqueName) == nullptr) << "the edge into the unexported port should be gone";
             expect(findEdge(rootGraph(), subgraphUniqueName, uniqueNameOf("middleB")) != nullptr) << "the other edge what connects to an exported port should not have been destroyed/removed";
             expect(!hasInvalidEdges()) << "no edge should be left pointing at a port that no longer exists";
-            expect(gr::lifecycle::isActive(g_state.dashboard->session.state())) << "unexporting a port should not stop/pause/error the scheduler";
+            expect(gr::lifecycle::isActive(gState->dashboard->session.state())) << "unexporting a port should not stop/pause/error the scheduler";
 
-            g_state.stopScheduler();
+            gState->stopScheduler();
         });
 
         registerMessageTest("removing the selected block clears the selection", [](ImGuiTestContext* ctx) {
@@ -635,14 +589,14 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             UiGraphBlock* loner1 = findByName("loner1");
             expect(loner1 != nullptr) << fatal;
 
-            g_state.dashboard->session.graphModel.selectedBlock = loner1;
+            gState->dashboard->session.graphModel.selectedBlock = loner1;
 
             sendRemoveBlock(loner1->blockUniqueName, rootOwners());
-            expect(waitForReplyOnEndpoint(ctx, gr::scheduler::property::kBlockRemoved)) << "scheduler did not confirm block removal";
-            expect(awaitCondition(ctx, [] { return findByName("loner1") == nullptr; })) << fatal << "removed block should disappear from the graph model";
+            expect(gState->waitForReplies(ctx, gr::scheduler::property::kBlockRemoved)) << "scheduler did not confirm block removal";
+            expect(gState->waitUntil(ctx, "the graph model follows", [] { return findByName("loner1") == nullptr; })) << fatal << "removed block should disappear from the graph model";
 
-            expect(g_state.dashboard->session.graphModel.selectedBlock == nullptr) << "selection should be cleared when the selected block is deleted";
-            g_state.stopScheduler();
+            expect(gState->dashboard->session.graphModel.selectedBlock == nullptr) << "selection should be cleared when the selected block is deleted";
+            gState->stopScheduler();
         });
 
         registerGroupingTest("removing a subgraph clears the selection of an inner block", [](ImGuiTestContext* ctx) { // NOSONAR (cognitive complexity)
@@ -655,13 +609,13 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
 
                 UiGraphBlock* innerBlock = findByName("loner1");
                 expect(innerBlock != nullptr) << fatal << "the grouped block should still exist, one level deeper";
-                g_state.dashboard->session.graphModel.selectedBlock = selectInnerBlock ? innerBlock : subgraph;
+                gState->dashboard->session.graphModel.selectedBlock = selectInnerBlock ? innerBlock : subgraph;
 
                 sendRemoveBlock(subgraphUniqueName, rootOwners());
-                expect(waitForReplyOnEndpoint(ctx, gr::scheduler::property::kBlockRemoved)) << "scheduler did not confirm subgraph removal";
-                expect(awaitCondition(ctx, [subgraphUniqueName] { return rootGraph()->findBlockByUniqueName(subgraphUniqueName) == nullptr; })) << fatal << "removed subgraph should disappear from the graph model";
+                expect(gState->waitForReplies(ctx, gr::scheduler::property::kBlockRemoved)) << "scheduler did not confirm subgraph removal";
+                expect(gState->waitUntil(ctx, "the graph model follows", [subgraphUniqueName] { return rootGraph()->findBlockByUniqueName(subgraphUniqueName) == nullptr; })) << fatal << "removed subgraph should disappear from the graph model";
 
-                expect(g_state.dashboard->session.graphModel.selectedBlock == nullptr) << (selectInnerBlock ? "selection should be cleared when a block nested inside the deleted subgraph is selected" : "selection should be cleared when the deleted subgraph itself is selected");
+                expect(gState->dashboard->session.graphModel.selectedBlock == nullptr) << (selectInnerBlock ? "selection should be cleared when a block nested inside the deleted subgraph is selected" : "selection should be cleared when the deleted subgraph itself is selected");
             };
 
             groupAndRemoveWithSelection(/*selectInnerBlock*/ false);
@@ -669,7 +623,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             reloadAndWait(ctx, reloadGrouping);
             groupAndRemoveWithSelection(/*selectInnerBlock*/ true);
 
-            g_state.stopScheduler();
+            gState->stopScheduler();
         });
 
         registerMessageTest("reinspection not reporting the selected block clears the selection", [](ImGuiTestContext* ctx) {
@@ -677,14 +631,14 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
 
             UiGraphBlock* loner1 = findByName("loner1");
             expect(loner1 != nullptr) << fatal;
-            g_state.dashboard->session.graphModel.selectedBlock = loner1;
+            gState->dashboard->session.graphModel.selectedBlock = loner1;
 
             // simulate an inspection reply which no longer reports any of the child blocks
             rootGraph()->setGraphChildren(gr::property_map{});
             expect(rootGraph()->childBlocks.empty()) << fatal;
 
-            expect(g_state.dashboard->session.graphModel.selectedBlock == nullptr) << "selection should be cleared when the selected block is deleted";
-            g_state.stopScheduler();
+            expect(gState->dashboard->session.graphModel.selectedBlock == nullptr) << "selection should be cleared when the selected block is deleted";
+            gState->stopScheduler();
         });
 
         registerGroupingTest("ungrouping clears the selection of an inner block", [](ImGuiTestContext* ctx) { // NOSONAR (cognitive complexity)
@@ -693,32 +647,23 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             UiGraphBlock* subgraph = groupAndWait(ctx, {uniqueNameOf("loner1"), uniqueNameOf("loner2")});
             expect(subgraph != nullptr) << fatal;
 
-            g_state.dashboard->session.graphModel.selectedBlock = subgraph;
+            gState->dashboard->session.graphModel.selectedBlock = subgraph;
 
             ungroupAndWait(ctx, subgraph->blockUniqueName);
-            expect(awaitCondition(ctx, [] { return isRootChild("loner1") && isRootChild("loner2"); })) << fatal << "ungrouped blocks should return to the root graph";
+            expect(gState->waitUntil(ctx, "the graph model follows", [] { return isRootChild("loner1") && isRootChild("loner2"); })) << fatal << "ungrouped blocks should return to the root graph";
 
-            expect(g_state.dashboard->session.graphModel.selectedBlock == nullptr) << "selection should be cleared when the selected block is deleted";
-            g_state.stopScheduler();
+            expect(gState->dashboard->session.graphModel.selectedBlock == nullptr) << "selection should be cleared when the selected block is deleted";
+            gState->stopScheduler();
         });
     }
 
     static void reloadAndWait(ImGuiTestContext* ctx, const std::function<void()>& reloadFunction) {
         reloadFunction();
-        g_state.waitForScheduler(ctx);
-        while (!g_state.hasBlocks()) {
-            ctx->Yield();
-        }
+        gState->waitForScheduler(ctx);
+        gState->waitUntil(ctx, "the graph has blocks", [] { return gState->hasBlocks(); });
     }
 
-    static void sendExportPort(const std::string& subgraphUniqueName, const std::string& innerBlockUniqueName, const std::string& direction, const std::string& portName, const std::string& exportedName, bool exportFlag = true) {
-        gr::Message message;
-        message.cmd         = gr::message::Command::Set;
-        message.endpoint    = gr::graph::property::kSubgraphExportPort;
-        message.serviceName = subgraphUniqueName;
-        message.data        = gr::property_map{{"uniqueBlockName", innerBlockUniqueName}, {"portDirection", direction}, {"portName", portName}, {"exportedName", exportedName}, {"exportFlag", exportFlag}};
-        g_state.dashboard->session.graphModel.sendMessage(std::move(message));
-    }
+    static void sendExportPort(const std::string& subgraphUniqueName, const std::string& innerBlockUniqueName, const std::string& direction, const std::string& portName, const std::string& exportedName, bool exportFlag = true) { gState->dashboard->session.graphModel.send(gr::message::Command::Set, subgraphUniqueName, std::string(gr::graph::property::kSubgraphExportPort), {{"uniqueBlockName", innerBlockUniqueName}, {"portDirection", direction}, {"portName", portName}, {"exportedName", exportedName}, {"exportFlag", exportFlag}}); }
 
     static std::string graphTypeFor(ImGuiTestContext* ctx) { return std::string(kSubgraphBlockTypenameAndDescriptions[static_cast<std::size_t>(ctx->Test->ArgVariant)].typeName); }
 
@@ -727,12 +672,12 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
     // group some blocks and return the ui graphmodel representation of the resulting subgraph. which type of scheduler/graph is determined by the test params
     static UiGraphBlock* groupAndWait(ImGuiTestContext* ctx, const std::vector<std::string>& uniqueNames, UiGraphBlock* parentGraph = nullptr) {
         const std::string parentUniqueName = (parentGraph ? parentGraph : rootGraph())->blockUniqueName;
-        const auto        reFindParent     = [parentUniqueName] { return g_state.dashboard->session.graphModel.recursiveFindBlockByUniqueName(parentUniqueName).block; };
+        const auto        reFindParent     = [parentUniqueName] { return gState->dashboard->session.graphModel.recursiveFindBlockByUniqueName(parentUniqueName).block; };
 
         sendGroupBlocks(uniqueNames, graphTypeFor(ctx), ownersFor(reFindParent()));
-        expect(waitForReplyOnEndpoint(ctx, gr::scheduler::property::kBlocksGrouped)) << "scheduler should confirm grouping";
+        expect(gState->waitForReplies(ctx, gr::scheduler::property::kBlocksGrouped)) << "scheduler should confirm grouping";
 
-        const bool grouped = awaitCondition(ctx, [&] {
+        const bool grouped = gState->waitUntil(ctx, "the graph model follows", [&] {
             UiGraphBlock* parent   = reFindParent();
             UiGraphBlock* subgraph = parent ? findSubgraphIn(parent) : nullptr;
             UiGraphBlock* interior = subgraph ? getGraph(subgraph) : nullptr;
@@ -747,11 +692,11 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
 
     static void ungroupAndWait(ImGuiTestContext* ctx, const std::string& subgraphUniqueName, UiGraphBlock* parentGraph = nullptr) {
         const std::string parentUniqueName = (parentGraph ? parentGraph : rootGraph())->blockUniqueName;
-        const auto        reFindParent     = [parentUniqueName] { return g_state.dashboard->session.graphModel.recursiveFindBlockByUniqueName(parentUniqueName).block; };
+        const auto        reFindParent     = [parentUniqueName] { return gState->dashboard->session.graphModel.recursiveFindBlockByUniqueName(parentUniqueName).block; };
 
         sendUngroupBlocks(subgraphUniqueName, ownersFor(reFindParent()));
-        expect(waitForReplyOnEndpoint(ctx, gr::scheduler::property::kBlocksUngrouped)) << "scheduler did not confirm ungrouping";
-        expect(awaitCondition(ctx,
+        expect(gState->waitForReplies(ctx, gr::scheduler::property::kBlocksUngrouped)) << "scheduler did not confirm ungrouping";
+        expect(gState->waitUntil(ctx, "the graph model follows",
             [&] {
                 UiGraphBlock* parent = reFindParent();
                 return parent && parent->findBlockByUniqueName(subgraphUniqueName) == nullptr;
@@ -763,14 +708,13 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
         IMW::Window window("Test Window", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoSavedSettings);
         ImGui::SetWindowPos({0, 0});
         ImGui::SetWindowSize(ImVec2(800, 800));
-        g_state.dashboard->handleMessages();
+        gState->dashboard->session.handleMessages();
     }
 
     void registerMessageTest(const char* name, ImGuiTestTestFunc testFunc) {
         ImGuiTest* t = IM_REGISTER_TEST(engine(), "graphmodel", name);
-        t->SetVarsDataType<opendigitizer::test::TestDashboardRunner>();
-        t->GuiFunc  = &messageTestGuiFunc;
-        t->TestFunc = testFunc;
+        t->GuiFunc   = &messageTestGuiFunc;
+        t->TestFunc  = testFunc;
     }
 
     /// run test foreach item in kSubgraphBlockTypenameAndDescriptions
@@ -779,9 +723,8 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             ImGuiTest* t = IM_REGISTER_TEST(engine(), "graphmodel", name);
             t->SetOwnedName(std::format("{}, {}", name, kSubgraphBlockTypenameAndDescriptions[variant].description).c_str());
             t->ArgVariant = static_cast<int>(variant);
-            t->SetVarsDataType<opendigitizer::test::TestDashboardRunner>();
-            t->GuiFunc  = &messageTestGuiFunc;
-            t->TestFunc = testFunc;
+            t->GuiFunc    = &messageTestGuiFunc;
+            t->TestFunc   = testFunc;
         }
     }
 };
@@ -795,11 +738,6 @@ void registerTestBlocks(Registry& registry) {
     gr::registerBlock<opendigitizer::ImPlotSink, float, gr::DataSet<float>>(registry);
     // TODO: fix gnuradio having this keyed under CountingSinkImpl
     gr::registerBlock<"gr::testing::AtomicCountingSink", gr::testing::AtomicCountingSink, float>(registry);
-
-    std::print("Available blocks:\n");
-    for (auto& blockName : registry.keys()) {
-        std::print("  - {}\n", blockName);
-    }
 #pragma GCC diagnostic pop
 }
 } // namespace
@@ -825,12 +763,11 @@ int main(int argc, char* argv[]) {
 
     // init early, as Dashboard invokes ImGui style stuff
     app.initImGui();
+    opendigitizer::test::TestDashboardRunner state;
+    gState = std::addressof(state);
 
-    auto loader = DigitizerUi::test::ImGuiTestApp::createPluginLoader();
-
-    g_state.reload(cmrc::sample_dashboards::get_filesystem(), "assets/sampleDashboards/DemoDashboard.grc");
+    state.reload(cmrc::sample_dashboards::get_filesystem(), "assets/sampleDashboards/DemoDashboard.grc");
 
     auto result = app.runTests();
-    g_state.dashboard.reset(); // ensure scheduler cleanup before global teardown
     return result ? 0 : 1;
 }

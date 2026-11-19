@@ -54,9 +54,7 @@ struct YYChart : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui
 
     static constexpr std::string_view kChartTypeName = "YYChart";
 
-    [[nodiscard]] static constexpr std::string_view chartTypeName() noexcept { return kChartTypeName; }
-    [[nodiscard]] std::string_view                  uniqueId() const noexcept { return this->unique_name; }
-    [[nodiscard]] std::size_t                       drawnMarkers() const noexcept { return _drawnMarkers; }
+    [[nodiscard]] std::size_t drawnMarkers() const noexcept { return _drawnMarkers; }
 
     explicit YYChart(gr::property_map initParameters = {}) : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui">>(std::move(initParameters)) {}
 
@@ -144,18 +142,16 @@ struct YYChart : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui
 
         // X-axis: Time, Y-axis: signal name with unit
         {
-            const auto xDashCfg  = parseAxisConfig(this->ui_constraints.value, true);
-            AxisScale  xScale    = static_cast<AxisScale>(x_axis_scale.value);
-            double     xMinLimit = x_auto_scale.value[0] ? std::numeric_limits<double>::quiet_NaN() : x_min.value[0];
-            double     xMaxLimit = x_auto_scale.value[0] ? std::numeric_limits<double>::quiet_NaN() : x_max.value[0];
-            auto       xCond     = trackLimitsCond(true, xMinLimit, xMaxLimit);
+            const auto xDashCfg               = parseAxisConfig(this->ui_constraints.value, true);
+            AxisScale  xScale                 = static_cast<AxisScale>(x_axis_scale.value);
+            const auto [xMinLimit, xMaxLimit] = axisLimits(x_auto_scale.value[0], x_min.value[0], x_max.value[0], std::nullopt);
+            auto xCond                        = trackLimitsCond(true, xMinLimit, xMaxLimit);
             axis::setupAxis(ImAxis_X1, AxisCategory{.quantity = "Time", .unit = "s"}, LabelFormat::Auto, axisLabelWidthOrDefault(xDashCfg, defaultAxisLabelWidthFor(ImAxis_X1, size)), xMinLimit, xMaxLimit, 1UZ, xScale, _unitStringStorage, showGrid, /*foreground=*/false, xCond);
 
-            const auto   yDashCfg  = parseAxisConfig(this->ui_constraints.value, false);
-            AxisScale    yScale    = static_cast<AxisScale>(y_axis_scale.value);
-            double       yMinLimit = y_auto_scale.value[0] ? std::numeric_limits<double>::quiet_NaN() : y_min.value[0];
-            double       yMaxLimit = y_auto_scale.value[0] ? std::numeric_limits<double>::quiet_NaN() : y_max.value[0];
-            auto         yCond     = trackLimitsCond(false, yMinLimit, yMaxLimit);
+            const auto yDashCfg               = parseAxisConfig(this->ui_constraints.value, false);
+            AxisScale  yScale                 = static_cast<AxisScale>(y_axis_scale.value);
+            const auto [yMinLimit, yMaxLimit] = axisLimits(y_auto_scale.value[0], y_min.value[0], y_max.value[0], std::nullopt);
+            auto         yCond                = trackLimitsCond(false, yMinLimit, yMaxLimit);
             AxisCategory yCat{.quantity = std::string(sinkPtr->signalQuantity()), .unit = std::string(sinkPtr->signalUnit()), .color = sinkPtr->color()};
             axis::setupAxis(ImAxis_Y1, yCat, LabelFormat::Auto, axisLabelWidthOrDefault(yDashCfg, defaultAxisLabelWidthFor(ImAxis_Y1, size)), yMinLimit, yMaxLimit, 1UZ, yScale, _unitStringStorage, showGrid, /*foreground=*/false, yCond);
         }
@@ -208,10 +204,7 @@ struct YYChart : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui
             return;
         }
 
-        // Acquire locks in canonical pointer order to prevent ABBA deadlock
-        const auto& [first, second] = (sinkXPtr.get() < sinkYPtr.get()) ? std::tie(sinkXPtr, sinkYPtr) : std::tie(sinkYPtr, sinkXPtr);
-        DataGuard lockFirst         = first->dataGuard();
-        DataGuard lockSecond        = second->dataGuard();
+        const std::vector<DataGuard> guards = lockAll(std::array{sinkXPtr.get(), sinkYPtr.get()});
 
         std::size_t totalCount = std::min(sinkXPtr->size(), sinkYPtr->size());
         if (totalCount == 0) {
@@ -229,19 +222,17 @@ struct YYChart : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui
 
         // Build axis categories from sink metadata
         {
-            const auto   xDashCfg  = parseAxisConfig(this->ui_constraints.value, true);
-            AxisScale    xScale    = static_cast<AxisScale>(x_axis_scale.value);
-            double       xMinLimit = x_auto_scale.value[0] ? std::numeric_limits<double>::quiet_NaN() : x_min.value[0];
-            double       xMaxLimit = x_auto_scale.value[0] ? std::numeric_limits<double>::quiet_NaN() : x_max.value[0];
-            auto         xCond     = trackLimitsCond(true, xMinLimit, xMaxLimit);
+            const auto xDashCfg               = parseAxisConfig(this->ui_constraints.value, true);
+            AxisScale  xScale                 = static_cast<AxisScale>(x_axis_scale.value);
+            const auto [xMinLimit, xMaxLimit] = axisLimits(x_auto_scale.value[0], x_min.value[0], x_max.value[0], std::nullopt);
+            auto         xCond                = trackLimitsCond(true, xMinLimit, xMaxLimit);
             AxisCategory xCat{.quantity = sinkXPtr->signalQuantity().empty() ? std::string(sinkXPtr->signalName()) : std::string(sinkXPtr->signalQuantity()), .unit = std::string(sinkXPtr->signalUnit()), .color = sinkXPtr->color()};
             axis::setupAxis(ImAxis_X1, xCat, LabelFormat::Auto, axisLabelWidthOrDefault(xDashCfg, defaultAxisLabelWidthFor(ImAxis_X1, size)), xMinLimit, xMaxLimit, 1UZ, xScale, _unitStringStorage, showGrid, /*foreground=*/false, xCond);
 
-            const auto   yDashCfg  = parseAxisConfig(this->ui_constraints.value, false);
-            AxisScale    yScale    = static_cast<AxisScale>(y_axis_scale.value);
-            double       yMinLimit = y_auto_scale.value[0] ? std::numeric_limits<double>::quiet_NaN() : y_min.value[0];
-            double       yMaxLimit = y_auto_scale.value[0] ? std::numeric_limits<double>::quiet_NaN() : y_max.value[0];
-            auto         yCond     = trackLimitsCond(false, yMinLimit, yMaxLimit);
+            const auto yDashCfg               = parseAxisConfig(this->ui_constraints.value, false);
+            AxisScale  yScale                 = static_cast<AxisScale>(y_axis_scale.value);
+            const auto [yMinLimit, yMaxLimit] = axisLimits(y_auto_scale.value[0], y_min.value[0], y_max.value[0], std::nullopt);
+            auto         yCond                = trackLimitsCond(false, yMinLimit, yMaxLimit);
             AxisCategory yCat{.quantity = sinkYPtr->signalQuantity().empty() ? std::string(sinkYPtr->signalName()) : std::string(sinkYPtr->signalQuantity()), .unit = std::string(sinkYPtr->signalUnit()), .color = sinkYPtr->color()};
             axis::setupAxis(ImAxis_Y1, yCat, LabelFormat::Auto, axisLabelWidthOrDefault(yDashCfg, defaultAxisLabelWidthFor(ImAxis_Y1, size)), yMinLimit, yMaxLimit, 1UZ, yScale, _unitStringStorage, showGrid, /*foreground=*/false, yCond);
         }
@@ -336,9 +327,8 @@ struct YYChart : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui
             std::optional<AxisCategory> xCategory = AxisCategory{.quantity = sinkXPtr->signalQuantity().empty() ? std::string(sinkXPtr->signalName()) : std::string(sinkXPtr->signalQuantity()), .unit = std::string(sinkXPtr->signalUnit()), .color = sinkXPtr->color()};
             const auto                  xDashCfg  = parseAxisConfig(this->ui_constraints.value, true);
             AxisScale                   xScale    = static_cast<AxisScale>(x_axis_scale.value);
-            double                      xMinLimit = x_auto_scale.value[0] ? std::numeric_limits<double>::quiet_NaN() : x_min.value[0];
-            double                      xMaxLimit = x_auto_scale.value[0] ? std::numeric_limits<double>::quiet_NaN() : x_max.value[0];
-            auto                        xCond     = trackLimitsCond(true, xMinLimit, xMaxLimit);
+            const auto [xMinLimit, xMaxLimit]     = axisLimits(x_auto_scale.value[0], x_min.value[0], x_max.value[0], std::nullopt);
+            auto xCond                            = trackLimitsCond(true, xMinLimit, xMaxLimit);
             axis::setupAxis(ImAxis_X1, xCategory, LabelFormat::Auto, axisLabelWidthOrDefault(xDashCfg, defaultAxisLabelWidthFor(ImAxis_X1, size)), xMinLimit, xMaxLimit, 1UZ, xScale, _unitStringStorage, showGrid, /*foreground=*/false, xCond);
         }
 
@@ -348,11 +338,10 @@ struct YYChart : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui
             if (!yCategories[i].has_value()) {
                 continue;
             }
-            double     yMinLimit = y_auto_scale.value[i] ? std::numeric_limits<double>::quiet_NaN() : y_min.value[i];
-            double     yMaxLimit = y_auto_scale.value[i] ? std::numeric_limits<double>::quiet_NaN() : y_max.value[i];
-            auto       yCond     = trackLimitsCond(false, yMinLimit, yMaxLimit, i);
-            auto       yDashCfg  = parseAxisConfig(this->ui_constraints.value, false, i);
-            const auto axisId    = ImAxis_Y1 + static_cast<int>(i);
+            const auto [yMinLimit, yMaxLimit] = axisLimits(y_auto_scale.value[i], y_min.value[i], y_max.value[i], std::nullopt);
+            auto       yCond                  = trackLimitsCond(false, yMinLimit, yMaxLimit, i);
+            auto       yDashCfg               = parseAxisConfig(this->ui_constraints.value, false, i);
+            const auto axisId                 = ImAxis_Y1 + static_cast<int>(i);
             axis::setupAxis(axisId, yCategories[i], LabelFormat::Auto, axisLabelWidthOrDefault(yDashCfg, defaultAxisLabelWidthFor(axisId, size)), yMinLimit, yMaxLimit, nYAxes, yScale, _unitStringStorage, showGrid, /*foreground=*/false, yCond);
         }
 
@@ -391,10 +380,7 @@ struct YYChart : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui
                 continue;
             }
 
-            // Acquire locks in canonical pointer order to prevent ABBA deadlock
-            const auto& [first, second] = (sinkXPtr.get() < sinkYPtr.get()) ? std::tie(sinkXPtr, sinkYPtr) : std::tie(sinkYPtr, sinkXPtr);
-            auto lockFirst              = first->dataGuard();
-            auto lockSecond             = (first.get() != second.get()) ? second->dataGuard() : DataGuard{};
+            const std::vector<DataGuard> guards = lockAll(std::array{sinkXPtr.get(), sinkYPtr.get()});
 
             std::size_t totalCount = std::min(sinkXPtr->size(), sinkYPtr->size());
             if (totalCount == 0) {
@@ -430,7 +416,5 @@ struct YYChart : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui
 } // namespace opendigitizer::charts
 
 // Register YYChart with the GR4 block registry
-GR_REGISTER_BLOCK("opendigitizer::charts::YYChart", opendigitizer::charts::YYChart)
-inline auto registerYYChartCompatibilities = opendigitizer::charts::registerChartSignalCompatibility<opendigitizer::charts::YYChart>();
 
 #endif // OPENDIGITIZER_CHARTS_YYCHART_HPP

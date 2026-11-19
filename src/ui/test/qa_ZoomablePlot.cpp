@@ -42,8 +42,8 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
 
         t->TestFunc = [](ImGuiTestContext* ctx) {
             "charts of the same name in different windows keep separate zoom limits"_test = [ctx] {
-                ctx->Yield(2);
                 const auto& vars = ctx->GetVars<TestState>();
+                opendigitizer::test::waitUntil(ctx, "both plots are drawn", [&vars] { return vars.keyInWindowA != 0u && vars.keyInWindowB != 0u; });
                 expect(vars.keyInWindowA != 0u && vars.keyInWindowB != 0u) << fatal << "both plots are drawn";
                 expect(vars.keyInWindowA != vars.keyInWindowB);
             };

@@ -7,11 +7,12 @@
 #include <misc/cpp/imgui_stdlib.h>
 
 #include "DateInput.hpp"
-#include "FilterTagBar.hpp"
 
 #include <algorithm>
 #include <array>
 #include <cassert>
+#include <cstddef>
+#include <optional>
 #include <ranges>
 #include <utility>
 
@@ -20,9 +21,77 @@ namespace DigitizerUi::components {
 namespace {
 constexpr const char* kIconPlus   = "\u{f067}";
 constexpr const char* kIconSearch = "\u{f002}";
+constexpr const char* kIconClose  = "\u{f00d}";
 
 constexpr std::array  kFilterDateLabels     = {"Before", "After"};
 constexpr const char* kFilterDateComboLabel = "##filterDateDirection";
+
+struct FilterTagBar {
+    std::optional<std::size_t> _removed;
+    std::size_t                _currentTag = 0UZ;
+    std::size_t                _tagsDrawn  = 0UZ;
+    bool                       _insideTag  = false;
+    bool                       _finished   = false;
+
+    explicit FilterTagBar(const char* strId) { ImGui::PushID(strId); }
+
+    ~FilterTagBar() {
+        if (!_finished) {
+            static_cast<void>(finish());
+        }
+    }
+
+    FilterTagBar(const FilterTagBar&)            = delete;
+    FilterTagBar& operator=(const FilterTagBar&) = delete;
+
+    void beginTag(std::size_t tagIndex) {
+        assert(!_insideTag && !_finished);
+        _insideTag  = true;
+        _currentTag = tagIndex;
+
+        if (_tagsDrawn > 0UZ) {
+            ImGui::SameLine();
+        }
+        ImGui::PushID(static_cast<int>(tagIndex));
+
+        // content goes on the foreground channel, endTag() fills the background afterwards
+        ImGui::GetWindowDrawList()->ChannelsSplit(2);
+        ImGui::GetWindowDrawList()->ChannelsSetCurrent(1);
+        ImGui::BeginGroup();
+        ImGui::AlignTextToFramePadding();
+    }
+
+    void endTag() {
+        assert(_insideTag);
+        ImGui::SameLine();
+        {
+            IMW::StyleNamedColor transparentButton(ImGuiCol_Button, ImU32{0});
+            IMW::Font            iconFont(LookAndFeel::instance().fontIconsSolid);
+            if (ImGui::Button(kIconClose)) {
+                _removed = _currentTag;
+            }
+        }
+        ImGui::EndGroup();
+
+        auto*        drawList = ImGui::GetWindowDrawList();
+        const ImRect tagRect{ImGui::GetItemRectMin(), ImGui::GetItemRectMax()};
+        drawList->ChannelsSetCurrent(0);
+        drawList->AddRectFilled(tagRect.Min, tagRect.Max, ImGui::GetColorU32(ImGuiCol_FrameBg), ImGui::GetStyle().FrameRounding);
+        drawList->AddRect(tagRect.Min, tagRect.Max, ImGui::GetColorU32(ImGuiCol_Border), ImGui::GetStyle().FrameRounding);
+        drawList->ChannelsMerge();
+
+        ImGui::PopID();
+        _insideTag = false;
+        ++_tagsDrawn;
+    }
+
+    [[nodiscard]] std::optional<std::size_t> finish() {
+        assert(!_insideTag && !_finished);
+        _finished = true;
+        ImGui::PopID();
+        return std::exchange(_removed, {});
+    }
+};
 
 float calcFilterDateComboWidth() { //
     return IMW::CalcComboSize(kFilterDateComboLabel, kFilterDateLabels[0], ImGuiComboFlags_WidthFitPreview).preferred.x;
@@ -210,8 +279,8 @@ SearchSortInput::Event SearchSortInput::draw(const char* strId, const char* hint
     return Event::none;
 }
 
-std::optional<std::size_t> drawFilterTags(const char* strId, std::span<const std::unique_ptr<SortFilterModelFilter>> filters, const std::function<std::string(const SortFilterModelFilter&)>& labelFor) {
-    if (filters.empty()) {
+std::optional<std::size_t> drawFilterTags(const char* strId, std::span<const std::string> labels) {
+    if (labels.empty()) {
         return std::nullopt;
     }
 
@@ -219,9 +288,9 @@ std::optional<std::size_t> drawFilterTags(const char* strId, std::span<const std
     FilterTagBar tagBar(strId);
 
     std::size_t index = 0UZ;
-    for (const auto& filter : filters) {
+    for (const std::string& label : labels) {
         tagBar.beginTag(index);
-        ImGui::TextUnformatted(labelFor(*filter).c_str());
+        ImGui::TextUnformatted(label.c_str());
         tagBar.endTag();
         ++index;
     }

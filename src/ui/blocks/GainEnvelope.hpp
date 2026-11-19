@@ -15,8 +15,6 @@ namespace opendigitizer {
 template<typename T>
 concept AudioSample = std::same_as<T, float> || std::same_as<T, std::int16_t>;
 
-GR_REGISTER_BLOCK(opendigitizer::GainEnvelope, [T], [ float, int16_t ])
-
 template<AudioSample T>
 struct GainEnvelope : gr::Block<GainEnvelope<T>> {
     using Description = gr::Doc<"Scales input values by an attack/decay/sustain/release envelope, according to the \"pressed\" trigger setting">;
@@ -75,7 +73,5 @@ struct GainEnvelope : gr::Block<GainEnvelope<T>> {
 };
 
 } // namespace opendigitizer
-
-inline auto registerGainEnvelope = gr::registerBlock<opendigitizer::GainEnvelope, float, int16_t>(gr::globalBlockRegistry());
 
 #endif // OPENDIGITIZER_BLOCKS_GAIN_ENVELOPE_HPP

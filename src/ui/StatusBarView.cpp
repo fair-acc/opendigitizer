@@ -364,8 +364,7 @@ void StatusBarView::drawLogPopup() {
     ImGui::SetNextItemWidth(std::max(1.f, ImGui::GetContentRegionAvail().x - trailingControlsWidth));
     ImGui::InputTextWithHint("##logTextFilter", "Filter messages", &_messageFilter);
 
-    static int selectionID           = 0;
-    auto       triggerNewSelectionID = [] { selectionID = (selectionID == std::numeric_limits<int>::max() ? 0 : selectionID + 1); };
+    auto triggerNewSelectionID = [this] { _selectionId = (_selectionId == std::numeric_limits<int>::max() ? 0 : _selectionId + 1); };
 
     if (_levelFilter != levelFilterBefore || _messageFilter != messageFilterBefore) {
         _selectedRecords.Clear();
@@ -418,7 +417,7 @@ void StatusBarView::drawLogPopup() {
     ImGui::TableHeadersRow();
 
     // Forces ImGUI to forget the previous selection
-    IMW::ChangeId _(selectionID);
+    IMW::ChangeId _(_selectionId);
     auto*         multiSelect = ImGui::BeginMultiSelect(ImGuiMultiSelectFlags_BoxSelect1d | ImGuiMultiSelectFlags_ClearOnClickVoid, _selectedRecords.Size, static_cast<int>(visibleRecords.size()));
     _selectedRecords.ApplyRequests(multiSelect);
     for (std::size_t index = 0UZ; index < visibleRecords.size(); ++index) {

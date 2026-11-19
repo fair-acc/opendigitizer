@@ -37,7 +37,7 @@ struct TestState : opendigitizer::test::TestDashboardRunner {
     bool                                            showSelection = false;
 };
 
-TestState* g_state = nullptr;
+TestState* gState = nullptr;
 
 const ImGuiWindow* activeWindowNamed(std::string_view part) {
     for (const ImGuiWindow* window : GImGui->Windows) {
@@ -48,7 +48,7 @@ const ImGuiWindow* activeWindowNamed(std::string_view part) {
     return nullptr;
 }
 
-std::vector<const ImGuiWindow*> chartWindows() { return opendigitizer::test::chartWindows(*g_state->dashboard); }
+std::vector<const ImGuiWindow*> chartWindows() { return opendigitizer::test::chartWindows(*gState->dashboard); }
 
 ImRect viewportRect() { return ImRect(ImVec2{}, ImGui::GetIO().DisplaySize); }
 
@@ -67,7 +67,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
         ImGuiTest* t = IM_REGISTER_TEST(engine(), "compactlayout", "phone-sized window");
 
         t->GuiFunc = [](ImGuiTestContext*) {
-            auto&                state    = *g_state;
+            auto&                state    = *gState;
             const ImGuiViewport* viewport = ImGui::GetMainViewport();
             ImGui::SetNextWindowPos(viewport->Pos);
             ImGui::SetNextWindowSize(viewport->Size);
@@ -82,28 +82,29 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
         };
 
         t->TestFunc = [](ImGuiTestContext* ctx) {
-            auto&       state       = *g_state;
+            auto&       state       = *gState;
             const auto& lookAndFeel = DigitizerUi::LookAndFeel::instance();
+            const auto& appState    = DigitizerUi::gAppState;
 
             "the compact layout follows the shorter viewport side, with hysteresis"_test = [&] {
                 auto& mutableLookAndFeel = DigitizerUi::LookAndFeel::mutableInstance();
                 mutableLookAndFeel.updateFormFactor({1600.f, 1000.f});
-                expect(!lookAndFeel.compact && eq(ImGui::GetStyle().FontScaleMain, 1.f));
+                expect(!appState.compact && eq(ImGui::GetStyle().FontScaleMain, 1.f));
                 mutableLookAndFeel.updateFormFactor({412.f, 915.f});
-                expect(lookAndFeel.compact && lookAndFeel.portrait && eq(ImGui::GetStyle().FontScaleMain, lookAndFeel.compactFontScale));
+                expect(appState.compact && appState.portrait && eq(ImGui::GetStyle().FontScaleMain, lookAndFeel.compactFontScale));
                 mutableLookAndFeel.updateFormFactor({915.f, 412.f});
-                expect(lookAndFeel.compact && !lookAndFeel.portrait);
+                expect(appState.compact && !appState.portrait);
                 mutableLookAndFeel.updateFormFactor({620.f, 900.f});
-                expect(lookAndFeel.compact) << "stays compact until the leave threshold";
+                expect(appState.compact) << "stays compact until the leave threshold";
                 mutableLookAndFeel.updateFormFactor({700.f, 900.f});
-                expect(!lookAndFeel.compact);
+                expect(!appState.compact);
                 mutableLookAndFeel.updateFormFactor({620.f, 900.f});
-                expect(!lookAndFeel.compact) << "stays desktop until the enter threshold";
+                expect(!appState.compact) << "stays desktop until the enter threshold";
                 mutableLookAndFeel.updateFormFactor({412.f, 915.f});
                 mutableLookAndFeel.updateFormFactor({0.f, 0.f});
-                expect(lookAndFeel.compact) << "a minimised window keeps its layout";
+                expect(appState.compact) << "a minimised window keeps its layout";
                 ctx->Yield();
-                expect(eq(lookAndFeel.compact, expectedCompact())) << "the next frame follows the window again";
+                expect(eq(appState.compact, expectedCompact())) << "the next frame follows the window again";
                 expect(eq(ImGui::GetStyle().FontScaleMain, expectedCompact() ? lookAndFeel.compactFontScale : 1.f));
             };
 
@@ -178,15 +179,14 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
 };
 
 int main(int argc, char* argv[]) {
-    TestState state;
-    g_state = std::addressof(state);
-
     auto              options = DigitizerUi::test::TestOptions::fromArgs(argc, argv);
     const std::string prefix  = std::format("compact_layout_{}x{}", static_cast<int>(options.windowSize.x), static_cast<int>(options.windowSize.y));
     options.screenshotPrefix  = prefix.c_str();
     TestApp app(options);
 
     app.initImGui();
+    TestState state;
+    gState = std::addressof(state);
     state.header.loadAssets();
 
     auto& registry = gr::globalBlockRegistry();
@@ -203,8 +203,5 @@ int main(int argc, char* argv[]) {
     state.selection->addDashboard("example://builtin-samples");
 
     const bool result = app.runTests();
-    state.selection.reset();
-    state.page.reset();
-    g_state = nullptr;
     return result ? 0 : 1;
 }

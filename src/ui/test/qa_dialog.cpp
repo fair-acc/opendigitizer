@@ -6,8 +6,7 @@
 using namespace boost;
 using namespace DigitizerUi::components;
 
-class TestApp : public DigitizerUi::test::ImGuiTestApp {
-private:
+struct TestApp : public DigitizerUi::test::ImGuiTestApp {
     using DigitizerUi::test::ImGuiTestApp::ImGuiTestApp;
 
     void registerTests() override {

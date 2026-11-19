@@ -323,9 +323,6 @@ With `tuner` set, e.g. to "RTLSDR:frequency", the panel also tunes the radio: th
 
     static constexpr std::string_view kChartTypeName = "RDSView";
 
-    [[nodiscard]] static constexpr std::string_view chartTypeName() noexcept { return kChartTypeName; }
-    [[nodiscard]] std::string_view                  uniqueId() const noexcept { return this->unique_name; }
-
     gr::work::Result work(std::size_t = std::numeric_limits<std::size_t>::max(), gr::device::DeviceContext& = gr::device::hostBackend()) noexcept { return {0UZ, 0UZ, gr::work::Status::OK}; }
 
     void settingsChanged(const gr::property_map& oldSettings, const gr::property_map& newSettings) {
@@ -1115,7 +1112,5 @@ With `tuner` set, e.g. to "RTLSDR:frequency", the panel also tunes the radio: th
 };
 
 } // namespace opendigitizer::charts
-
-inline auto registerRDSViewCompatibilities = opendigitizer::charts::registerChartSignalCompatibility<opendigitizer::charts::RDSView>();
 
 #endif // OPENDIGITIZER_CHARTS_RDSVIEW_HPP

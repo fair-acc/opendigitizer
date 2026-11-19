@@ -45,14 +45,27 @@ namespace DigitizerUi {
  *       globalFramePacer().requestFrame();  // wakes main thread via SDL event
  *   }
  */
-struct FramePacer {
-    using clock      = std::chrono::steady_clock;
+struct FrameRequestEvent {
+    static inline std::uint32_t _sdlEventType{0};
+
+    static std::uint32_t sdlEventType() noexcept { return _sdlEventType; }
+
+    static bool registerSdlEvent() noexcept {
+        static const bool registered = [] {
+            _sdlEventType = SDL_RegisterEvents(1);
+            return true;
+        }();
+        return registered;
+    }
+};
+
+template<typename TClock = std::chrono::steady_clock>
+struct BasicFramePacer : FrameRequestEvent {
+    using clock      = TClock;
     using time_point = clock::time_point;
     using duration   = clock::duration;
 
     static constexpr std::uint32_t minFramesNeededToResolveWidgetChanges = 3U;
-
-    static inline std::uint32_t _sdlEventType{0};
 
     std::chrono::nanoseconds   _maxPeriod;
     std::chrono::nanoseconds   _minPeriod;
@@ -63,17 +76,10 @@ struct FramePacer {
     std::atomic<std::uint64_t> _requestCount{0};
     std::atomic<std::uint64_t> _renderCount{0};
 
-    constexpr FramePacer(std::chrono::nanoseconds maxPeriod = std::chrono::seconds{1}, std::chrono::nanoseconds minPeriod = std::chrono::milliseconds{16}) noexcept : _maxPeriod(maxPeriod), _minPeriod(minPeriod) {}
-
-    static std::uint32_t sdlEventType() noexcept { return _sdlEventType; }
+    constexpr BasicFramePacer(std::chrono::nanoseconds maxPeriod = std::chrono::seconds{1}, std::chrono::nanoseconds minPeriod = std::chrono::milliseconds{16}) noexcept : _maxPeriod(maxPeriod), _minPeriod(minPeriod) {}
 
     void requestFrame() noexcept {
-        static auto initSdlEvent = [] {
-            _sdlEventType = SDL_RegisterEvents(1);
-            return true;
-        }();
-
-        if (initSdlEvent && _pendingFrames.exchange(minFramesNeededToResolveWidgetChanges, std::memory_order_acq_rel) == 0U) {
+        if (registerSdlEvent() && _pendingFrames.exchange(minFramesNeededToResolveWidgetChanges, std::memory_order_acq_rel) == 0U) {
             SDL_Event event{.type = _sdlEventType};
             SDL_PushEvent(&event);
         }
@@ -134,6 +140,8 @@ struct FramePacer {
         _requestCount.store(0, std::memory_order_relaxed);
     }
 };
+
+using FramePacer = BasicFramePacer<>;
 
 inline FramePacer& globalFramePacer() {
     static FramePacer instance{std::chrono::seconds{1}, std::chrono::milliseconds{16}};

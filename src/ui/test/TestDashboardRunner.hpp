@@ -7,26 +7,25 @@
 #include "imgui_test_engine/imgui_te_context.h"
 #pragma GCC diagnostic pop
 
+#include "ImGuiTestApp.hpp"
+
 #include <Dashboard.hpp>
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
+#include <format>
 #include <memory>
+#include <print>
+#include <source_location>
 #include <string_view>
 #include <vector>
+
+CMRC_DECLARE(ui_test_assets);
 
 namespace opendigitizer::test {
 inline const auto     defaultGRCFilesystem = cmrc::sample_dashboards::get_filesystem();
 constexpr const char* defaultGRCPath       = "assets/sampleDashboards/DemoDashboard.grc";
-
-inline void waitUntilAllSamplesDrawn(ImGuiTestContext* ctx, const DigitizerUi::Dashboard& dashboard) {
-    const auto isChart     = [&dashboard](const auto& block) { return std::ranges::contains(dashboard.uiWindows, block, &DigitizerUi::Dashboard::UIWindow::block); };
-    const auto hasFinished = [&isChart](const auto& block) { return isChart(block) || block->state() == gr::lifecycle::State::STOPPED; }; // chart blocks run until the scheduler stops
-    while (!std::ranges::all_of(dashboard.session.graph().blocks(), hasFinished)) {
-        ctx->Yield();
-    }
-    ctx->SleepNoSkip(0.1f, 0.02f);
-}
 
 inline std::vector<const ImGuiWindow*> chartWindows(const DigitizerUi::Dashboard& dashboard) {
     std::vector<const ImGuiWindow*> windows;
@@ -53,6 +52,15 @@ inline void waitForStableCharts(ImGuiTestContext* ctx, const DigitizerUi::Dashbo
     }
 }
 
+inline void waitUntilAllSamplesDrawn(ImGuiTestContext* ctx, const DigitizerUi::Dashboard& dashboard) {
+    const auto isChart     = [&dashboard](const auto& block) { return std::ranges::contains(dashboard.uiWindows, block, &DigitizerUi::Dashboard::UIWindow::block); };
+    const auto hasFinished = [&isChart](const auto& block) { return isChart(block) || block->state() == gr::lifecycle::State::STOPPED; }; // chart blocks run until the scheduler stops
+    while (!std::ranges::all_of(dashboard.session.graph().blocks(), hasFinished)) {
+        ctx->Yield();
+    }
+    waitForStableCharts(ctx, dashboard);
+}
+
 /// an item of an ImControl drawn in `windowRef`; ImGui::BeginCombo does not report its label to the test engine, so
 /// "**/##Label" does not find a control's dropdown
 inline ImGuiID controlItemId(ImGuiTestContext* ctx, const char* windowRef, std::string_view controlUniqueName, const char* itemLabel) {
@@ -73,21 +81,52 @@ struct TestDashboardRunner {
     // missed message. For this reason, we listen to all messages since the last
     // wait-for-reply (which clears the collection), or the start of the test case
     std::vector<gr::Message> collectedMessages;
+    std::size_t              _sentinelCount = 0UZ;
 
     virtual ~TestDashboardRunner() = default;
 
-    // blocks until `condition` holds, processing scheduler replies and UI frames. There is deliberately no deadline:
-    // the outcome must not depend on machine load, and a condition that never holds is caught by the ctest timeout.
     template<typename Condition>
     bool waitUntil(ImGuiTestContext* ctx, std::string_view what, Condition&& condition, std::source_location location = std::source_location::current()) {
-        bool result = condition();
-        std::println("\twaiting until {} ({}:{})", what, location.file_name(), location.line());
-        while (!result) {
-            dashboard->handleMessages();
-            ctx->Yield();
-            result = condition();
+        return opendigitizer::test::waitUntil(
+            ctx, what,
+            [this, &condition] {
+                if (condition()) {
+                    return true;
+                }
+                dashboard->session.handleMessages();
+                return false;
+            },
+            location);
+    }
+
+    // waits for `count` replies on `endpoint` since the last wait or clearMessages()
+    bool waitForReplies(ImGuiTestContext* ctx, std::string_view endpoint, std::size_t count = 1UZ, std::source_location location = std::source_location::current()) {
+        waitUntil(ctx, std::format("{} replies on {}", count, endpoint), [this, endpoint, count] { return static_cast<std::size_t>(std::ranges::count(collectedMessages, endpoint, &gr::Message::endpoint)) >= count; }, location);
+        clearMessages();
+        return true;
+    }
+
+    // every setting sent to `blockName` before the call has been applied: a Get of its staged settings, which queues
+    // behind them, replies with none left; a second round covers the settings control blocks send via the UI, which
+    // forwards them before the first reply
+    void waitUntilApplied(ImGuiTestContext* ctx, std::string_view blockName, std::source_location location = std::source_location::current()) {
+        bool applied = false;
+        for (std::size_t round = 0UZ; round < 2UZ || !applied; ++round) {
+            const std::string requestId = std::format("applied-{}-{}", blockName, ++_sentinelCount);
+            dashboard->session.sendMessage(DigitizerUi::makeMessage(gr::message::Command::Get, std::string(blockName), std::string(gr::block::property::kStagedSetting), {}, requestId));
+            const auto reply = [this, &requestId] { return std::ranges::find(collectedMessages, requestId, &gr::Message::clientRequestID); };
+            waitUntil(ctx, std::format("{} replies with its staged settings", blockName), [&] { return reply() != collectedMessages.end(); }, location);
+            applied = reply()->data.has_value() && reply()->data->empty();
         }
-        return result;
+    }
+
+    void sendSetting(std::string blockName, gr::property_map data) { dashboard->session.sendMessage(DigitizerUi::makeMessage(gr::message::Command::Set, std::move(blockName), std::string(gr::block::property::kSetting), std::move(data))); }
+
+    // the chart block of the first dashboard window whose block type contains `type`
+    template<typename TChart>
+    [[nodiscard]] TChart* chart(std::string_view type) const {
+        const auto window = std::ranges::find_if(dashboard->uiWindows, [type](const auto& w) { return w.block && w.block->typeName().find(type) != std::string_view::npos; });
+        return window == dashboard->uiWindows.end() ? nullptr : static_cast<TChart*>(window->block->raw());
     }
 
     virtual void waitForScheduler(ImGuiTestContext* ctx, std::source_location location = std::source_location::current()) {
@@ -133,7 +172,7 @@ struct TestDashboardRunner {
     void reloadFromYamlString(const std::string& yamlContents, const char* dashboardName = "empty") {
         auto dashBoardDescription = DigitizerUi::DashboardDescription::createEmpty(dashboardName);
         onDashboardAboutToBeUnloaded();
-        dashboard = DigitizerUi::Dashboard::create(restClient, dashBoardDescription);
+        dashboard = std::make_unique<DigitizerUi::Dashboard>(restClient, dashBoardDescription);
 
         dashboard->loadAndThen(yamlContents, [this](gr::Graph&& grGraph) { //
             dashboard->session.emplaceGraph(std::move(grGraph));
@@ -160,6 +199,9 @@ struct TestDashboardRunner {
         reloadFromYamlString(std::string(grcFile.begin(), grcFile.end()), dashboardName);
     }
 
+    void reloadSubgraph() { reload(cmrc::ui_test_assets::get_filesystem(), "examples/qa_subgraph.grc", "subgraph_test"); }
+    void reloadGrouping() { reload(cmrc::ui_test_assets::get_filesystem(), "examples/qa_grouping.grc", "grouping_test"); }
+
     void unloadDashboard() {
         onDashboardAboutToBeUnloaded();
         dashboard.reset();
@@ -181,6 +223,36 @@ struct TestDashboardRunner {
     }
 
     void clearMessages() { this->collectedMessages.clear(); }
+
+    [[nodiscard]] std::shared_ptr<gr::BlockModel> findBlockInRootGraph(std::string_view name) const {
+        const auto blocks = dashboard->session.graph().blocks();
+        const auto it     = std::ranges::find(blocks, name, &gr::BlockModel::name);
+        return it == blocks.end() ? nullptr : *it;
+    }
+
+    [[nodiscard]] gr::pmt::Value setting(std::string_view blockName, std::string_view key) const {
+        const auto block = findBlockInRootGraph(blockName);
+        return block ? block->settings().get(std::string{key}).value_or(gr::pmt::Value{}) : gr::pmt::Value{};
+    }
+
+    template<typename T>
+    [[nodiscard]] bool blockHasBasicTypeKeyValuePair(std::string_view blockName, std::string_view key, T expected) const {
+        const gr::pmt::Value value = setting(blockName, key);
+        const T*             typed = value.get_if<T>();
+        return typed != nullptr && *typed == expected;
+    }
+
+    [[nodiscard]] bool blockHasStringKeyValuePair(std::string_view blockName, std::string_view key, std::string_view expected) const {
+        const gr::pmt::Value            value = setting(blockName, key);
+        std::optional<std::string_view> typed = value.get_if<std::string_view>();
+        return typed.has_value() && *typed == expected;
+    }
+
+    [[nodiscard]] bool blockApproximatelyHasDoubleKeyValuePair(std::string_view blockName, std::string_view key, double expected) const {
+        const gr::pmt::Value value = setting(blockName, key);
+        const double*        typed = value.get_if<double>();
+        return typed != nullptr && std::abs(*typed - expected) < 1e-9;
+    }
 };
 } // namespace opendigitizer::test
 

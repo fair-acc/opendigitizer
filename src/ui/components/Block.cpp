@@ -21,8 +21,8 @@ using namespace std::string_literals;
 namespace {
 std::size_t countOtherBlocksWithProperty(DigitizerUi::UiGraphModel& model, const DigitizerUi::UiGraphBlock& block, const std::string& property) {
     std::size_t count = 0UZ;
-    forEachBlockRecursive(model.rootBlock, [&](DigitizerUi::UiGraphBlock& candidate) {
-        if (std::addressof(candidate) != std::addressof(block) && candidate.blockSettings.contains(property)) {
+    model.recursiveForEachBlock([&](const DigitizerUi::UiGraphModel::FindBlockResult& element) {
+        if (element.block != std::addressof(model.rootBlock) && element.block != std::addressof(block) && element.block->blockSettings.contains(property)) {
             ++count;
         }
     });
@@ -366,7 +366,7 @@ void BlockControlsPanel(BlockControlsPanelContext& panelContext, const ImVec2& p
     size = ImGui::GetContentRegionAvail();
 
     // don't close the panel while the mouse is hovering it, edits are made, or one of its dialogs is open
-    if (ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem) || InputKeypad<>::isVisible() || panelContext.modifyConnectionsDialog || panelContext.jumpToControlPopup) {
+    if (ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem) || InputKeypad::isVisible() || panelContext.modifyConnectionsDialog || panelContext.jumpToControlPopup) {
         panelContext.resetTime();
     }
 
@@ -404,7 +404,7 @@ gr::pmt::Value editBlockProperty(const char* label, const std::string& propertyN
                 ImVec4 col = ImGui::ColorConvertU32ToFloat4(rgbToImGuiABGR(static_cast<std::uint32_t>(value)));
                 float  rgb[3]{col.x, col.y, col.z};
                 if (ImGui::ColorEdit3(label, rgb, colorFieldEditorFlags)) {
-                    out = static_cast<T>((static_cast<std::uint32_t>(rgb[0] * 255.0f) << 16) | (static_cast<std::uint32_t>(rgb[1] * 255.0f) << 8) | static_cast<std::uint32_t>(rgb[2] * 255.0f));
+                    out = static_cast<T>(float3ToRGB(rgb));
                 }
             }
         }).visit(currentPropertyValue);
@@ -469,10 +469,9 @@ gr::pmt::Value editBlockProperty(const char* label, const std::string& propertyN
     case Type::Keypad: {
         assert(currentPropertyValue.is_arithmetic());
         gr::pmt::ValueVisitor([&propertyName, label, &meta, &out]<typename T>(const T& num) {
-            // sizeof(T) >= 4 is just here to reduce template instantiations of InputKeypad<>::edit
             if constexpr (std::is_arithmetic_v<T> && sizeof(T) >= 4) {
                 T temp = num;
-                if (InputKeypad<>::edit(propertyName, label, &temp, meta.unit)) {
+                if (InputKeypad::edit(propertyName, label, &temp, meta.unit)) {
                     if (meta.minValue) {
                         temp = std::max(temp, clampedTo<T>(*meta.minValue));
                     }
@@ -569,7 +568,7 @@ static void drawSettingRow(BlockControlsPanelContext& panelContext, const std::s
 }
 
 void BlockSettingsControls(BlockControlsPanelContext& panelContext, UiGraphBlock* block, const ImVec2& /*size*/) {
-    InputKeypad<>::clearIfNewBlock(block->blockUniqueName);
+    InputKeypad::clearIfNewBlock(block->blockUniqueName);
     const auto controlledProperties = block->ownerGraph ? block->ownerGraph->uiControlledProperties(*block) : UiGraphModel::ControlledPropertyMap{};
     // don't allow editing properties which are being edited by a UI control block
     const auto isPropertyLocked = [&controlledProperties](const std::string& key) {

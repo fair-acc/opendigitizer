@@ -26,6 +26,7 @@
 
 namespace DigitizerUi {
 
+namespace {
 bool plotSquareIconButton(const char* glyph, const char* tooltip, float buttonSize) noexcept {
     const bool ret = [&] {
         IMW::StyleColor buttonStyle(ImGuiCol_Button, LookAndFeel::instance().palette().mainWindowButtonBgInactive);
@@ -42,10 +43,11 @@ bool plotSquareIconButton(const char* glyph, const char* tooltip, float buttonSi
 
     return ret;
 }
+} // namespace
 
 DashboardPage::DashboardPage() {
     // Use SinkRegistry for listening to sink registration events
-    opendigitizer::charts::SinkRegistry::instance().addListener(this, [this, alive = std::weak_ptr(_alive)](opendigitizer::charts::SignalSink& sink, bool wasAdded) {
+    opendigitizer::charts::SinkRegistry::instance().addListener(this, [this, alive = std::weak_ptr(_alive)](opendigitizer::SignalSink& sink, bool wasAdded) {
         if (!wasAdded) {
             return;
         }
@@ -60,14 +62,7 @@ DashboardPage::DashboardPage() {
             const std::string sourceBlockName = it->second.sourceBlockName;
             _addedSourceBlocksWaitingForSink.erase(it);
 
-            _dashboard->session.sendToScheduler(gr::scheduler::property::kEmplaceEdge, gr::property_map{                                                                         //
-                                                                                           {std::pmr::string(gr::serialization_fields::EDGE_SOURCE_BLOCK), sourceBlockName},     //
-                                                                                           {std::pmr::string(gr::serialization_fields::EDGE_SOURCE_PORT), "out"},                //
-                                                                                           {std::pmr::string(gr::serialization_fields::EDGE_DESTINATION_BLOCK), sinkUniqueName}, //
-                                                                                           {std::pmr::string(gr::serialization_fields::EDGE_DESTINATION_PORT), "in"},            //
-                                                                                           {std::pmr::string(gr::serialization_fields::EDGE_MIN_BUFFER_SIZE), gr::Size_t(4096)}, //
-                                                                                           {std::pmr::string(gr::serialization_fields::EDGE_WEIGHT), 1},                         //
-                                                                                           {std::pmr::string(gr::serialization_fields::EDGE_NAME), "edge"}});
+            _dashboard->session.sendToScheduler(gr::scheduler::property::kEmplaceEdge, emplaceEdgeData(sourceBlockName, "out", sinkUniqueName, "in"));
 
             _dashboard->newUIBlock("XYChart", {{"data_sinks", gr::Tensor<gr::pmt::Value>{sinkName}}});
         });
@@ -173,8 +168,8 @@ void DashboardPage::addSelectedRemoteSignal(const SignalData& selectedRemoteSign
     const auto& uriStr_           = selectedRemoteSignal.uri();
     _addingRemoteSignals[uriStr_] = selectedRemoteSignal;
 
-    opendigitizer::RemoteSourceManager::instance().setRemoteSourceAddedCallback(uriStr_, [this, alive = std::weak_ptr(_alive), selectedRemoteSignal](opendigitizer::RemoteSourceModel& remoteSource) {
-        EventLoop::instance().executeLater([this, alive, selectedRemoteSignal, sourceUniqueName = remoteSource.uniqueName(), remoteSourceType = remoteSource.typeName()] {
+    opendigitizer::RemoteSources::instance().setRemoteSourceAddedCallback(uriStr_, [this, alive = std::weak_ptr(_alive), selectedRemoteSignal](const opendigitizer::RemoteSourceInfo& remoteSource) {
+        EventLoop::instance().executeLater([this, alive, selectedRemoteSignal, sourceUniqueName = remoteSource.uniqueName, remoteSourceType = remoteSource.typeName] {
             if (!alive.expired()) {
                 addSinkForRemoteSource(selectedRemoteSignal, sourceUniqueName, remoteSourceType);
             }
@@ -194,17 +189,8 @@ void DashboardPage::addSinkForRemoteSource(const SignalData& selectedRemoteSigna
     };
     _addingRemoteSignals.erase(uriStr);
 
-    auto                   it = std::ranges::find(remoteSourceType, '<');
-    const std::string_view remoteSourceBaseType(remoteSourceType.begin(), it);
-    const std::string_view remoteSourceTypeParams(it, remoteSourceType.end());
-
-    std::string sinkBlockType   = "opendigitizer::ImPlotSink";
-    std::string sinkBlockParams =                                                                                                             //
-        (remoteSourceBaseType == "opendigitizer::RemoteStreamSource" && remoteSourceTypeParams == "<float32>")    ? "<float32>"s              //
-        : (remoteSourceBaseType == "opendigitizer::RemoteStreamSource" && remoteSourceTypeParams == "<float64>")  ? "<float64>"s              //
-        : (remoteSourceBaseType == "opendigitizer::RemoteDataSetSource" && remoteSourceTypeParams == "<float32>") ? "<gr::DataSet<float32>>"s //
-        : (remoteSourceBaseType == "opendigitizer::RemoteDataSetSource" && remoteSourceTypeParams == "<float64>") ? "<gr::DataSet<float64>>"s //
-                                                                                                                  : /* otherwise error */ ""s;
+    using namespace opendigitizer;
+    const std::string_view sinkBlockType = remoteSourceType == gr::meta::type_name<RemoteStreamSource<float>>() ? gr::meta::type_name<ImPlotSink<float>>() : remoteSourceType == gr::meta::type_name<RemoteStreamSource<double>>() ? gr::meta::type_name<ImPlotSink<double>>() : remoteSourceType == gr::meta::type_name<RemoteDataSetSource<float>>() ? gr::meta::type_name<ImPlotSink<gr::DataSet<float>>>() : remoteSourceType == gr::meta::type_name<RemoteDataSetSource<double>>() ? gr::meta::type_name<ImPlotSink<gr::DataSet<double>>>() : baseTypeName<ImPlotSink<float>>(); // not registered: the emplace fails
     // need to avoid name collisions with both sink name and signal name because data_sinks searches for both
     const auto          isSignalNameOfASink = [](std::string_view name) { return opendigitizer::charts::SinkRegistry::instance().findSink([name](const auto& sink) { return sink.signalName() == name; }) != nullptr; };
     UniqueNameRegistry& nameRegistry        = _dashboard->session.graphModel.nameRegistry;
@@ -217,7 +203,7 @@ void DashboardPage::addSinkForRemoteSource(const SignalData& selectedRemoteSigna
         sinkProperties.emplace("signal_unit", selectedRemoteSignal.unit);
     }
 
-    _dashboard->session.sendToScheduler(gr::scheduler::property::kEmplaceBlock, {{"type", sinkBlockType + sinkBlockParams}, {"properties", std::move(sinkProperties)}});
+    _dashboard->session.sendToScheduler(gr::scheduler::property::kEmplaceBlock, {{"type", std::string(sinkBlockType)}, {"properties", std::move(sinkProperties)}});
 }
 
 void DashboardPage::drawBarLeading(LegendItemClickResult& clickResult) noexcept {
@@ -317,11 +303,11 @@ void DashboardPage::drawBarTrailing(Mode mode, LegendItemClickResult& clickResul
         ImGui::SameLine();
     }
 
-    if (LookAndFeel::instance().prototypeMode) {
+    if (gAppState.prototypeMode) {
         ImGui::SameLine();
         // Retrieve FPS and milliseconds per iteration
         const float fps     = ImGui::GetIO().Framerate;
-        const auto  str     = std::format("FPS:{:5.0f}({:2}ms)", fps, LookAndFeel::instance().execTime.count());
+        const auto  str     = std::format("FPS:{:5.0f}({:2}ms)", fps, gAppState.execTime.count());
         const auto  estSize = ImGui::CalcTextSize(str.c_str());
         ImGui::SetCursorPosX(cursorBeforeButtons - estSize.x - spacing);
         ImGui::Text("%s", str.c_str());

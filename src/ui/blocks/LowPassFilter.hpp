@@ -13,8 +13,6 @@
 
 namespace opendigitizer {
 
-GR_REGISTER_BLOCK(opendigitizer::LowPassFilter, [T], [float])
-
 /// Lowpass filter which, unlike gr::filter::BasicFilter, has interpolation and does not reconfigure itself when
 /// its settings change. This is useful for changing the cutoff value live / in real time. However, it lacks
 /// features that BasicFilter has such as decimation and support for types other than float.

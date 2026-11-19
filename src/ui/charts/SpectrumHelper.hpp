@@ -7,10 +7,15 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <format>
 #include <limits>
+#include <memory>
 #include <optional>
 #include <ranges>
 #include <span>
+#include <string>
+#include <type_traits>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -18,6 +23,7 @@
 
 #include "../common/LookAndFeel.hpp"
 #include "../utils/ShaderHelper.hpp"
+#include "Chart.hpp"
 #include <implot.h>
 
 namespace opendigitizer::charts {
@@ -277,7 +283,100 @@ inline void drawTraceOverlays(TraceAccumulator& traces, const SpectrumFrame& new
     }
 }
 
+template<typename TChart>
+void drawSpectrumSignals(TChart& chart, std::unordered_map<std::string, std::size_t>& sampleCountPerSink) {
+    forEachValidSpectrum(chart._signalSinks, [&](const auto& sink, const SpectrumFrame& f) {
+        if (sink.drawEnabled()) {
+            plotTrace(plotLabel(sink).c_str(), f.xValues, f.yValues, f.nBins, sinkColor(sink.color()), seriesLineWidth(sink));
+        }
+        const std::string sinkKey = std::string(sink.uniqueName());
+        const std::size_t nNew    = consumeNewData(sampleCountPerSink[sinkKey], sink.totalSampleCount());
+        drawTraceOverlays(chart._tracesPerSink[sinkKey], f, nNew, static_cast<double>(chart.decay_tau_frames), sinkColor(chart.trace_color), chart.show_max_hold, chart.show_min_hold, chart.show_average);
+        return true;
+    });
+}
+
+[[nodiscard]] inline std::pair<double, double> timeAxisBounds(double tOldest, double tNewest, AxisScale scale) {
+    double duration = tNewest - tOldest;
+    if (scale == AxisScale::Time) {
+        return {tOldest, tNewest};
+    }
+    if (scale == AxisScale::LinearReverse) {
+        return {-duration, 0.0};
+    }
+    return {0.0, duration}; // Linear, Log10, SymLog — positive offsets
+}
+
+inline int formatTimeOfDay(double value, char* buff, int size, void* /*userData*/) {
+    using Clock    = std::chrono::system_clock;
+    auto timePoint = Clock::time_point(std::chrono::duration_cast<Clock::duration>(std::chrono::duration<double>(value)));
+    auto secs      = std::chrono::time_point_cast<std::chrono::seconds>(timePoint);
+    auto ms        = std::chrono::duration_cast<std::chrono::milliseconds>(timePoint - secs).count();
+    auto result    = std::format_to_n(buff, static_cast<std::ptrdiff_t>(size) - 1, "{:%H:%M:%S}.{:02}", secs, ms / 10);
+    *result.out    = '\0';
+    return static_cast<int>(result.out - buff);
+}
+
+// ImPlotScale_Time is X-axis-only: time is Linear with a custom formatter on either axis
+inline void setupTimeAxis(ImAxis timeAxis, AxisScale scale, bool showGrid, std::string& unitStorage) {
+    ImPlotAxisFlags tFlags = (showGrid ? ImPlotAxisFlags_None : ImPlotAxisFlags_NoGridLines) | ImPlotAxisFlags_Foreground;
+    ImPlot::SetupAxis(timeAxis, "", tFlags);
+
+    if (scale == AxisScale::Time) {
+        ImPlot::SetupAxisFormat(timeAxis, formatTimeOfDay, nullptr);
+        ImPlot::SetupAxisScale(timeAxis, ImPlotScale_Linear);
+        return;
+    }
+    unitStorage = "s";
+    ImPlot::SetupAxisFormat(timeAxis, axis::formatMetric, const_cast<void*>(static_cast<const void*>(unitStorage.c_str())));
+    switch (scale) {
+    case AxisScale::Log10: ImPlot::SetupAxisScale(timeAxis, ImPlotScale_Log10); break;
+    case AxisScale::SymLog: ImPlot::SetupAxisScale(timeAxis, ImPlotScale_SymLog); break;
+    default: ImPlot::SetupAxisScale(timeAxis, ImPlotScale_Linear); break;
+    }
+}
+
+template<typename T>
+[[nodiscard]] std::vector<T> resizeRing(const std::vector<T>& ring, std::size_t rowWidth, std::size_t height, std::size_t writeRow, std::size_t keptRows, std::size_t newHeight) {
+    std::vector<T> resized(rowWidth * newHeight, T{});
+    for (std::size_t i = 0; i < keptRows; ++i) {
+        const std::size_t srcRow = (writeRow + height - keptRows + i) % height;
+        const std::size_t dstRow = (newHeight - keptRows + i) % newHeight;
+        std::copy_n(ring.data() + srcRow * rowWidth, rowWidth, resized.data() + dstRow * rowWidth);
+    }
+    return resized;
+}
+
+inline void followColourScale(double& scaleMin, double& scaleMax, double frameMin, double frameMax, bool first) {
+    if (first) {
+        scaleMin = frameMin;
+        scaleMax = frameMax;
+        return;
+    }
+    constexpr double kAlpha = 0.05;
+    scaleMin += (frameMin - scaleMin) * kAlpha;
+    scaleMax += (frameMax - scaleMax) * kAlpha;
+}
+
 namespace gl = opendigitizer::shader;
+
+template<typename TexId = ImTextureID>
+[[nodiscard]] TexId toTextureId(GLuint id) {
+    if constexpr (std::is_pointer_v<TexId>) {
+        return reinterpret_cast<TexId>(static_cast<std::uintptr_t>(id));
+    } else {
+        return static_cast<TexId>(id);
+    }
+}
+
+template<typename TFn>
+void withTextureBound(GLuint texture, TFn&& fn) {
+    GLint previous = 0;
+    glGetIntegerv(GL_TEXTURE_BINDING_2D, &previous);
+    glBindTexture(GL_TEXTURE_2D, texture);
+    fn();
+    glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(previous));
+}
 
 /**
  * @brief GPU-accelerated 2D density histogram with automatic CPU fallback.
@@ -325,6 +424,7 @@ struct DensityHistogram {
 
     // reusable scratch buffers (avoid per-frame heap allocations)
     std::vector<float> _scratchBuffer;
+    std::vector<float> _logRow; // linear spectrum re-binned onto log-spaced columns
 
     // CPU fallback — full histogram in system memory, RGBA8 texture upload per frame
     std::vector<float>                  _cpuHistogram;
@@ -768,6 +868,20 @@ void main() {
 
     void plot(std::span<const float> xValues, double yMin, double yMax) { plot(static_cast<double>(xValues.front()), static_cast<double>(xValues.back()), yMin, yMax); }
 
+    void accumulateAndPlot(const SpectrumFrame& newest, std::size_t nNew, const std::optional<LogFreqRange>& logRange, std::size_t ampBins, double decayTau, double yMin, double yMax, ImPlotColormap colormap, bool preferGpu) {
+        if (logRange) {
+            forEachNewSpectrum(newest, nNew, [&](const SpectrumFrame& s) {
+                _logRow.resize(kLogSpectrumColumns);
+                buildLogBinnedRow(s.xValues, s.yValues, s.nBins, logRange->min, logRange->max, _logRow);
+                update(_logRow, kLogSpectrumColumns, ampBins, decayTau, yMin, yMax, colormap, preferGpu);
+            });
+            plot(logRange->min, logRange->max, yMin, yMax);
+        } else {
+            forEachNewSpectrum(newest, nNew, [&](const SpectrumFrame& s) { update(s.yValues, s.nBins, ampBins, decayTau, yMin, yMax, colormap, preferGpu); });
+            plot(newest.xValues, yMin, yMax);
+        }
+    }
+
     void plot(double freqMin, double freqMax, double yMin, double yMax) {
         GLuint tex = _gpuAvailable ? _colormapTexture : _cpuTexture;
         if (!tex) {
@@ -776,15 +890,13 @@ void main() {
         if (!_gpuAvailable && _cpuNeedsRecolour) {
             cpuRecolour();
         }
-        auto toTextureId = []<typename TexId = ImTextureID>(GLuint id) -> TexId {
-            if constexpr (std::is_pointer_v<TexId>) {
-                return reinterpret_cast<TexId>(static_cast<std::uintptr_t>(id));
-            } else {
-                return static_cast<TexId>(id);
-            }
-        };
         ImPlot::PlotImage("##density", toTextureId(tex), ImPlotPoint(freqMin, yMin), ImPlotPoint(freqMax, yMax));
     }
+};
+
+struct FrequencySpan {
+    double freqMin;
+    double freqMax;
 };
 
 /**
@@ -816,6 +928,7 @@ struct WaterfallBuffer {
     mutable std::vector<float> _linearized;    // CPU path: scratch for rendering
     double                     _effectiveScaleMin = 0.0;
     double                     _effectiveScaleMax = 0.0;
+    std::vector<float>         _logRow; // linear spectrum re-binned onto log-spaced columns
 
     WaterfallBuffer() = default;
 
@@ -853,6 +966,34 @@ struct WaterfallBuffer {
         }
     }
 
+    template<typename TColourRange>
+    [[nodiscard]] std::optional<FrequencySpan> pushNewSpectra(const std::vector<std::shared_ptr<SignalSink>>& sinks, std::size_t& lastPushedSampleCount, const std::optional<LogFreqRange>& logRange, std::size_t nHistory, bool preferGpu, ImPlotColormap colormap, TColourRange&& colourRange) {
+        std::optional<FrequencySpan> pushed;
+        auto                         pushSpectrum = [&](const SpectrumFrame& f) {
+            const std::size_t width = logRange ? kLogSpectrumColumns : f.nBins;
+            if (_width != width) {
+                init(width, nHistory, preferGpu);
+            }
+
+            updateAutoScale(f.yValues, f.nBins);
+            const auto [cMin, cMax] = colourRange();
+            if (logRange) {
+                _logRow.resize(kLogSpectrumColumns);
+                buildLogBinnedRow(f.xValues, f.yValues, f.nBins, logRange->min, logRange->max, _logRow);
+                pushRow(_logRow, kLogSpectrumColumns, cMin, cMax, timestampFromNanos(f.timestamp), colormap);
+                pushed = FrequencySpan{.freqMin = logRange->min, .freqMax = logRange->max};
+            } else {
+                pushRow(f.yValues, f.nBins, cMin, cMax, timestampFromNanos(f.timestamp), colormap);
+                pushed = FrequencySpan{.freqMin = static_cast<double>(f.xValues.front()), .freqMax = static_cast<double>(f.xValues.back())};
+            }
+        };
+        forEachValidSpectrum(sinks, [&](const auto& sink, const SpectrumFrame& newest) {
+            forEachNewSpectrum(newest, consumeNewData(lastPushedSampleCount, sink.totalSampleCount()), pushSpectrum);
+            return false;
+        });
+        return pushed;
+    }
+
     void setPreferGpu(bool preferGpu) {
         if (_preferGpu == preferGpu) {
             return;
@@ -883,11 +1024,7 @@ struct WaterfallBuffer {
             }
             std::fill_n(row + n, _width - n, uint32_t(0));
 
-            GLint prevTexture = 0;
-            glGetIntegerv(GL_TEXTURE_BINDING_2D, &prevTexture);
-            glBindTexture(GL_TEXTURE_2D, _texture);
-            glTexSubImage2D(GL_TEXTURE_2D, 0, 0, static_cast<GLint>(_writeRow), static_cast<GLsizei>(_width), 1, GL_RGBA, GL_UNSIGNED_BYTE, row);
-            glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(prevTexture));
+            withTextureBound(_texture, [&] { glTexSubImage2D(GL_TEXTURE_2D, 0, 0, static_cast<GLint>(_writeRow), static_cast<GLsizei>(_width), 1, GL_RGBA, GL_UNSIGNED_BYTE, row); });
         } else {
             float* row = _rawMagnitudes.data() + _writeRow * _width;
             for (std::size_t i = 0; i < n; ++i) {
@@ -916,16 +1053,9 @@ struct WaterfallBuffer {
 
         // center-of-texel UVs avoid GL_NEAREST boundary ambiguity at the write-head seam; the time axis (texture V)
         // wraps via GL_REPEAT, so vNewest/vOldest may fall outside [0,1].
-        const auto  fHeight     = static_cast<float>(_height);
-        const float vNewest     = (static_cast<float>(_writeRow) - 0.5f) / fHeight;
-        const float vOldest     = (static_cast<float>(_writeRow) - static_cast<float>(_filledRows) + 0.5f) / fHeight;
-        auto        toTextureId = []<typename TexId = ImTextureID>(GLuint id) -> TexId {
-            if constexpr (std::is_pointer_v<TexId>) {
-                return reinterpret_cast<TexId>(static_cast<std::uintptr_t>(id));
-            } else {
-                return static_cast<TexId>(id);
-            }
-        };
+        const auto  fHeight = static_cast<float>(_height);
+        const float vNewest = (static_cast<float>(_writeRow) - 0.5f) / fHeight;
+        const float vOldest = (static_cast<float>(_writeRow) - static_cast<float>(_filledRows) + 0.5f) / fHeight;
 
         if (horizontal) {
             // PlotImage can't transpose, so map the quad explicitly: texture U (freq) -> Y, V (time) -> X.
@@ -985,36 +1115,14 @@ struct WaterfallBuffer {
             return;
         }
 
-        std::vector<double> newTimestamps(newHeight, 0.0);
-        std::size_t         rowsToCopy = std::min(_filledRows, newHeight);
-
+        const std::size_t rowsToCopy = std::min(_filledRows, newHeight);
         if (_texture) {
-            std::vector<uint32_t> newPixels(_width * newHeight, 0U);
-            for (std::size_t i = 0; i < rowsToCopy; ++i) {
-                std::size_t srcRow = (_writeRow + _height - rowsToCopy + i) % _height;
-                std::size_t dstRow = (newHeight - rowsToCopy + i) % newHeight;
-                std::copy_n(_pixels.data() + srcRow * _width, _width, newPixels.data() + dstRow * _width);
-                newTimestamps[dstRow] = _timestamps[srcRow];
-            }
-            _pixels = std::move(newPixels);
-
-            GLint prevTexture = 0;
-            glGetIntegerv(GL_TEXTURE_BINDING_2D, &prevTexture);
-            glBindTexture(GL_TEXTURE_2D, _texture);
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, static_cast<GLsizei>(_width), static_cast<GLsizei>(newHeight), 0, GL_RGBA, GL_UNSIGNED_BYTE, _pixels.data());
-            glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(prevTexture));
+            _pixels = resizeRing(_pixels, _width, _height, _writeRow, rowsToCopy, newHeight);
+            withTextureBound(_texture, [&] { glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, static_cast<GLsizei>(_width), static_cast<GLsizei>(newHeight), 0, GL_RGBA, GL_UNSIGNED_BYTE, _pixels.data()); });
         } else {
-            std::vector<float> newMagnitudes(_width * newHeight, 0.0f);
-            for (std::size_t i = 0; i < rowsToCopy; ++i) {
-                std::size_t srcRow = (_writeRow + _height - rowsToCopy + i) % _height;
-                std::size_t dstRow = (newHeight - rowsToCopy + i) % newHeight;
-                std::copy_n(_rawMagnitudes.data() + srcRow * _width, _width, newMagnitudes.data() + dstRow * _width);
-                newTimestamps[dstRow] = _timestamps[srcRow];
-            }
-            _rawMagnitudes = std::move(newMagnitudes);
+            _rawMagnitudes = resizeRing(_rawMagnitudes, _width, _height, _writeRow, rowsToCopy, newHeight);
         }
-
-        _timestamps = std::move(newTimestamps);
+        _timestamps = resizeRing(_timestamps, 1UZ, _height, _writeRow, rowsToCopy, newHeight);
         _height     = newHeight;
         _filledRows = rowsToCopy;
         _writeRow   = 0;
@@ -1033,11 +1141,7 @@ struct WaterfallBuffer {
         _scaleMax   = 0.0;
 
         if (_texture && _width > 0 && _height > 0) {
-            GLint prevTexture = 0;
-            glGetIntegerv(GL_TEXTURE_BINDING_2D, &prevTexture);
-            glBindTexture(GL_TEXTURE_2D, _texture);
-            glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, static_cast<GLsizei>(_width), static_cast<GLsizei>(_height), GL_RGBA, GL_UNSIGNED_BYTE, _pixels.data());
-            glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(prevTexture));
+            withTextureBound(_texture, [&] { glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, static_cast<GLsizei>(_width), static_cast<GLsizei>(_height), GL_RGBA, GL_UNSIGNED_BYTE, _pixels.data()); });
         }
     }
 
@@ -1068,14 +1172,7 @@ struct WaterfallBuffer {
         if (fMax <= fMin) {
             return; // no finite range this frame -> keep the previous colour scale
         }
-        if (_filledRows == 0) {
-            _scaleMin = fMin;
-            _scaleMax = fMax;
-        } else {
-            constexpr double kAlpha = 0.05;
-            _scaleMin += (fMin - _scaleMin) * kAlpha;
-            _scaleMax += (fMax - _scaleMax) * kAlpha;
-        }
+        followColourScale(_scaleMin, _scaleMax, fMin, fMax, _filledRows == 0);
     }
 
     void destroy() {

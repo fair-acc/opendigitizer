@@ -23,8 +23,7 @@ using namespace boost;
       so N boost:ut::test grouping testable functionallity.
  */
 
-class TestApp : public DigitizerUi::test::ImGuiTestApp {
-private:
+struct TestApp : public DigitizerUi::test::ImGuiTestApp {
     using DigitizerUi::test::ImGuiTestApp::ImGuiTestApp;
 
     void registerTests() override {

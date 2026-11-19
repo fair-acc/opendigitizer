@@ -14,8 +14,6 @@
 #include <string>
 #include <string_view>
 
-enum class ExecutionMode : std::uint8_t { Async = 0, Sync };
-
 #ifdef __EMSCRIPTEN__
 EMSCRIPTEN_KEEPALIVE inline char __em_lib_deps_od_ui[] __attribute__((section("em_lib_deps"), aligned(1))) = "$UTF8ToString"; // inline: one per program, unlike EM_JS_DEPS
 #endif
@@ -66,22 +64,6 @@ inline void publishForBrowserTests([[maybe_unused]] std::string_view table, [[ma
 #endif
 }
 
-constexpr bool isWebAssembly() noexcept {
-#ifdef __EMSCRIPTEN__
-    return true;
-#else
-    return false;
-#endif
-}
-
-inline bool isMainThread() {
-#ifdef __EMSCRIPTEN__
-    return emscripten_is_main_runtime_thread();
-#else
-    return true; // Native: assume single-threaded or main thread
-#endif
-}
-
 inline bool isTabVisible() {
 #ifdef __EMSCRIPTEN__
     EmscriptenVisibilityChangeEvent status;
@@ -91,21 +73,6 @@ inline bool isTabVisible() {
 #endif
     return true;
 }
-
-#ifdef __EMSCRIPTEN__
-inline bool em_visibilitychange_callback(int, const EmscriptenVisibilityChangeEvent* evt, void*) {
-    constexpr int visibleFPS = 0; // 0 = requestAnimationFrame
-    constexpr int hiddenFPS  = 5; // ~200ms refresh when hidden
-    if (evt->hidden) {
-        emscripten_set_main_loop_timing(EM_TIMING_SETTIMEOUT, 1000 / hiddenFPS);
-        std::println("[MainLoop] Switched to setTimeout {}ms (hidden)", 1000 / hiddenFPS);
-    } else {
-        emscripten_set_main_loop_timing(EM_TIMING_RAF, visibleFPS);
-        std::println("[MainLoop] Switched to requestAnimationFrame (visible)");
-    }
-    return true;
-}
-#endif
 
 /// Update or clear `#dashboard=` in the browser URL without reloading (WASM only).
 inline void setBrowserDashboardFragment([[maybe_unused]] std::string_view dashboardName) {
@@ -135,44 +102,5 @@ inline void setBrowserDashboardFragment([[maybe_unused]] std::string_view dashbo
 #pragma clang diagnostic pop
 #endif
 }
-
-// clang-format off
-inline void listPersistentFiles([[maybe_unused]] bool recursive = true) {
-#ifdef __EMSCRIPTEN__
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdollar-in-identifier-extension"
-    EM_ASM_(
-        {
-            function listDir(path, recursive, indent = "") {
-                try {
-                    const entries = FS.readdir(path);
-                    for (let entry of entries) {
-                        if (entry === '.' || entry === '..') {
-                            continue;
-                        }
-                        const fullPath = path + (path.endsWith('/') ? "" : "/") + entry;
-                        const stat     = FS.stat(fullPath);
-                        if (FS.isDir(stat.mode)) {
-                            console.log(indent + '[Dir] ' + fullPath);
-                            if (recursive) {
-                                listDir(fullPath, recursive, indent + '  ');
-                            }
-                        } else {
-                            console.log(indent + '[File] ' + fullPath);
-                        }
-                    }
-                } catch (e) {
-                    console.error('Error listing directory:', path, e);
-                }
-            }
-            listDir('/', $0 !== 0);
-        },
-        recursive ? 1 : 0);
-#pragma clang diagnostic pop
-#else
-
-#endif
-}
-// clang-format on
 
 #endif // EMSCRIPTENHELPER_HPP

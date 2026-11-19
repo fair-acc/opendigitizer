@@ -5,10 +5,17 @@
 
 #include <functional>
 #include <map>
+#include <optional>
 #include <set>
 #include <string>
 
 namespace DigitizerUi {
+
+struct FilteredListState {
+    std::optional<std::string> selected;
+    std::string                filterString;
+    bool                       filterInputReclaimFocus = false;
+};
 
 class NewBlockSelector {
 private:
@@ -19,6 +26,8 @@ private:
     std::string m_currentlySelectedType;
     std::string m_previouslySelectedType;
     std::string m_selectedTypeParametrizationListName;
+
+    std::map<std::string, FilteredListState, std::less<>> m_parametrizationLists;
 
     std::function<void(std::string)> m_onTypeSelected;
 

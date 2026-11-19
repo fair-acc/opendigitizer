@@ -75,9 +75,6 @@ struct SpectrumPlot : gr::Block<SpectrumPlot, gr::Drawable<gr::UICategory::Conte
 
     static constexpr std::string_view kChartTypeName = "SpectrumPlot";
 
-    [[nodiscard]] static constexpr std::string_view chartTypeName() noexcept { return kChartTypeName; }
-    [[nodiscard]] std::string_view                  uniqueId() const noexcept { return this->unique_name; }
-
     gr::work::Result work(std::size_t = std::numeric_limits<std::size_t>::max(), gr::device::DeviceContext& = gr::device::hostBackend()) noexcept { return {0UZ, 0UZ, gr::work::Status::OK}; }
 
     void settingsChanged(const gr::property_map& /*oldSettings*/, const gr::property_map& newSettings) { handleSettingsChanged(newSettings); }
@@ -100,7 +97,7 @@ struct SpectrumPlot : gr::Block<SpectrumPlot, gr::Drawable<gr::UICategory::Conte
 
         setupAxes(plotSize, showGrid);
         setupFinish();
-        drawSpectrumSignals();
+        drawSpectrumSignals(*this, _lastSampleCountPerSink);
         drawFrequencyMarkers(0UZ);
         tooltip::showPlotMouseTooltip();
         handleCommonInteractions(chartMode);
@@ -120,24 +117,8 @@ struct SpectrumPlot : gr::Block<SpectrumPlot, gr::Drawable<gr::UICategory::Conte
         setupSingleAxis(true, ImAxis_X1, plotSize, showGrid, LabelFormat::MetricInline);
         setupSingleAxis(false, ImAxis_Y1, plotSize, showGrid);
     }
-
-    void drawSpectrumSignals() {
-        forEachValidSpectrum(_signalSinks, [&](const auto& sink, const SpectrumFrame& f) {
-            if (sink.drawEnabled()) {
-                plotTrace(plotLabel(sink).c_str(), f.xValues, f.yValues, f.nBins, sinkColor(sink.color()), seriesLineWidth(sink));
-            }
-            const std::string sinkKey = std::string(sink.uniqueName());
-            auto&             traces  = _tracesPerSink[sinkKey];
-            const std::size_t nNew    = consumeNewData(_lastSampleCountPerSink[sinkKey], sink.totalSampleCount());
-            drawTraceOverlays(traces, f, nNew, static_cast<double>(decay_tau_frames), sinkColor(trace_color), show_max_hold, show_min_hold, show_average);
-            return true;
-        });
-    }
 };
 
 } // namespace opendigitizer::charts
-
-GR_REGISTER_BLOCK("opendigitizer::charts::SpectrumPlot", opendigitizer::charts::SpectrumPlot)
-inline auto registerSpectrumPlotCompatibilities = opendigitizer::charts::registerChartSignalCompatibility<opendigitizer::charts::SpectrumPlot>();
 
 #endif // OPENDIGITIZER_CHARTS_SPECTRUMPLOT_HPP

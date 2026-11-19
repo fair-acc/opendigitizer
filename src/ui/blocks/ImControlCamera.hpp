@@ -40,14 +40,13 @@ priority and the camera controls that both the V4L2 and the browser backend offe
         const SizeAndLayout layout       = prepareDraw(parsedConfig, look.dashboardStyle.toolbarControlInputWidth, look.dashboardStyle.toolbarControlMinimumWidth, labelWidth());
         loadValueIfConnectionChanged(value, parsedConfig);
         const gr::property_map& target = parsedConfig.firstControlledProperty.targetSettings;
-        drawWithLabelAndTooltip(layout, [&](float width) {
+        drawWithLabel(layout, [&](float width) {
             const bool    insideNodeEditor = parsedConfig.drawingContext == DrawableBlockConfig::DrawingContext::FlowgraphView;
             IMW::Disabled cannotOpen(insideNodeEditor);
             ImGui::SetNextItemWidth(width - ImGui::GetFrameHeight() - ImGui::GetStyle().ItemInnerSpacing.x);
             if (auto picked = pickDevice("##device", target, value)) {
-                value       = std::move(*picked);
-                std::ignore = settings().setStaged({{"value", value}});
-                sendToTargets(value);
+                value = std::move(*picked);
+                commitValue(value);
             }
             ImGui::SameLine(0.f, ImGui::GetStyle().ItemInnerSpacing.x);
             if (ImGui::Button("...##cameraSettings", ImVec2(ImGui::GetFrameHeight(), ImGui::GetFrameHeight()))) {

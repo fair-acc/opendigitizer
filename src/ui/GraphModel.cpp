@@ -2,7 +2,7 @@
 
 #include "components/ImGuiNotify.hpp"
 
-#include "scope_exit.hpp"
+#include <gnuradio-4.0/meta/utils.hpp>
 
 #include <gnuradio-4.0/Logger.hpp>
 #include <gnuradio-4.0/PmtTypeHelpers.hpp>
@@ -24,10 +24,20 @@
 #include <span>
 
 #include "MapUtils.hpp"
+#include "charts/BlockTypes.hpp"
 
 #include "blocks/TargetMap.hpp"
 
 using namespace std::string_literals;
+
+bool DigitizerUi::isChartTypeName(std::string_view typeName) { return opendigitizer::charts::chartTypes().contains(typeName); }
+
+bool DigitizerUi::isPlotSinkTypeName(std::string_view typeName) { return opendigitizer::plotSinkTypes().contains(typeName); }
+
+bool DigitizerUi::isDataSetPlotSinkTypeName(std::string_view typeName) {
+    const auto type = opendigitizer::plotSinkTypes().find(typeName);
+    return type != opendigitizer::plotSinkTypes().end() && type->second;
+}
 
 UiGraphBlock::~UiGraphBlock() {
     if (ownerGraph) {
@@ -92,7 +102,7 @@ auto UiGraphBlock::findPortIteratorByName(auto& ports, const std::string& portNa
     return std::make_pair(it, it != ports.end());
 }
 
-void UiGraphBlock::handleChildBlockEmplaced(const gr::property_map& blockData) {
+void UiGraphBlock::emplaceChild(const gr::property_map& blockData) {
     // Only graphs can have children emplaced. Schedulers have only one child
     // (the graph) which is never emplaced, it is there from the start
     auto* thisGraphInfo = std::get_if<GraphBlockInfo>(&blockCategoryInfo);
@@ -118,7 +128,7 @@ void UiGraphBlock::handleChildBlockEmplaced(const gr::property_map& blockData) {
     }
 }
 
-bool UiGraphBlock::handleChildBlockRemoved(const std::string& uniqueName) {
+bool UiGraphBlock::removeChild(const std::string& uniqueName) {
     auto [blockIt, found] = findBlockIteratorBy({SearchProperty::UniqueName}, uniqueName);
     if (!found) {
         gr::log::debug("requestFullUpdate reason: requested an unknown block to be removed {}", uniqueName);
@@ -133,7 +143,7 @@ bool UiGraphBlock::handleChildBlockRemoved(const std::string& uniqueName) {
     return true;
 }
 
-void UiGraphBlock::handleChildEdgeEmplaced(const gr::property_map& data) {
+void UiGraphBlock::emplaceEdge(const gr::property_map& data) {
     auto edge = parseEdgeData(data);
     if (edge) {
         childEdges.emplace_back(std::move(*edge));
@@ -143,8 +153,6 @@ void UiGraphBlock::handleChildEdgeEmplaced(const gr::property_map& data) {
         ownerGraph->requestFullUpdate();
     }
 }
-
-void UiGraphBlock::handleChildEdgeRemoved(const gr::property_map& /* data */) { ownerGraph->requestFullUpdate(); }
 
 void UiGraphBlock::setSchedulerGraph(const gr::property_map& data) {
     assert(blockCategory == "ScheduledBlockGroup");
@@ -188,7 +196,7 @@ void UiGraphBlock::setGraphChildren(const gr::property_map& data) {
             if (found) {
                 (*blockIt)->setBlockData(*blockData);
             } else {
-                handleChildBlockEmplaced(*blockData);
+                emplaceChild(*blockData);
             }
         }
     } else {
@@ -205,7 +213,7 @@ void UiGraphBlock::setGraphChildren(const gr::property_map& data) {
             if (found) {
                 (*blockIt)->setBlockData(map);
             } else {
-                handleChildBlockEmplaced(map);
+                emplaceChild(map);
             }
         }
     }
@@ -279,17 +287,12 @@ void UiGraphBlock::setSetting(std::string_view keyToUpdate, gr::pmt::Value&& upd
         updatedValue                = ownerGraph->nameRegistry.ensureNameIsUnique(validName);
     }
 
-    gr::Message message;
-    message.serviceName = blockUniqueName;
-    message.endpoint    = gr::block::property::kSetting;
-    message.cmd         = gr::message::Command::Set;
-    message.data        = gr::property_map{{std::pmr::string(keyToUpdate), std::move(updatedValue)}};
-    ownerGraph->sendMessage(std::move(message));
+    ownerGraph->send(gr::message::Command::Set, blockUniqueName, gr::block::property::kSetting, {{std::pmr::string(keyToUpdate), std::move(updatedValue)}});
 }
 
 void UiGraphBlock::setBlockData(const gr::property_map& data) {
-    newGraphDataBeingSet           = true;
-    Digitizer::utils::scope_exit _ = [&] { newGraphDataBeingSet = false; };
+    newGraphDataBeingSet = true;
+    gr::on_scope_exit _  = [&] { newGraphDataBeingSet = false; };
 
     setBasicBlockData(data);
 
@@ -299,12 +302,7 @@ void UiGraphBlock::setBlockData(const gr::property_map& data) {
         // When we get new data for a scheduler, we can only set the
         // basic data and send the inspection message for the scheduler
         // to send us its data.
-        gr::Message message;
-        message.cmd         = gr::message::Command::Get;
-        message.endpoint    = gr::scheduler::property::kSchedulerInspect;
-        message.serviceName = blockUniqueName;
-        message.data        = gr::property_map{};
-        ownerGraph->sendMessage(std::move(message));
+        ownerGraph->send(gr::message::Command::Get, blockUniqueName, gr::scheduler::property::kSchedulerInspect);
     }
 
     // graphs and schedulers derive their ports from their children, so this has to
@@ -405,8 +403,6 @@ void UiGraphBlock::setBasicBlockData(const gr::property_map& blockData) {
     updateBlockSettingsMetaInformation();
 
     updateFieldFrom(blockCategory, blockData, blockCategory, "block_category"s);
-    updateFieldFrom(blockUiCategory, blockData, blockUiCategory, "ui_category"s);
-    updateFieldFrom(blockIsBlocking, blockData, blockIsBlocking, "is_blocking"s);
 
     if (!storedXY) {
         const auto x = getOptionalProperty<float, true>(blockSettings, "ui_constraints", "x");
@@ -587,50 +583,15 @@ void UiGraphBlock::removeEdgesForBlock(UiGraphBlock& block) {
     }
 }
 
-bool UiGraphBlock::isConnected() const {
-    assert(parentBlock);
-    return std::ranges::find_if(parentBlock->childEdges, [blockPtr = this](const auto& edge) {
-        return edge.edgeSourcePort->ownerBlock == blockPtr || //
-               edge.edgeDestinationPort->ownerBlock == blockPtr;
-    }) != parentBlock->childEdges.cend();
-}
+void UiGraphBlock::getAllContexts() { ownerGraph->send(gr::message::Command::Get, blockUniqueName, gr::block::property::kSettingsContexts, {}, "all"); }
 
-void UiGraphBlock::getAllContexts() { ownerGraph->sendMessage(gr::Message{.cmd = gr::Message::Get, .serviceName = blockUniqueName, .clientRequestID = "all", .endpoint = gr::block::property::kSettingsContexts, .data = {}}); }
+void UiGraphBlock::setActiveContext(const ContextTime& contextTime) { ownerGraph->send(gr::message::Command::Set, blockUniqueName, gr::block::property::kActiveContext, {{"gr:context", contextTime.context}, {"gr:ctx_time", contextTime.time}}, "activate"); }
 
-void UiGraphBlock::setActiveContext(const ContextTime& contextTime) {
-    const auto& [context, time] = contextTime;
-    ownerGraph->sendMessage(gr::Message{
-        .cmd             = gr::Message::Set,
-        .serviceName     = blockUniqueName,
-        .clientRequestID = "activate",
-        .endpoint        = gr::block::property::kActiveContext,
-        .data            = gr::property_map{{"gr:context", context}, {"gr:ctx_time", time}},
-    });
-}
+void UiGraphBlock::getActiveContext() { ownerGraph->send(gr::message::Command::Get, blockUniqueName, gr::block::property::kActiveContext, {}, "active"); }
 
-void UiGraphBlock::getActiveContext() { ownerGraph->sendMessage(gr::Message{.cmd = gr::Message::Get, .serviceName = blockUniqueName, .clientRequestID = "active", .endpoint = gr::block::property::kActiveContext, .data = {}}); }
+void UiGraphBlock::addContext(const ContextTime& contextTime) { ownerGraph->send(gr::message::Command::Set, blockUniqueName, gr::block::property::kSettingsCtx, {{"gr:context", contextTime.context}, {"gr:ctx_time", contextTime.time}}, "add"); }
 
-void UiGraphBlock::addContext(const ContextTime& contextTime) {
-    const auto& [context, time] = contextTime;
-    ownerGraph->sendMessage(gr::Message{
-        .cmd             = gr::Message::Set,
-        .serviceName     = blockUniqueName,
-        .clientRequestID = "add",
-        .endpoint        = gr::block::property::kSettingsCtx,
-        .data            = gr::property_map{{"gr:context", context}, {"gr:ctx_time", time}},
-    });
-}
-
-void UiGraphBlock::removeContext(const ContextTime& contextTime) {
-    const auto& [context, time] = contextTime;
-    ownerGraph->sendMessage(gr::Message{
-        .cmd             = gr::Message::Disconnect,
-        .serviceName     = blockUniqueName,
-        .clientRequestID = "rm",
-        .endpoint        = gr::block::property::kSettingsCtx,
-        .data            = gr::property_map{{"gr:context", context}, {"gr:ctx_time", time}},
-    });
-}
+void UiGraphBlock::removeContext(const ContextTime& contextTime) { ownerGraph->send(gr::message::Command::Disconnect, blockUniqueName, gr::block::property::kSettingsCtx, {{"gr:context", contextTime.context}, {"gr:ctx_time", contextTime.time}}, "rm"); }
 
 void UiGraphBlock::requestBlockUpdate() {
     const auto& targetGraph = ownerSchedulerUniqueName();
@@ -638,31 +599,12 @@ void UiGraphBlock::requestBlockUpdate() {
     // If we are updating a nested scheduler, we need to send the
     // introspection message to its parent
     if (blockUniqueName == ownerSchedulerUniqueName()) {
-        if (parentBlock) {
-            // This is a nested scheduler, so it is a scheduler *and* a block
-            {
-                gr::Message message;
-                message.cmd         = gr::message::Command::Get;
-                message.endpoint    = gr::scheduler::property::kSchedulerInspect;
-                message.serviceName = parentBlock->blockUniqueName;
-                ownerGraph->sendMessage(std::move(message));
-            }
-            {
-                gr::Message message;
-                message.cmd         = gr::message::Command::Get;
-                message.endpoint    = gr::graph::property::kInspectBlock;
-                message.serviceName = parentBlock->blockUniqueName;
-                message.data        = gr::property_map{{"uniqueName", blockUniqueName}};
-                ownerGraph->sendMessage(std::move(message));
-            }
+        if (parentBlock) { // a nested scheduler is a scheduler *and* a block
+            ownerGraph->send(gr::message::Command::Get, parentBlock->blockUniqueName, gr::scheduler::property::kSchedulerInspect);
+            ownerGraph->send(gr::message::Command::Get, parentBlock->blockUniqueName, gr::graph::property::kInspectBlock, {{"uniqueName", blockUniqueName}});
         }
     } else {
-        gr::Message message;
-        message.cmd         = gr::message::Command::Get;
-        message.endpoint    = gr::graph::property::kInspectBlock;
-        message.serviceName = targetGraph;
-        message.data        = gr::property_map{{"uniqueName", blockUniqueName}};
-        ownerGraph->sendMessage(std::move(message));
+        ownerGraph->send(gr::message::Command::Get, targetGraph, gr::graph::property::kInspectBlock, {{"uniqueName", blockUniqueName}});
     }
 }
 
@@ -803,11 +745,11 @@ static BlockPropertyHints aggregatePropertyHints(std::span<const UiGraphModel::B
 std::vector<std::string> UiGraphModel::globConnectableProperties(const UiGraphBlock& control) {
     const std::string                  compatibleTypeMap = control.uiControlCompatibleTypeMap();
     std::set<std::string, std::less<>> properties;
-    forEachBlockRecursive(rootBlock, [&](UiGraphBlock& candidate) {
-        if (&candidate == &control) {
+    recursiveForEachBlock([&](const FindBlockResult& element) {
+        if (element.block == &rootBlock || element.block == &control) {
             return;
         }
-        for (auto&& property : candidate.connectableProperties(compatibleTypeMap)) {
+        for (auto&& property : element.block->connectableProperties(compatibleTypeMap)) {
             properties.insert(std::move(property));
         }
     });
@@ -897,38 +839,7 @@ std::vector<UiGraphBlock*> UiGraphModel::recursiveGatherPlotSinks() {
     return output;
 }
 
-void UiGraphModel::recursiveForEachBlock(const std::function<VisitorResult(const FindBlockResult&)>& callback) {
-    if (callback({.block = std::addressof(rootBlock)}) != VisitorResult::Recurse) {
-        return;
-    }
-
-    std::deque<UiGraphBlock*> toProcess{std::addressof(rootBlock)};
-    while (!toProcess.empty()) {
-        auto* currentGraph = toProcess.front();
-        toProcess.pop_front();
-
-        auto& childBlocks = currentGraph->childBlocks;
-        for (auto blockIt = childBlocks.begin(); blockIt != childBlocks.end(); ++blockIt) {
-            auto&               block  = *blockIt;
-            const VisitorResult result = callback(FindBlockResult{
-                .parentGraph        = currentGraph,
-                .block              = block.get(),
-                .owningCollection   = std::addressof(childBlocks),
-                .owningCollectionIt = blockIt,
-            });
-            using enum VisitorResult;
-            switch (result) {
-            case Break: return;
-            case Continue: continue;
-            case Recurse: break;
-            }
-            if (!block->childBlocks.empty()) {
-                toProcess.push_back(block.get());
-            }
-        }
-    }
-}
-
+namespace {
 void updateKnownTypeMap(auto& map, const auto& data) {
     map.clear();
     const auto& knownList = getProperty<gr::Tensor<gr::pmt::Value>>(data, "types"s);
@@ -947,13 +858,7 @@ void updateKnownTypeMap(auto& map, const auto& data) {
         }
     }
 }
-
-void UiGraphModel::handleAvailableGraphBlockTypes(const gr::property_map& data) { updateKnownTypeMap(knownBlockTypes, data); }
-
-void UiGraphModel::handleAvailableGraphSchedulerTypes(const gr::property_map& data) {
-    updateKnownTypeMap(knownSchedulerTypes, data);
-    knownSchedulerTypes["gr::Graph"] = {"<>"};
-}
+} // namespace
 
 UiGraphModel::AvailableParametrizationsResult UiGraphModel::availableParametrizationsFor(const std::string& fullBlockType) const {
 
@@ -1063,7 +968,7 @@ bool UiGraphBlock::isUiControl() const {
 
 bool UiGraphBlock::isViewOnlyUiControl() const { return blockMetaInformation.find_value(std::string("viewonly_ui_control"), std::pmr::get_default_resource()).value_or(gr::pmt::Value{}).value_or(false); }
 
-bool UiGraphModel::processMessage(const gr::Message& message) {
+bool UiGraphModel::apply(const gr::Message& message) {
     namespace graph     = gr::graph::property;
     namespace scheduler = gr::scheduler::property;
     namespace block     = gr::block::property;
@@ -1144,18 +1049,27 @@ bool UiGraphModel::processMessage(const gr::Message& message) {
         return false;
     }
 
+    const auto withBlock = [this](const std::string& blockUniqueName, std::string_view unknownReason, auto&& update) {
+        if (auto found = recursiveFindBlockByUniqueName(blockUniqueName)) {
+            update(*found.block);
+            return;
+        }
+        gr::log::debug("requestFullUpdate reason: {} {}", unknownReason, blockUniqueName);
+        requestFullUpdate();
+    };
+
     if (message.endpoint == scheduler::kBlockEmplaced) {
-        targetBlock.block->handleChildBlockEmplaced(data);
+        targetBlock.block->emplaceChild(data);
 
     } else if (message.endpoint == scheduler::kBlockRemoved) {
-        targetBlock.block->handleChildBlockRemoved(uniqueName("uniqueName"));
+        targetBlock.block->removeChild(uniqueName("uniqueName"));
 
     } else if (message.endpoint == scheduler::kBlockReplaced) {
         const auto  replacedName  = uniqueName("replacedBlockUniqueName");
         const auto* replacedBlock = targetBlock.block->findBlockByUniqueName(replacedName);
         const auto  position      = replacedBlock ? replacedBlock->storedXY : std::nullopt;
-        targetBlock.block->handleChildBlockRemoved(replacedName);
-        targetBlock.block->handleChildBlockEmplaced(data);
+        targetBlock.block->removeChild(replacedName);
+        targetBlock.block->emplaceChild(data);
         if (position) {
             if (auto* replacement = targetBlock.block->findBlockByUniqueName(uniqueName())) {
                 replacement->storedXY = position;
@@ -1163,21 +1077,16 @@ bool UiGraphModel::processMessage(const gr::Message& message) {
         }
 
     } else if (message.endpoint == graph::kBlockInspected) {
-        handleBlockDataUpdated(uniqueName(), data);
+        withBlock(uniqueName(), "requested an unknown block to be updated", [&data](UiGraphBlock& block) { block.setBlockData(data); });
 
-    } else if (message.endpoint == block::kSetting) {
-        // serviceName is used for block's unique name in settings messages
-        handleBlockSettingsChanged(message.serviceName, data);
-
-    } else if (message.endpoint == block::kStagedSetting) {
-        // serviceName is used for block's unique name in settings messages
-        handleBlockSettingsStaged(message.serviceName, data);
+    } else if (message.endpoint == block::kSetting || message.endpoint == block::kStagedSetting) { // serviceName: the block's unique name
+        withBlock(message.serviceName, "requested an unknown block to be changed settings", [&data](UiGraphBlock& block) { block.applySettings(data); });
 
     } else if (message.endpoint == scheduler::kEdgeEmplaced) {
-        targetBlock.block->handleChildEdgeEmplaced(data);
+        targetBlock.block->emplaceEdge(data);
 
     } else if (message.endpoint == scheduler::kEdgeRemoved) {
-        targetBlock.block->handleChildEdgeRemoved(data);
+        requestFullUpdate();
 
     } else if (message.endpoint == scheduler::kSchedulerInspected) {
         // setBlockData, but force setting children data
@@ -1195,10 +1104,11 @@ bool UiGraphModel::processMessage(const gr::Message& message) {
         targetBlock.block->setBlockData(data);
 
     } else if (message.endpoint == graph::kRegistryBlockTypes) {
-        handleAvailableGraphBlockTypes(data);
+        updateKnownTypeMap(knownBlockTypes, data);
 
     } else if (message.endpoint == graph::kRegistrySchedulerTypes) {
-        handleAvailableGraphSchedulerTypes(data);
+        updateKnownTypeMap(knownSchedulerTypes, data);
+        knownSchedulerTypes["gr::Graph"] = {"<>"};
 
     } else if (message.endpoint == "LifecycleState") {
         // Nothing to do for lifecycle state changes
@@ -1210,15 +1120,32 @@ bool UiGraphModel::processMessage(const gr::Message& message) {
         }
 
     } else if (message.endpoint == block::kActiveContext) {
-        handleBlockActiveContext(message.serviceName, data);
+        withBlock(message.serviceName, "requested an unknown block's context change", [&data](UiGraphBlock& block) {
+            block.activeContext = UiGraphBlock::ContextTime{
+                .context = data.find_value("gr:context").value_or(gr::pmt::Value{}).value_or(std::string()),
+                .time    = data.find_value("gr:ctx_time").value_or(gr::pmt::Value{}).value_or(std::uint64_t{0}),
+            };
+        });
 
     } else if (message.endpoint == block::kSettingsContexts) {
         if (message.clientRequestID == "all") {
-            handleBlockAllContexts(message.serviceName, data);
+            withBlock(message.serviceName, "requested an unknown block's known contexts change", [&data](UiGraphBlock& block) {
+                const gr::pmt::Value contextsPmt = data.find_value("contexts").value_or(gr::pmt::Value{});
+                const gr::pmt::Value timesPmt    = data.find_value("times").value_or(gr::pmt::Value{});
+                const auto           contexts    = contextsPmt.value_or(gr::Tensor<gr::pmt::Value>{});
+                const auto           times       = timesPmt.value_or(gr::Tensor<gr::pmt::Value>{});
+                block.contexts.clear();
+                for (std::size_t i = 0UZ; i < std::min(contexts.size(), times.size()); ++i) {
+                    block.contexts.push_back({.context = contexts[i].value_or(std::string()), .time = times[i].value_or(std::uint64_t{0})});
+                }
+            });
         }
     } else if (message.endpoint == block::kSettingsCtx) {
         if (message.clientRequestID == "add" || message.clientRequestID == "rm") {
-            handleBlockAddOrRemoveContext(message.serviceName, data);
+            withBlock(message.serviceName, "requested an unknown block's add/remove context", [](UiGraphBlock& block) {
+                block.getAllContexts();
+                block.getActiveContext();
+            });
         }
 
     } else if (message.endpoint == scheduler::kGraphGRC) {
@@ -1250,7 +1177,7 @@ bool UiGraphModel::processMessage(const gr::Message& message) {
     }
 
     if (std::ranges::contains(std::array<std::string_view, 5UZ>{scheduler::kBlockEmplaced, scheduler::kBlockRemoved, scheduler::kBlockReplaced, scheduler::kSchedulerInspected, graph::kGraphInspected}, message.endpoint)) {
-        handleTopologyUpdated();
+        onTopologyChanged();
     }
     if (std::ranges::contains(std::array<std::string_view, 3UZ>{scheduler::kBlockRemoved, scheduler::kBlockReplaced, scheduler::kSchedulerInspected}, message.endpoint)) {
         rebuildNameRegistry();
@@ -1258,13 +1185,20 @@ bool UiGraphModel::processMessage(const gr::Message& message) {
     return true;
 }
 
-void UiGraphModel::rebuildNameRegistry() {
-    nameRegistry.usedNames.clear();
-    nameRegistry.markBlockNameUsed(rootBlock.blockName);
-    forEachBlockRecursive(rootBlock, [this](const UiGraphBlock& block) { nameRegistry.markBlockNameUsed(block.blockName); });
+std::size_t UiGraphModel::subscribeToResponses(std::function<void(const gr::Message& incoming)> listener) {
+    auto [iterator, wasEmplaced] = _testResponseSubscriptions.try_emplace(++_lastResponseSubscriptionId, std::move(listener));
+    assert(wasEmplaced);
+    return iterator->first;
 }
 
-void UiGraphModel::handleTopologyUpdated() {
+void UiGraphModel::unsubscribeFromResponses(std::size_t subscriptionId) { _testResponseSubscriptions.erase(subscriptionId); }
+
+void UiGraphModel::rebuildNameRegistry() {
+    nameRegistry.usedNames.clear();
+    recursiveForEachBlock([this](const FindBlockResult& element) { nameRegistry.markBlockNameUsed(element.block->blockName); });
+}
+
+void UiGraphModel::onTopologyChanged() {
     ++topologyGeneration;
     sendMessage(subscriptionMessageForAllBlocksSettings());
 }
@@ -1277,123 +1211,40 @@ void UiGraphModel::requestFullUpdate(std::source_location location) {
     gr::log::debug("requestFullUpdate: sending message, invoked by {}:{}", location.file_name(), location.line());
 
     requestedFullUpdate = true;
-    gr::Message message;
-    message.cmd      = gr::message::Command::Get;
-    message.endpoint = gr::scheduler::property::kSchedulerInspect;
-    message.data     = gr::property_map{};
-    sendMessage(std::move(message));
+    send(gr::message::Command::Get, "", gr::scheduler::property::kSchedulerInspect);
 }
 
 void UiGraphModel::requestAvailableBlocksTypesUpdate() {
-    // Get known block types
-    {
-        gr::Message message;
-        message.cmd      = gr::message::Command::Get;
-        message.endpoint = gr::graph::property::kRegistryBlockTypes;
-        message.data     = gr::property_map{};
-        sendMessage(std::move(message));
-    }
-
-    // Get known scheduler types
-    {
-        gr::Message message;
-        message.cmd      = gr::message::Command::Get;
-        message.endpoint = gr::graph::property::kRegistrySchedulerTypes;
-        message.data     = gr::property_map{};
-        sendMessage(std::move(message));
-    }
+    send(gr::message::Command::Get, "", gr::graph::property::kRegistryBlockTypes);
+    send(gr::message::Command::Get, "", gr::graph::property::kRegistrySchedulerTypes);
 }
 
-void UiGraphModel::handleBlockDataUpdated(const std::string& uniqueName, const gr::property_map& blockData) {
-    auto found = recursiveFindBlockByUniqueName(uniqueName);
-    if (!found) {
-        gr::log::debug("requestFullUpdate reason: requested an unknown block to be updated {}", uniqueName);
-        requestFullUpdate();
-        return;
-    }
-
-    found.block->setBlockData(blockData);
-}
-
-void UiGraphModel::handleBlockSettingsChanged(const std::string& uniqueName, const gr::property_map& data) {
-    auto found = recursiveFindBlockByUniqueName(uniqueName);
-    if (!found) {
-        gr::log::debug("requestFullUpdate reason: requested an unknown block to be changed settings {}", uniqueName);
-        requestFullUpdate();
-        return;
-    }
-
-    auto* block       = found.block;
-    bool  keysChanged = false;
+void UiGraphBlock::applySettings(const gr::property_map& data) {
+    bool keysChanged = false;
     for (const auto& [key, value] : data) {
         if (std::string_view(key) != gr::serialization_fields::BLOCK_UNIQUE_NAME) {
-            keysChanged = keysChanged || !block->blockSettings.contains(key);
-            block->blockSettings.insert_or_assign(key, value);
+            keysChanged = keysChanged || !blockSettings.contains(key);
+            blockSettings.insert_or_assign(key, value);
         }
     }
     if (const auto name = data.find("name"); name != data.end() && name->second.is_string()) {
-        block->setBlockName(name->second.value_or(std::string()));
+        setBlockName(name->second.value_or(std::string()));
     }
     if (keysChanged) {
-        block->updateBlockSettingsMetaInformation();
+        updateBlockSettingsMetaInformation();
     }
 }
 
-void UiGraphModel::handleBlockSettingsStaged(const std::string& uniqueName, const gr::property_map& data) { handleBlockSettingsChanged(uniqueName, data); }
-
-void UiGraphModel::handleBlockActiveContext(const std::string& uniqueName, const gr::property_map& data) {
-    auto found = recursiveFindBlockByUniqueName(uniqueName);
-    if (!found) {
-        gr::log::debug("requestFullUpdate reason: requested an unknown block's context change {}", uniqueName);
-        requestFullUpdate();
-        return;
-    }
-
-    const auto ctx  = data.find_value("gr:context").value_or(gr::pmt::Value{}).value_or(std::string());
-    auto       time = data.find_value("gr:ctx_time").value_or(gr::pmt::Value{}).value_or(std::uint64_t{0});
-
-    found.block->activeContext = UiGraphBlock::ContextTime{
-        .context = ctx,
-        .time    = time,
+gr::property_map DigitizerUi::emplaceEdgeData(std::string sourceBlock, std::string sourcePort, std::string destinationBlock, std::string destinationPort) {
+    return gr::property_map{
+        {std::pmr::string(gr::serialization_fields::EDGE_SOURCE_BLOCK), std::move(sourceBlock)},
+        {std::pmr::string(gr::serialization_fields::EDGE_SOURCE_PORT), std::move(sourcePort)},
+        {std::pmr::string(gr::serialization_fields::EDGE_DESTINATION_BLOCK), std::move(destinationBlock)},
+        {std::pmr::string(gr::serialization_fields::EDGE_DESTINATION_PORT), std::move(destinationPort)},
+        {std::pmr::string(gr::serialization_fields::EDGE_MIN_BUFFER_SIZE), gr::Size_t(4096)},
+        {std::pmr::string(gr::serialization_fields::EDGE_WEIGHT), 1},
+        {std::pmr::string(gr::serialization_fields::EDGE_NAME), "edge"},
     };
-}
-
-void UiGraphModel::handleBlockAllContexts(const std::string& uniqueName, const gr::property_map& data) {
-    auto found = recursiveFindBlockByUniqueName(uniqueName);
-    if (!found) {
-        gr::log::debug("requestFullUpdate reason: requested an unknown block's known contexts change {}", uniqueName);
-        requestFullUpdate();
-        return;
-    }
-
-    const gr::pmt::Value contextsPmt = data.find_value("contexts").value_or(gr::pmt::Value{});
-    const gr::pmt::Value timesPmt    = data.find_value("times").value_or(gr::pmt::Value{});
-    auto                 contexts    = contextsPmt.value_or(gr::Tensor<gr::pmt::Value>{});
-    auto                 times       = timesPmt.value_or(gr::Tensor<gr::pmt::Value>{});
-
-    std::vector<UiGraphBlock::ContextTime> contextAndTimes;
-    const std::size_t                      n = std::min(contexts.size(), times.size());
-    for (std::size_t i = 0UZ; i < n; ++i) {
-        const auto context = contexts[i].value_or(std::string());
-        const auto ts      = times[i].value_or(std::uint64_t{0});
-        contextAndTimes.emplace_back(UiGraphBlock::ContextTime{
-            .context = context,
-            .time    = ts,
-        });
-    }
-    found.block->contexts = contextAndTimes;
-}
-
-void UiGraphModel::handleBlockAddOrRemoveContext(const std::string& uniqueName, const gr::property_map& /* data */) {
-    auto found = recursiveFindBlockByUniqueName(uniqueName);
-    if (!found) {
-        gr::log::debug("requestFullUpdate reason: requested an unknown block's add/remove context {}", uniqueName);
-        requestFullUpdate();
-        return;
-    }
-
-    found.block->getAllContexts();
-    found.block->getActiveContext();
 }
 
 std::unique_ptr<UiGraphBlock> UiGraphModel::makeGraphBlock(UiGraphBlock* parent, const gr::property_map& blockData, const std::string& ownerSchedulerUniqueName, const std::string& ownerGraphUniqueName) {
@@ -1451,7 +1302,7 @@ bool UiGraphModel::blockInTree(const UiGraphBlock& block, const UiGraphBlock& tr
 template<typename T>
 static bool fitsImGuiSlider(double minValue, double maxValue) {
     if constexpr (std::floating_point<T>) {
-        constexpr double limit = std::numeric_limits<double>::max() / 2.; // limit for imgui double slider, there is an assert in imgui_widgets.cpp
+        constexpr double limit = kImGuiSliderDoubleLimit;
         return minValue >= -limit && maxValue <= limit;
     } else {
         // imgui limit for integer slider is (2^62 - 1) (using < below instead of subtracting to prevent overflowing double precision at this large of a number)

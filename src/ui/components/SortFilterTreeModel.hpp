@@ -26,36 +26,13 @@ struct SortFilterTreeModelNode {
     [[nodiscard]] constexpr bool isBranch() const { return !index.has_value(); }
 };
 
-struct SortFilterTreeModelSortByComparisonStrategy {
-    virtual ~SortFilterTreeModelSortByComparisonStrategy()                                                        = default;
-    [[nodiscard]] virtual bool less(const SortFilterTreeModelNode& lhs, const SortFilterTreeModelNode& rhs) const = 0;
-};
-
-struct SortFilterTreeModelSortByScoreStrategy {
-    virtual ~SortFilterTreeModelSortByScoreStrategy()                            = default;
-    [[nodiscard]] virtual float score(const SortFilterTreeModelNode& node) const = 0;
-};
-
-template<typename Callable>
-requires std::is_invocable_r_v<float, Callable, const SortFilterTreeModelNode&>
-std::unique_ptr<SortFilterTreeModelSortByScoreStrategy> makeSimpleSortFilterTreeModelSortByScoreStrategy(Callable callable) {
-    struct Evaluator : SortFilterTreeModelSortByScoreStrategy {
-        Callable _callable;
-        explicit Evaluator(Callable&& evaluationFunction) : _callable(std::move(evaluationFunction)) {}
-        float score(const SortFilterTreeModelNode& node) const override { return std::invoke(_callable, node); }
-    };
-    return std::make_unique<Evaluator>(std::move(callable));
-}
-
-/// Null means output items are in the original item order
-using SortFilterTreeModelSortStrategy = std::variant<std::unique_ptr<SortFilterTreeModelSortByComparisonStrategy>, std::unique_ptr<SortFilterTreeModelSortByScoreStrategy>>;
-
 struct SortFilterTreeModelParams {
     std::size_t numItems{};
     /// returns something like { "source", "subfolder", "dashboard_name" }
-    std::function<std::vector<std::string>(std::size_t)> getItemPathFunction;
-    ModelFilters                                         filters;
-    SortFilterTreeModelSortStrategy                      sortStrategy;
+    std::function<std::vector<std::string>(std::size_t)>                                getItemPathFunction;
+    std::function<bool(std::size_t)>                                                    filter; // empty: every item
+    std::function<bool(const SortFilterTreeModelNode&, const SortFilterTreeModelNode&)> less;   // empty: by score
+    std::function<float(const SortFilterTreeModelNode&)>                                score;  // highest first; neither: original order
 };
 
 struct SortFilterTreeModel {
@@ -65,11 +42,6 @@ struct SortFilterTreeModel {
         : _params(std::move(params)),             //
           _maxWorkPerCall(kDefaultMaxWorkPerCall) //
     {}
-
-    [[nodiscard]] SortFilterTreeModelParams takeParams() && {
-        _root.children.clear();
-        return std::move(_params);
-    }
 
     void work() {
         const std::size_t chunkEnd = std::min(_params.numItems, _nextItemToProcess + _maxWorkPerCall);
@@ -103,12 +75,10 @@ struct SortFilterTreeModel {
 
     struct Branch;
 
-    struct AlreadyFilteredMarker {};
-
     struct Child {
-        std::string                                                               name;
-        float                                                                     score;
-        std::variant<std::size_t, std::unique_ptr<Branch>, AlreadyFilteredMarker> value;
+        std::string                                        name;
+        float                                              score;
+        std::variant<std::size_t, std::unique_ptr<Branch>> value;
 
         [[nodiscard]] SortFilterTreeModelNode asNode(std::span<const std::string> parentPath) const {
             const auto* leafIndex = std::get_if<std::size_t>(&value);
@@ -137,16 +107,6 @@ struct SortFilterTreeModel {
         }
     }
 
-    static const SortFilterTreeModelSortByComparisonStrategy* getIfComparisonStrategy(const SortFilterTreeModelSortStrategy& strategy) {
-        const auto* comparisonOperator = std::get_if<std::unique_ptr<SortFilterTreeModelSortByComparisonStrategy>>(&strategy);
-        return comparisonOperator != nullptr ? comparisonOperator->get() : nullptr;
-    }
-
-    static const SortFilterTreeModelSortByScoreStrategy* getIfScoreStrategy(const SortFilterTreeModelSortStrategy& strategy) {
-        const auto* evaluator = std::get_if<std::unique_ptr<SortFilterTreeModelSortByScoreStrategy>>(&strategy);
-        return evaluator != nullptr ? evaluator->get() : nullptr;
-    }
-
     void insertItem(std::size_t itemIndex) {
         assert(_params.getItemPathFunction);
         const std::vector<std::string> path = _params.getItemPathFunction(itemIndex);
@@ -155,7 +115,7 @@ struct SortFilterTreeModel {
         }
 
         // filter before creating branch elements, that way we only create branches that have children
-        if (!_params.filters.matches(itemIndex)) {
+        if (_params.filter && !_params.filter(itemIndex)) {
             return;
         }
 
@@ -187,21 +147,12 @@ struct SortFilterTreeModel {
     }
 
     Child& insertSorted(Branch& parent, Child child, std::span<const std::string> parentPath) {
-        const auto* comparator = getIfComparisonStrategy(_params.sortStrategy);
-        const auto  lessThan   = [comparator, parentPath](const Child& lhs, const Child& rhs) {
-            if (comparator != nullptr) {
-                return comparator->less(lhs.asNode(parentPath), rhs.asNode(parentPath));
-            }
-            return lhs.score > rhs.score;
-        };
+        const auto lessThan = [this, parentPath](const Child& lhs, const Child& rhs) { return _params.less ? _params.less(lhs.asNode(parentPath), rhs.asNode(parentPath)) : lhs.score > rhs.score; };
         const auto position = std::ranges::upper_bound(parent.children, child, lessThan);
         return *parent.children.insert(position, std::move(child));
     }
 
-    [[nodiscard]] float scoreOf(const SortFilterTreeModelNode& node) const {
-        const auto* evaluator = getIfScoreStrategy(_params.sortStrategy);
-        return evaluator != nullptr ? evaluator->score(node) : 0.f;
-    }
+    [[nodiscard]] float scoreOf(const SortFilterTreeModelNode& node) const { return _params.score ? _params.score(node) : 0.f; }
 
     /// used by tests
     void setMaxWork(std::size_t numItems) {

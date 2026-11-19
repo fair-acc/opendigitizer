@@ -126,13 +126,13 @@ picking a device also sends `device_values` so, e.g., one list switches a Select
         const std::string&  shown      = _fallenBack ? fallback : value;
         const float         inputWidth = std::max(style.toolbarControlMinimumWidth, pickDeviceWidth(target, shown, choices));
         const SizeAndLayout layout     = prepareDraw(parsedConfig, inputWidth, style.toolbarControlMinimumWidth, labelWidth());
-        drawWithLabelAndTooltip(layout, [&](float width) {
+        drawWithLabel(layout, [&](float width) {
             IMW::Disabled cannotOpen(parsedConfig.drawingContext == DrawableBlockConfig::DrawingContext::FlowgraphView);
             ImGui::SetNextItemWidth(width);
             if (auto picked = pickDevice("##device", target, shown, choices)) {
                 value       = std::move(*picked);
                 _fallenBack = false;
-                std::ignore = settings().setStaged({{"value", value}});
+                stageValue(value);
                 apply(value);
             }
         });

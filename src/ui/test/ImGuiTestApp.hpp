@@ -14,15 +14,14 @@ using namespace DigitizerUi; // TODO refactor namespaces in ImguiWrap.hpp
 #pragma GCC diagnostic pop
 
 #include <memory>
+#include <print>
+#include <source_location>
+#include <string_view>
 #include <vector>
 
 class ImGuiApp;
 struct ImGuiTestEngine;
 struct ImGuiTestEngineIO;
-
-namespace gr {
-class PluginLoader;
-}
 
 namespace DigitizerUi::test {
 
@@ -56,12 +55,11 @@ struct TestOptions {
    It's responsible for setup, cleanup and main loop. All you need to do is write your
    tests in registerTests() and then call runTests().
  */
-class ImGuiTestApp {
+struct ImGuiTestApp {
     std::unique_ptr<ImGuiApp> _app;
     ImGuiTestEngine*          _engine  = nullptr;
     const TestOptions         _options = {};
 
-public:
     explicit ImGuiTestApp(const TestOptions& = {});
 
     // Frees ImGui and SDL resources
@@ -101,24 +99,30 @@ public:
         std::vector<unsigned int> rgba; // RGBA8, row-major
     };
     [[nodiscard]] static CapturedPixels capturePixels(ImGuiTestContext& ctx, const ImRect& screenRect);
+    // the first capture equal to the one of the frame before: the drawing has settled
+    [[nodiscard]] static CapturedPixels captureSettledPixels(ImGuiTestContext& ctx, const ImRect& screenRect);
 
     // Prints the existing window ids, for debugging purposes
     static void printWindows();
 
-    // Creates a plugin loader and registers block definitions
-    // Call this if your test uses gr blocks
-    static std::shared_ptr<gr::PluginLoader> createPluginLoader();
-
-protected:
     virtual void registerTests() = 0;
 
     ImGuiTestEngine* engine() const;
-
-private:
-    ImGuiTestApp(const ImGuiTestApp&)            = delete;
-    ImGuiTestApp& operator=(const ImGuiTestApp&) = delete;
 };
 
 } // namespace DigitizerUi::test
+
+namespace opendigitizer::test {
+// blocks until `condition` holds, processing UI frames. There is deliberately no deadline: the outcome must not depend
+// on machine load, and a condition that never holds is caught by the ctest timeout.
+template<typename Condition>
+bool waitUntil(ImGuiTestContext* ctx, std::string_view what, Condition&& condition, std::source_location location = std::source_location::current()) {
+    std::println("\twaiting until {} ({}:{})", what, location.file_name(), location.line());
+    while (!condition()) {
+        ctx->Yield();
+    }
+    return true;
+}
+} // namespace opendigitizer::test
 
 #endif

@@ -1,8 +1,6 @@
 #ifndef OPENDIGITIZER_UI_COMPONENTS_SEARCH_AND_FILTER_COMPONENTS_HPP_
 #define OPENDIGITIZER_UI_COMPONENTS_SEARCH_AND_FILTER_COMPONENTS_HPP_
 
-#include "SortFilterModel.hpp"
-
 #include <chrono>
 #include <cstddef>
 #include <functional>
@@ -68,7 +66,7 @@ struct SearchSortInput {
     [[nodiscard]] Event draw(const char* strId, const char* hint, bool sortingBySearch, float trailingWidth = 0.f);
 };
 
-[[nodiscard]] std::optional<std::size_t> drawFilterTags(const char* strId, std::span<const std::unique_ptr<SortFilterModelFilter>> filters, const std::function<std::string(const SortFilterModelFilter&)>& labelFor);
+[[nodiscard]] std::optional<std::size_t> drawFilterTags(const char* strId, std::span<const std::string> labels);
 
 } // namespace DigitizerUi::components
 

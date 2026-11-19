@@ -1,5 +1,6 @@
 #include "GraphSession.hpp"
 #include "MapUtils.hpp"
+#include "common/FramePacer.hpp"
 
 #include <algorithm>
 #include <atomic>
@@ -16,6 +17,7 @@
 
 #include <gnuradio-4.0/BlockRegistry.hpp>
 #include <gnuradio-4.0/LifeCycle.hpp>
+#include <gnuradio-4.0/Scheduler.hpp>
 #include <gnuradio-4.0/testing/NullSources.hpp>
 #include <gnuradio-4.0/thread/thread_pool.hpp>
 
