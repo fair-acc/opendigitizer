@@ -1,0 +1,97 @@
+diff --git a/implot.cpp b/implot.cpp
+index b63a579..dfeb782 100644
+--- a/implot.cpp
++++ b/implot.cpp
+@@ -1774,6 +1774,35 @@ void PadAndDatumAxesY(ImPlotPlot& plot, float& pad_L, float& pad_R, ImPlotAlignm
+     }
+ }
+ 
++static bool HideNextAxisText(ImPlotPlot& plot, int first_axis, int axis_count) {
++    for (int i = first_axis; i < first_axis + axis_count; ++i) {
++        ImPlotAxis& axis = plot.Axes[i];
++        if (axis.Enabled && axis.HasLabel()) {
++            axis.LabelHiddenToFit = true;
++            return true;
++        }
++    }
++    for (int i = first_axis; i < first_axis + axis_count; ++i) {
++        ImPlotAxis& axis = plot.Axes[i];
++        if (axis.Enabled && axis.HasTickLabels()) {
++            axis.TickLabelsHiddenToFit = true;
++            return true;
++        }
++    }
++    return false;
++}
++
++static void HideAxisTextUntilPlotFits(ImPlotPlot& plot, int first_axis, int axis_count, float canvas_extent, float pad_A, float pad_B,
++                                      void (*pad_and_datum_axes)(ImPlotPlot&, float&, float&, ImPlotAlignmentData*)) {
++    for (;;) {
++        float measured_pad_A = pad_A;
++        float measured_pad_B = pad_B;
++        pad_and_datum_axes(plot, measured_pad_A, measured_pad_B, nullptr);
++        if (canvas_extent - measured_pad_A - measured_pad_B > 0 || !HideNextAxisText(plot, first_axis, axis_count))
++            return;
++    }
++}
++
+ //-----------------------------------------------------------------------------
+ // RENDERING
+ //-----------------------------------------------------------------------------
+@@ -2566,6 +2595,7 @@ void SetupFinish() {
+     }
+ 
+     // (1) calc addition top padding and bot padding
++    HideAxisTextUntilPlotFits(plot, ImAxis_X1, IMPLOT_NUM_X_AXES, plot.CanvasRect.GetHeight(), pad_top, pad_bot, PadAndDatumAxesX);
+     PadAndDatumAxesX(plot,pad_top,pad_bot,gp.CurrentAlignmentH);
+ 
+     const float plot_height = plot.CanvasRect.GetHeight() - pad_top - pad_bot;
+@@ -2579,6 +2609,7 @@ void SetupFinish() {
+     }
+ 
+     // (3) calc left/right pad
++    HideAxisTextUntilPlotFits(plot, ImAxis_Y1, IMPLOT_NUM_Y_AXES, plot.CanvasRect.GetWidth(), pad_left, pad_right, PadAndDatumAxesY);
+     PadAndDatumAxesY(plot,pad_left,pad_right,gp.CurrentAlignmentV);
+ 
+     const float plot_width = plot.CanvasRect.GetWidth() - pad_left - pad_right;
+diff --git a/implot_internal.h b/implot_internal.h
+index 46dfaa5..2816f3a 100644
+--- a/implot_internal.h
++++ b/implot_internal.h
+@@ -687,6 +687,8 @@ struct ImPlotAxis
+     bool                 ShowDefaultTicks;
+     bool                 Hovered;
+     bool                 Held;
++    bool                 LabelHiddenToFit;
++    bool                 TickLabelsHiddenToFit;
+ 
+     ImPlotAxis() {
+         ID               = 0;
+@@ -713,6 +715,7 @@ struct ImPlotAxis
+         Locator          = nullptr;
+         Enabled          = Hovered = Held = FitThisFrame = HasRange = HasFormatSpec = false;
+         ShowDefaultTicks = true;
++        LabelHiddenToFit = TickLabelsHiddenToFit = false;
+     }
+ 
+     inline void Reset() {
+@@ -733,6 +736,7 @@ struct ImPlotAxis
+         ConstraintRange  = ImPlotRange(-INFINITY,INFINITY);
+         ConstraintZoom   = ImPlotRange(DBL_MIN,INFINITY);
+         Ticker.Reset();
++        LabelHiddenToFit = TickLabelsHiddenToFit = false;
+     }
+ 
+     inline bool SetMin(double _min, bool force=false) {
+@@ -889,9 +893,9 @@ struct ImPlotAxis
+         UpdateTransformCache();
+     }
+ 
+-    inline bool HasLabel()          const { return LabelOffset != -1 && !ImHasFlag(Flags, ImPlotAxisFlags_NoLabel);                          }
++    inline bool HasLabel()          const { return LabelOffset != -1 && !ImHasFlag(Flags, ImPlotAxisFlags_NoLabel) && !LabelHiddenToFit;     }
+     inline bool HasGridLines()      const { return !ImHasFlag(Flags, ImPlotAxisFlags_NoGridLines);                                           }
+-    inline bool HasTickLabels()     const { return !ImHasFlag(Flags, ImPlotAxisFlags_NoTickLabels);                                          }
++    inline bool HasTickLabels()     const { return !ImHasFlag(Flags, ImPlotAxisFlags_NoTickLabels) && !TickLabelsHiddenToFit;                }
+     inline bool HasTickMarks()      const { return !ImHasFlag(Flags, ImPlotAxisFlags_NoTickMarks);                                           }
+     inline bool WillRender()        const { return Enabled && (HasGridLines() || HasTickLabels() || HasTickMarks());                         }
+     inline bool IsOpposite()        const { return ImHasFlag(Flags, ImPlotAxisFlags_Opposite);                                               }

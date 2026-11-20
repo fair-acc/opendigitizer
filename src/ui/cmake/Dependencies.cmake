@@ -12,8 +12,9 @@ FetchContent_Declare(
   implot
   GIT_REPOSITORY https://github.com/epezent/implot.git
   GIT_TAG v0.17 # latest as of 2024-11-30
-  PATCH_COMMAND git checkout -- . && git apply
-                ${CMAKE_CURRENT_LIST_DIR}/patches/implot-imgui-1.92.6-compatibility.patch EXCLUDE_FROM_ALL SYSTEM)
+  PATCH_COMMAND
+    git checkout -- . && git apply ${CMAKE_CURRENT_LIST_DIR}/patches/implot-imgui-1.92.6-compatibility.patch && git
+    apply ${CMAKE_CURRENT_LIST_DIR}/patches/implot-hide-axis-text-to-fit-plot.patch EXCLUDE_FROM_ALL SYSTEM)
 
 FetchContent_Declare(
   implot3d
