@@ -41,6 +41,8 @@
 
 namespace gr::od {
 
+void registerAppBlocks(gr::BlockRegistry& registry);
+
 struct SDLState;
 
 struct App {

@@ -230,27 +230,14 @@ struct TestApp : public test::ImGuiTestApp {
                 ctx->PopupCloseAll();
             };
 
-            // built, not started: no camera or microphone needed; a .grc key that is no setting is dropped silently at load
+            // built, not started: no camera or microphone needed
             const auto keysResolve = [](std::string_view source, std::size_t microphones) {
-                gr::PluginLoader loader(gr::globalBlockRegistry(), gr::globalSchedulerRegistry(), {});
-                const auto       graph = gr::loadGrc(loader, source);
-                expect(graph.has_value()) << fatal << (graph ? std::string{} : graph.error().message);
-                const auto blocks = gr::pmt::yaml::deserialize(source).value_or(gr::property_map{}).value_or<gr::Tensor<gr::pmt::Value>>("blocks", {});
-                expect(gt(blocks.size(), 0UZ));
-                for (const gr::pmt::Value& definition : blocks) {
-                    const auto parameters = definition.value_or(gr::property_map{}).value_or<gr::property_map>("parameters", {});
-                    const auto name       = parameters.value_or<std::string>("name", "");
-                    const auto block      = std::ranges::find_if((*graph)->blocks(), [&name](const auto& b) { return b->name() == name; });
-                    expect(block != (*graph)->blocks().end()) << fatal << name;
-                    const gr::property_map settings = (*block)->settings().get();
-                    for (const auto& [key, _] : parameters) {
-                        expect(key == "name" || settings.contains(key)) << std::format("{}: '{}' is no setting", name, std::string_view(key));
-                    }
+                test::expectGrcResolves(gr::globalBlockRegistry(), source, "dashboard", [microphones](std::string_view name, const gr::property_map& settings) {
                     if (name == "acousticImage") {
                         const auto positions = settings.value_or<gr::Tensor<double>>("element_positions", gr::Tensor<double>{});
                         expect(positions.rank() == 2UZ && positions.extent(0UZ) == microphones && positions.extent(1UZ) == 3UZ) << std::format("element_positions {} for {} microphones", positions.extents(), microphones);
                     }
-                }
+                });
             };
 
             "the camera dashboards' blocks, settings and connections resolve"_test = [&keysResolve] {

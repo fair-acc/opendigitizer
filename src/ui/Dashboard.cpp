@@ -32,6 +32,7 @@
 
 #include "blocks/RemoteSource.hpp"
 #include "components/SignalSelector.hpp"
+#include "utils/Browser.hpp"
 
 #include "charts/Charts.hpp"
 #include "charts/SinkRegistry.hpp"
@@ -255,7 +256,13 @@ void Dashboard::load() {
 }
 
 void Dashboard::loadAndThen(std::string_view grcData, std::function<void(gr::Graph&&)> assignScheduler) {
-    const auto fail = [this](std::string_view message) {
+    const auto publishLoadResult = [this](bool loaded, std::string_view error) {
+        if (browserTestHooks()) {
+            publishForBrowserTests("odDashboard", "current", std::format(R"({{"name":{},"loaded":{},"error":{}}})", jsonString(description->name), loaded, jsonString(error)));
+        }
+    };
+    const auto fail = [this, &publishLoadResult](std::string_view message) {
+        publishLoadResult(false, message);
         components::Notification::error(std::format("Error: {}", message));
         if (requestClose) {
             requestClose(this);
@@ -306,6 +313,7 @@ void Dashboard::loadAndThen(std::string_view grcData, std::function<void(gr::Gra
         }
         loadUIWindowSources();
         isInitialised.store(true, std::memory_order_release);
+        publishLoadResult(true, {});
     } catch (const std::exception& e) {
         fail(e.what());
     } catch (...) {

@@ -146,12 +146,12 @@ int main() {
             sourceNames.insert(field(source.value_or(gr::property_map{}), "name").value_or(std::string{}));
         }
         expect(sourceNames == std::set<std::string>{"sinesSink", "sineSink1", "sineSink2", "fftSink", "DipoleCurrentSink", "IntensitySink", "spectrumSink"});
+        stopAndWait(*dashboard); // an undrained running dashboard fills its scheduler's message output
 
         auto reloaded = std::make_unique<gr::od::Dashboard>(restClient, gr::od::DashboardDescription::createEmpty("reloaded"));
         loadGrc(*reloaded, gr::pmt::yaml::serialize(graph));
         expect(reloaded->layoutType == gr::od::DockingLayoutType::Grid) << "the saved layout is what a reload applies";
         stopAndWait(*reloaded);
-        stopAndWait(*dashboard);
     };
 
     "the charts run in the scheduler's graph and are saved as plots, not as flowgraph blocks"_test = [&] {

@@ -281,10 +281,6 @@ else() # native build
     target_link_options(${target_name} PRIVATE -fsanitize=address)
   endif()
 endif()
-if(OD_ACOUSTIC_CAMERA)
-  target_link_libraries(${target_name} PRIVATE gnuradio4::GrAudioBlocksShared gnuradio4::GrLocalisationBlocksShared)
-  target_compile_definitions(${target_name} PRIVATE OD_ACOUSTIC_CAMERA)
-endif()
 
 # each layer links only the one below; consumers pick the lowest layer they need via the opendigitizer:: aliases
 add_library(
@@ -531,6 +527,7 @@ target_link_libraries(
 add_library(
   ${target_name}lib STATIC
   App.hpp
+  AppBlocks.cpp
   OAuthSession.cpp
   OAuthSession.hpp
   OpenDashboardPage.cpp
@@ -552,6 +549,10 @@ if(NOT EMSCRIPTEN OR OD_WASM_STATIC_BLOCKLIBS)
   if(TARGET gr-sdr)
     target_link_libraries(${target_name}lib PUBLIC gr-sdr)
   endif()
+endif()
+if(OD_ACOUSTIC_CAMERA)
+  target_link_libraries(${target_name}lib PUBLIC gnuradio4::GrAudioBlocksShared gnuradio4::GrLocalisationBlocksShared)
+  target_compile_definitions(${target_name}lib PRIVATE OD_ACOUSTIC_CAMERA)
 endif()
 
 foreach(

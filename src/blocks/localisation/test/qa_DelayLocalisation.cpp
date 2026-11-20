@@ -647,6 +647,27 @@ const boost::ut::suite<"PointSourceAudio"> audioTests = [] {
         }
     };
 
+    "the noise does not depend on the chunking"_test = [] {
+        const auto noisySamples = [](gr::Size_t chunkSize) {
+            gr::Graph graph;
+            auto&     clock = graph.emplaceBlock<gr::basic::ClockSource<std::uint8_t>>({{"sample_rate", 48000.f}, {"n_samples_max", gr::Size_t{4800U}}, {"chunk_size", chunkSize}, {"use_internal_thread", false}});
+            auto&     audio = graph.emplaceBlock<PointSourceAudio>({{"sample_rate", 48000.f}, {"amplitude", 0.f}, {"noise", 1.f}, {"element_positions", gr::Tensor<double>({2UZ, 3UZ}, std::vector{-0.15, 0.0, 0.0, 0.15, 0.0, 0.0})}});
+            expect(graph.connect<"out", "clk">(clock, audio).has_value());
+            std::vector<gr::testing::TagSink<float, gr::testing::ProcessFunction::USE_PROCESS_BULK>*> sinks;
+            for (std::size_t m = 0UZ; m < audio.out.size(); ++m) {
+                sinks.push_back(&graph.emplaceBlock<gr::testing::TagSink<float, gr::testing::ProcessFunction::USE_PROCESS_BULK>>());
+                expect(graph.connect(audio, gr::PortDefinition(0UZ, m), *sinks.back(), gr::PortDefinition("in")).has_value());
+            }
+            gr::scheduler::Simple sched;
+            expect(sched.exchange(std::move(graph)).has_value());
+            expect(sched.runAndWait().has_value());
+            return sinks | std::views::transform([](const auto* sink) { return sink->_samples; }) | std::ranges::to<std::vector>();
+        };
+        const auto whole = noisySamples(gr::Size_t{4800U});
+        expect(eq(whole.size(), 2UZ) && whole[0] != whole[1]) << "independent streams";
+        expect(whole == noisySamples(gr::Size_t{333U}));
+    };
+
     "every output repeats its time anchor each tag_interval, for a reader that joins later"_test = [] {
         gr::Graph graph;
         auto&     clock = graph.emplaceBlock<gr::basic::ClockSource<std::uint8_t>>({{"sample_rate", 48000.f}, {"n_samples_max", gr::Size_t{120000U}}, {"chunk_size", gr::Size_t{1000U}}, {"use_internal_thread", false}, {"start_time", std::uint64_t{1'000'000'000U}}});
