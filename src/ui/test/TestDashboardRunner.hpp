@@ -11,10 +11,14 @@
 
 #include <Dashboard.hpp>
 
+#include <boost/ut.hpp>
+#include <gnuradio-4.0/Graph_yaml_importer.hpp>
+
 #include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <format>
+#include <functional>
 #include <memory>
 #include <print>
 #include <source_location>
@@ -26,6 +30,35 @@ CMRC_DECLARE(ui_test_assets);
 namespace gr::od::test {
 inline const auto     defaultGRCFilesystem = cmrc::sample_dashboards::get_filesystem();
 constexpr const char* kDefaultGrcPath      = "assets/sampleDashboards/DemoDashboard.grc";
+
+// built, not started: a .grc key that is no setting is dropped silently at load
+inline void expectGrcResolves(gr::BlockRegistry& registry, std::string_view source, std::string_view what, const std::function<void(std::string_view, const gr::property_map&)>& checkBlock = {}) {
+    using namespace boost::ut;
+    gr::PluginLoader loader(registry, gr::globalSchedulerRegistry(), {});
+    const auto       graph = gr::loadGrc(loader, source);
+    if (!graph) {
+        expect(false) << std::format("{}: {}", what, graph.error().message);
+        return;
+    }
+    const auto blocks = gr::pmt::yaml::deserialize(source).value_or(gr::property_map{}).value_or<gr::Tensor<gr::pmt::Value>>("blocks", {});
+    expect(gt(blocks.size(), 0UZ)) << what;
+    for (const gr::pmt::Value& definition : blocks) {
+        const auto parameters = definition.value_or(gr::property_map{}).value_or<gr::property_map>("parameters", {});
+        const auto name       = parameters.value_or<std::string>("name", "");
+        const auto block      = std::ranges::find_if((*graph)->blocks(), [&name](const auto& b) { return b->name() == name; });
+        if (block == (*graph)->blocks().end()) {
+            expect(false) << std::format("{}: block '{}' not in the loaded graph", what, name);
+            continue;
+        }
+        const gr::property_map settings = (*block)->settings().get();
+        for (const auto& [key, _] : parameters) {
+            expect(key == "name" || settings.contains(key)) << std::format("{}: {}: '{}' is no setting", what, name, std::string_view(key));
+        }
+        if (checkBlock) {
+            checkBlock(name, settings);
+        }
+    }
+}
 
 inline std::vector<const ImGuiWindow*> chartWindows(const Dashboard& dashboard) {
     std::vector<const ImGuiWindow*> windows;

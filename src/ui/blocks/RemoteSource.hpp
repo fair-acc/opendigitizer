@@ -19,6 +19,9 @@
 #include <IoSerialiserYaS.hpp>
 #include <MdpMessage.hpp>
 #include <RestClient.hpp>
+#ifndef __EMSCRIPTEN__
+#include <openssl/ssl.h>
+#endif
 
 #include "conversion.hpp"
 #include "settings.hpp"
@@ -158,6 +161,10 @@ class RemoteSubscriptions {
     using Subscription = detail::RemoteSourceSubscription;
 
 private:
+#ifndef __EMSCRIPTEN__
+    // OpenSSL's atexit cleanup must run after this static joins the client's TLS worker, i.e. be registered before it
+    [[maybe_unused]] bool _sslInitialised = OPENSSL_init_ssl(0, nullptr) == 1;
+#endif
     // mutual exclusion between subscribing/unsubscribing (writing), and the rest client worker thread calling the callback (reading)
     mutable std::shared_mutex                                                                              _mutex;
     std::unordered_map<std::string, std::unique_ptr<Subscription>, TransparentStringHash, std::equal_to<>> _subscriptions;

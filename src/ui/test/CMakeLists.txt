@@ -159,6 +159,7 @@ if(ENABLE_IMGUI_TEST_ENGINE)
   add_imgui_test(qa_chart)
   set_tests_properties(qa_chart PROPERTIES TIMEOUT 300) # a hang reports its pending wait within the CI step
   add_imgui_test(qa_ImageChart)
+  add_imgui_test(qa_SampleDashboards)
   if(OD_ACOUSTIC_CAMERA)
     cmrc_add_resources(
       ui_test_assets
@@ -231,6 +232,18 @@ if(OD_NODE
                browser
                TIMEOUT
                300
+               RUN_SERIAL
+               TRUE
+               SKIP_RETURN_CODE
+               77)
+  add_test(NAME qa_BrowserSampleDashboards
+           COMMAND ${OD_NODE} ${CMAKE_CURRENT_SOURCE_DIR}/browser/qa_BrowserSampleDashboards.mjs ${OD_WASM_WEB_DIR})
+  set_tests_properties(
+    qa_BrowserSampleDashboards
+    PROPERTIES LABELS
+               browser
+               TIMEOUT
+               900
                RUN_SERIAL
                TRUE
                SKIP_RETURN_CODE
