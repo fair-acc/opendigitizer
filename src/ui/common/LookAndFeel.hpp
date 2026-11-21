@@ -150,9 +150,9 @@ struct Palette {
 struct SpectrumSchemeKeywordColors {
     std::uint32_t gray50, gray75, gray100, gray200, gray300, gray400, gray500, gray600, gray700, gray800, gray900;
     std::uint32_t blue400, blue500, blue600, blue700;
-    std::uint32_t red400, red500, red600, red700;
-    std::uint32_t orange400, orange500, orange600, orange700;
-    std::uint32_t green400, green500, green600, green700;
+    std::uint32_t red500, red700;
+    std::uint32_t orange500;
+    std::uint32_t green500;
     std::uint32_t magenta500;
 };
 

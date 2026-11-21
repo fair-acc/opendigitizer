@@ -1,3 +1,4 @@
+#include "App.hpp"
 #include "ImGuiTestApp.hpp"
 #include "TestDashboardRunner.hpp"
 #include "TestPropertySetterButton.hpp"
@@ -6,8 +7,6 @@
 #include <boost/ut.hpp>
 
 #include <gnuradio-4.0/BlockRegistry.hpp>
-#include <gnuradio-4.0/GrBasicBlocks.hpp>
-#include <gnuradio-4.0/GrTestingBlocks.hpp>
 #include <gnuradio-4.0/Scheduler.hpp>
 
 #include <Dashboard.hpp>
@@ -225,8 +224,7 @@ int main(int argc, char* argv[]) {
     gState = std::addressof(state);
 
     auto& registry = gr::globalBlockRegistry();
-    gr::blocklib::initGrBasicBlocks(registry);
-    gr::blocklib::initGrTestingBlocks(registry);
+    registerAppBlocks(registry);
     std::ignore = gr::registerBlock<ForeignToolbarBlock>(registry);
     registerWithIdPrefix<test::TestPropertySetterButton>(registry, kOpendigitizerIdPrefix);
 

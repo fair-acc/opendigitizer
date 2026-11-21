@@ -38,29 +38,29 @@ constexpr inline auto singlePop() {
 }
 } // namespace detail
 
-using Window = stdex::c_resource<bool, ImGui::Begin, ImGui::End, true>;
-using Child  = stdex::c_resource<bool, detail::beginChild, ImGui::EndChild, true>;
+using Window = stdex::c_resource<bool, &ImGui::Begin, &ImGui::End, true>;
+using Child  = stdex::c_resource<bool, &detail::beginChild, &ImGui::EndChild, true>;
 
-using Disabled   = stdex::c_resource<bool, detail::beginDisabled, ImGui::EndDisabled>;
-using TabBar     = stdex::c_resource<bool, ImGui::BeginTabBar, ImGui::EndTabBar>;
-using TabItem    = stdex::c_resource<bool, ImGui::BeginTabItem, ImGui::EndTabItem>;
-using Group      = stdex::c_resource<void, ImGui::BeginGroup, ImGui::EndGroup, true>;
-using Popup      = stdex::c_resource<bool, ImGui::BeginPopup, ImGui::EndPopup>;
-using Menu       = stdex::c_resource<bool, ImGui::BeginMenu, ImGui::EndMenu>;
-using ModalPopup = stdex::c_resource<bool, ImGui::BeginPopupModal, ImGui::EndPopup>;
-using Table      = stdex::c_resource<bool, ImGui::BeginTable, ImGui::EndTable>;
-using ListBox    = stdex::c_resource<bool, ImGui::BeginListBox, ImGui::EndListBox>;
-using ToolTip    = stdex::c_resource<bool, ImGui::BeginTooltip, ImGui::EndTooltip>;
+using Disabled   = stdex::c_resource<bool, &detail::beginDisabled, &ImGui::EndDisabled>;
+using TabBar     = stdex::c_resource<bool, &ImGui::BeginTabBar, &ImGui::EndTabBar>;
+using TabItem    = stdex::c_resource<bool, &ImGui::BeginTabItem, &ImGui::EndTabItem>;
+using Group      = stdex::c_resource<void, &ImGui::BeginGroup, &ImGui::EndGroup, true>;
+using Popup      = stdex::c_resource<bool, &ImGui::BeginPopup, &ImGui::EndPopup>;
+using Menu       = stdex::c_resource<bool, &ImGui::BeginMenu, &ImGui::EndMenu>;
+using ModalPopup = stdex::c_resource<bool, &ImGui::BeginPopupModal, &ImGui::EndPopup>;
+using Table      = stdex::c_resource<bool, &ImGui::BeginTable, &ImGui::EndTable>;
+using ListBox    = stdex::c_resource<bool, &ImGui::BeginListBox, &ImGui::EndListBox>;
+using ToolTip    = stdex::c_resource<bool, &ImGui::BeginTooltip, &ImGui::EndTooltip>;
 
-using OverrideId  = stdex::c_resource<void, ImGui::PushOverrideID, ImGui::PopID, true>;
-using ChangeId    = stdex::c_resource<void, static_cast<void (*)(int)>(ImGui::PushID), ImGui::PopID, true>;
-using ChangeStrId = stdex::c_resource<void, static_cast<void (*)(const char*)>(ImGui::PushID), ImGui::PopID, true>;
+using OverrideId  = stdex::c_resource<void, &ImGui::PushOverrideID, &ImGui::PopID, true>;
+using ChangeId    = stdex::c_resource<void, static_cast<void (*)(int)>(ImGui::PushID), &ImGui::PopID, true>;
+using ChangeStrId = stdex::c_resource<void, static_cast<void (*)(const char*)>(ImGui::PushID), &ImGui::PopID, true>;
 
-using DragDropSource = stdex::c_resource<bool, ImGui::BeginDragDropSource, ImGui::EndDragDropSource>;
+using DragDropSource = stdex::c_resource<bool, &ImGui::BeginDragDropSource, &ImGui::EndDragDropSource>;
 
 using Font            = stdex::c_resource<void, static_cast<void (*)(ImFont*)>(&ImGui::PushFont), &ImGui::PopFont, true>;
 using FontWithSize    = stdex::c_resource<void, static_cast<void (*)(ImFont*, float)>(&ImGui::PushFont), &ImGui::PopFont, true>;
-using ItemWidth       = stdex::c_resource<void, ImGui::PushItemWidth, ImGui::PopItemWidth, true>;
+using ItemWidth       = stdex::c_resource<void, &ImGui::PushItemWidth, &ImGui::PopItemWidth, true>;
 using StyleColor      = stdex::c_resource<void, static_cast<void (*)(ImGuiCol, const ImVec4&)>(ImGui::PushStyleColor), +detail::singlePop<ImGui::PopStyleColor>(), true>;
 using StyleNamedColor = stdex::c_resource<void, static_cast<void (*)(ImGuiCol, ImU32)>(ImGui::PushStyleColor), +detail::singlePop<ImGui::PopStyleColor>(), true>;
 using StyleVar        = stdex::c_resource<void, static_cast<void (*)(ImGuiStyleVar, const ImVec2&)>(ImGui::PushStyleVar), +detail::singlePop<ImGui::PopStyleVar>(), true>;
@@ -110,8 +110,6 @@ inline ImVec2 calcAdjacentButtonSizes(const std::array<const char*, N>& labels, 
 }
 
 WidgetSize calcCheckboxSize(const char* label);
-/// charsNeeded should be something like floating point precision, plus unit/suffix strlen
-WidgetSize calcDragSize(const char* label, std::size_t charsNeeded);
 /// a folded BeginCombo(): label, arrow and a small preview; `previewValue` counts only with ImGuiComboFlags_WidthFitPreview
 WidgetSize calcComboSize(const char* label, const char* previewValue, ImGuiComboFlags flags);
 

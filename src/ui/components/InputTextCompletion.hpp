@@ -13,7 +13,6 @@ namespace gr::od::components {
 template<typename T>
 concept CompletionNamesCollection = !std::is_const_v<T> && std::ranges::forward_range<T> && std::is_same_v<std::remove_cvref_t<std::ranges::range_value_t<T>>, std::string>;
 
-/// usage: inputTextCompletion(names).inputText(...)
 template<CompletionNamesCollection Collection>
 struct InputTextCompletionContext {
     Collection*            data     = nullptr;

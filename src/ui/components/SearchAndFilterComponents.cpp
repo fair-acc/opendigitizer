@@ -182,7 +182,7 @@ std::optional<DateFilterRow::Committed> DateFilterRow::draw(const char* strId, c
     drawRowLabel(rowLabel);
 
     ImGui::SetNextItemWidth(calcFilterDateComboWidth());
-    if (auto combo = ComboBox(kFilterDateComboLabel, kFilterDateLabels[static_cast<std::size_t>(pendingDirection)], 0)) {
+    if (auto combo = ComboBox(kFilterDateComboLabel, kFilterDateLabels[static_cast<std::size_t>(std::to_underlying(pendingDirection))], 0)) {
         using enum Direction;
         if (selectable(kFilterDateLabels[std::to_underlying(Before)])) {
             pendingDirection = Before;

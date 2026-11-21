@@ -1,3 +1,4 @@
+#include "App.hpp"
 #include "ImGuiTestApp.hpp"
 #include "TestDashboardRunner.hpp"
 #include "imgui.h"
@@ -5,17 +6,9 @@
 #include <boost/ut.hpp>
 
 #include <gnuradio-4.0/BlockRegistry.hpp>
-#include <gnuradio-4.0/GrBasicBlocks.hpp>
-#include <gnuradio-4.0/GrFourierBlocks.hpp>
-#include <gnuradio-4.0/GrTestingBlocks.hpp>
 #include <gnuradio-4.0/Graph_yaml_importer.hpp>
-#include <gnuradio-4.0/basic/SignalGenerator.hpp>
-#if defined(OD_ACOUSTIC_CAMERA)
-#include <gnuradio-4.0/GrAudioBlocks.hpp>
-#include <gnuradio-4.0/GrFilterBlocks.hpp>
-#include <gnuradio-4.0/GrLocalisationBlocks.hpp>
-#endif
 #include <gnuradio-4.0/Scheduler.hpp>
+#include <gnuradio-4.0/basic/SignalGenerator.hpp>
 
 #include <Dashboard.hpp>
 #include <DashboardPage.hpp>
@@ -295,14 +288,9 @@ int main(int argc, char* argv[]) {
     options.screenshotPrefix = "image_chart";
 
     auto& registry = gr::globalBlockRegistry();
-    gr::blocklib::initGrBasicBlocks(registry);
-    gr::blocklib::initGrFourierBlocks(registry);
-    gr::blocklib::initGrTestingBlocks(registry);
+    registerAppBlocks(registry);
     registerWithIdPrefix<TestSpectrumGenerator, float>(registry, kOpendigitizerIdPrefix); // the spectrum range demo's, as in the application
-#if defined(OD_ACOUSTIC_CAMERA)                                                           // the localisation dashboards' blocks, as in the application
-    gr::blocklib::initGrAudioBlocks(registry);
-    gr::blocklib::initGrFilterBlocks(registry);
-    gr::blocklib::initGrLocalisationBlocks(registry);
+#if defined(OD_ACOUSTIC_CAMERA)
     std::ignore = gr::registerBlock<opendigitizer::video::BrowserMicrophonePairs>(registry); // the browser variant's, built not started
 #endif
 

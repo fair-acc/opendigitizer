@@ -1,3 +1,4 @@
+#include "App.hpp"
 #include "ImGuiTestApp.hpp"
 #include "TestDashboardRunner.hpp"
 #include "imgui.h"
@@ -8,15 +9,6 @@
 #include <gnuradio-4.0/Graph_yaml_importer.hpp>
 #include <gnuradio-4.0/Profiler.hpp>
 #include <gnuradio-4.0/Scheduler.hpp>
-
-#include <gnuradio-4.0/GrBasicBlocks.hpp>
-#include <gnuradio-4.0/GrFourierBlocks.hpp>
-#include <gnuradio-4.0/GrTestingBlocks.hpp>
-#if defined(OD_ACOUSTIC_CAMERA)
-#include <gnuradio-4.0/GrAudioBlocks.hpp>
-#include <gnuradio-4.0/GrFilterBlocks.hpp>
-#include <gnuradio-4.0/GrLocalisationBlocks.hpp>
-#endif
 
 #include <Dashboard.hpp>
 #include <DashboardPage.hpp>
@@ -420,14 +412,7 @@ int main(int argc, char* argv[]) {
 
     auto& registry = gr::globalBlockRegistry();
 
-    gr::blocklib::initGrBasicBlocks(registry);
-    gr::blocklib::initGrFourierBlocks(registry);
-    gr::blocklib::initGrTestingBlocks(registry);
-#if defined(OD_ACOUSTIC_CAMERA) // the localisation dashboards' blocks, as in the application
-    gr::blocklib::initGrAudioBlocks(registry);
-    gr::blocklib::initGrFilterBlocks(registry);
-    gr::blocklib::initGrLocalisationBlocks(registry);
-#endif
+    registerAppBlocks(registry);
     registerTestBlocks(registry);
 
     options.speedMode = ImGuiTestRunSpeed_Fast;

@@ -24,7 +24,7 @@ struct TestApp : public test::ImGuiTestApp {
             // black edges on a black background are not readable
             imw::StyleColor style(ImGuiCol_WindowBg, ImVec4(0.9f, 0.9f, 0.9f, 1.0f));
 
-            ImGui::Begin("Test Window", NULL, ImGuiWindowFlags_NoSavedSettings);
+            ImGui::Begin("Test Window", nullptr, ImGuiWindowFlags_NoSavedSettings);
             ImGui::SetWindowSize(ImVec2(500, 400));
 
             components::blockNeighboursPreview(gContext, ImGui::GetContentRegionAvail());

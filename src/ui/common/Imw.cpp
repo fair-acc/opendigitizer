@@ -58,18 +58,6 @@ WidgetSize calcCheckboxSize(const char* label) {
         .normalized();
 }
 
-static WidgetSize calcSliderOrDragSize(const char* label, std::size_t charsNeeded) {
-    auto size                      = calcFramedLabelSize(label);
-    auto dragLabelWidth            = ImGui::CalcTextSize("W").x * static_cast<float>(std::max(charsNeeded, std::size_t{1}));
-    size.labelPreferredWidth       = size.preferred.x;
-    const auto dragAdditionalWidth = dragLabelWidth + ImGui::GetStyle().ItemInnerSpacing.x + ImGui::GetStyle().FramePadding.x * 2.f;
-    size.min.x += dragAdditionalWidth;
-    size.preferred.x += dragAdditionalWidth;
-    return size.normalized();
-}
-
-WidgetSize calcDragSize(const char* label, std::size_t charsNeeded) { return calcSliderOrDragSize(label, charsNeeded); }
-
 WidgetSize calcComboSize(const char* label, const char* previewValue, ImGuiComboFlags flags) {
     WidgetSize previewSize{};
     if (!(flags & ImGuiComboFlags_NoPreview) && previewValue) {

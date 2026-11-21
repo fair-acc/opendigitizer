@@ -474,7 +474,7 @@ std::optional<UiGraphEdge> UiGraphBlock::parseEdgeData(const gr::property_map& e
             // a collection [topLevel, subIndex], as saveGraphToMap serialises it
             return gr::PortDefinition(static_cast<std::size_t>(indices[0].value_or(std::int64_t{})), static_cast<std::size_t>(indices[1].value_or(std::int64_t{})));
         }
-        if (const auto index = portField.get_if<std::int64_t>()) { // regular port definition, by index
+        if (const auto index = portField.get_if<std::int64_t>()) {
             return gr::PortDefinition(static_cast<std::size_t>(*index));
         }
 
@@ -1056,7 +1056,7 @@ bool UiGraphModel::apply(const gr::Message& message) {
     } else if (message.endpoint == graph::kBlockInspected) {
         withBlock(uniqueName(), "requested an unknown block to be updated", [&data](UiGraphBlock& block) { block.setBlockData(data); });
 
-    } else if (message.endpoint == block::kSetting || message.endpoint == block::kStagedSetting) { // serviceName: the block's unique name
+    } else if (message.endpoint == block::kSetting || message.endpoint == block::kStagedSetting) {
         withBlock(message.serviceName, "requested an unknown block to be changed settings", [&data](UiGraphBlock& block) { block.applySettings(data); });
 
     } else if (message.endpoint == scheduler::kEdgeEmplaced) {
@@ -1165,8 +1165,6 @@ std::size_t UiGraphModel::subscribeToResponses(std::function<void(const gr::Mess
     assert(wasEmplaced);
     return iterator->first;
 }
-
-void UiGraphModel::unsubscribeFromResponses(std::size_t subscriptionId) { _testResponseSubscriptions.erase(subscriptionId); }
 
 void UiGraphModel::rebuildNameRegistry() {
     nameRegistry.usedNames.clear();

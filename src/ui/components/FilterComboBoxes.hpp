@@ -16,7 +16,7 @@ namespace gr::od {
 
 inline auto colorComboBoxExpectedWidth(const std::string& label) {
     const auto padding  = GImGui->Style.FramePadding.x;
-    ImVec2     textSize = ImGui::CalcTextSize(label.c_str(), NULL, true);
+    ImVec2     textSize = ImGui::CalcTextSize(label.c_str(), nullptr, true);
 
     auto comboWidth = LookAndFeel::instance().filterComboTextWidthScale * textSize.x + textSize.y + 3 * padding;
     return comboWidth;
@@ -77,7 +77,7 @@ struct FilterComboBoxes {
         bool first                 = true;
 
         for (FilterCombo& combo : combos) {
-            float desiredWidth = colorComboBoxExpectedWidth(combo.label.c_str());
+            float desiredWidth = colorComboBoxExpectedWidth(combo.label);
             if (!first && remainingContentWidth > desiredWidth * LookAndFeel::instance().filterComboWrapScale) {
                 ImGui::SameLine();
             } else {

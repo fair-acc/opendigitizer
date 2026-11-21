@@ -22,11 +22,8 @@ namespace gr::od::components {
 enum class SelectionPopupState { InProgress, Confirmed, Cancelled };
 
 struct ScrollableListSelectionPopupResult {
-    // this is a view into the ScrollableListSelectionPopup, it becomes invalid
-    // when that is destroyed or draw() is called on it again
-    std::span<const std::size_t> enabledItems;
-    SelectionPopupState          currentState = SelectionPopupState::InProgress;
-    std::optional<std::size_t>   hoveredItem;
+    SelectionPopupState        currentState = SelectionPopupState::InProgress;
+    std::optional<std::size_t> hoveredItem;
 };
 
 struct CheckboxListItem {
@@ -44,7 +41,6 @@ struct ScrollableListSelectionPopup {
     std::string                   _name;
     std::string                   _emptyListMessage;
     std::vector<CheckboxListItem> _items;
-    std::vector<std::size_t>      _enabledItems;
     bool                          _opened = false;
 
     ScrollableListSelectionPopup(std::string name, std::vector<CheckboxListItem> items, std::string emptyListMessage = {}) : _name(std::move(name)), _emptyListMessage(std::move(emptyListMessage)), _items(std::move(items)) {}

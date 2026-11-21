@@ -45,7 +45,7 @@ struct LowPassFilter : gr::Block<LowPassFilter<T>> {
     GR_MAKE_REFLECTABLE(LowPassFilter, in, out, sample_rate, cutoff, cutoff_smoothing_time);
 
     std::array<SectionState, 2> _sections{};
-    double                      _cutoffFrequencyLn = 0.; // natural log of frequency
+    double                      _cutoffFrequencyLn = 0.;
 
     void start() { _cutoffFrequencyLn = std::log(clampedCutoff()); }
 

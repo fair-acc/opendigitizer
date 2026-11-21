@@ -76,7 +76,6 @@ struct UiGraphEdge {
 
     UiGraphEdge() : edgeSourcePortDefinition(std::string()), edgeDestinationPortDefinition(std::string()) {}
 
-    /// returns the source or the destination block
     UiGraphBlock* getBlock(UiGraphPort::Role role) const {
         if (role == UiGraphPort::Role::Source) {
             return edgeSourcePort ? edgeSourcePort->ownerBlock : nullptr;
@@ -409,7 +408,6 @@ struct UiGraphModel {
     bool blockInTree(const UiGraphBlock& block, const UiGraphBlock& tree, UiGraphPort::Role direction) const;
 
     std::size_t subscribeToResponses(std::function<void(const gr::Message& incoming)> listener);
-    void        unsubscribeFromResponses(std::size_t subscriptionId);
 
     // used by tests
     [[nodiscard]] static DrawableBlockConfig::ControlledProperty firstControlledPropertyConfig(std::span<const BlockPointerPropertyNamePair> controlled);

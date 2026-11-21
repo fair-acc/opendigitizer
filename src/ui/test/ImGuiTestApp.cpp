@@ -37,9 +37,9 @@ void registerDefaultThreadPool() {
     Manager::instance().replacePool(std::string(kDefaultIoPoolId), std::make_shared<ThreadPoolWrapper>(std::make_unique<BasicThreadPool>(std::string(kDefaultIoPoolId), TaskType::IO_BOUND, 0U), "IO"));
 }
 
-inline static ImGuiTestApp* gTestApp = nullptr;
+inline ImGuiTestApp* gTestApp = nullptr;
 
-inline static bool createWindow(ImGuiApp* /*app*/, const char* windowTitle, ImVec2 windowSize) {
+inline bool createWindow(ImGuiApp* /*app*/, const char* windowTitle, ImVec2 windowSize) {
     std::string glslVersion;
     if (!sdl::initSDL(glslVersion, windowTitle, windowSize, SDL_WINDOW_HIDDEN)) {
         std::println(stderr, "[Main] SDL3 initialisation failed.");
@@ -52,9 +52,9 @@ inline static bool createWindow(ImGuiApp* /*app*/, const char* windowTitle, ImVe
     return true;
 }
 
-inline static void initBackends(ImGuiApp* /*app*/) {}
+inline void initBackends(ImGuiApp* /*app*/) {}
 
-inline static bool newFrame(ImGuiApp* /*app*/) {
+inline bool newFrame(ImGuiApp* /*app*/) {
     if (!sdl::pollEvents().running) {
         std::println("[TestApp] requested close");
         return false;
@@ -63,12 +63,12 @@ inline static bool newFrame(ImGuiApp* /*app*/) {
     return sdl::newFrame();
 }
 
-inline static void render(ImGuiApp*) {} // the run loop renders, so that captures happen before the swap
+inline void render(ImGuiApp*) {} // the run loop renders, so that captures happen before the swap
 
-inline static void shutdownCloseWindow(ImGuiApp*) { sdl::teardownSDL(); }
-inline static void shutdownBackends(ImGuiApp*) { sdl::teardownSDL(); }
+inline void shutdownCloseWindow(ImGuiApp*) { sdl::teardownSDL(); }
+inline void shutdownBackends(ImGuiApp*) { sdl::teardownSDL(); }
 
-inline static bool readFlippedFramebuffer(ImGuiApp* /*app*/, ImGuiViewport* /*viewport*/, int x, int y, int w, int h, unsigned int* pixels, void* /*userData*/) {
+inline bool readFlippedFramebuffer(ImGuiApp* /*app*/, ImGuiViewport* /*viewport*/, int x, int y, int w, int h, unsigned int* pixels, void* /*userData*/) {
 #ifdef __linux__
     // workaround: the compositor needs a moment to flush for an accurate capture
     std::this_thread::sleep_for(std::chrono::milliseconds(1));
@@ -92,7 +92,7 @@ inline static bool readFlippedFramebuffer(ImGuiApp* /*app*/, ImGuiViewport* /*vi
     return true;
 }
 
-inline static bool captureFramebuffer(ImGuiApp* app, ImGuiViewport* viewport, int x, int y, int w, int h, unsigned int* pixels, void* userData) {
+inline bool captureFramebuffer(ImGuiApp* app, ImGuiViewport* viewport, int x, int y, int w, int h, unsigned int* pixels, void* userData) {
     // assumes the right GL context is current, without the backend's internal PlatformUserData
     IM_UNUSED(viewport);
 

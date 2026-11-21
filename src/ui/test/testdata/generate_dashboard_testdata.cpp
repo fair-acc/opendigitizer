@@ -132,7 +132,7 @@ std::vector<BlockSpec> makeSources() {
     std::vector<BlockSpec> sources;
     const int              nSources = randomRangeInt(1, 4);
     for (int i = 0; i < nSources; ++i) {
-        const SourceKind kind = static_cast<SourceKind>(randomRangeInt(0, static_cast<int>(SourceKind::count) - 1));
+        const SourceKind kind = static_cast<SourceKind>(randomRangeInt(0, std::to_underlying(SourceKind::count) - 1));
         BlockSpec        source;
         switch (kind) {
         case SourceKind::sine:

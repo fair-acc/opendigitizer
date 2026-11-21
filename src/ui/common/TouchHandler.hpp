@@ -41,7 +41,7 @@ struct TouchHandler {
     static inline std::array<ImVec2, kMaxFingers>    fingerPosUp{};
     static inline std::array<TimePoint, kMaxFingers> fingerTimeStamp{}; // time stamp when the last change occurred
     static inline std::array<TimePoint, kMaxFingers> fingerDownTimeStamp{};
-    static inline TimePoint                          gestureTimeStamp{}; // time stamp when the last change occurred
+    static inline TimePoint                          gestureTimeStamp{};
     static inline ImVec2                             gestureCentre{-1.f, -1.f};
     static inline ImVec2                             gestureCentreDiff{0.f, 0.f};
     static inline ImVec2                             gestureLastCentre{-1.f, -1.f};
@@ -407,7 +407,7 @@ struct TouchHandler {
         if (!gestureActive || gestureDragActive || nFingers != 2) {
             return;
         }
-        const auto isPointInRect = [](const ImVec2& point, const ImRect& rect) -> bool { return point.x >= rect.Min.x && point.x <= rect.Max.x && point.y >= rect.Min.y && point.y <= rect.Max.y; };
+        const auto isPointInRect = [](const ImVec2& point, const ImRect& rect) { return point.x >= rect.Min.x && point.x <= rect.Max.x && point.y >= rect.Min.y && point.y <= rect.Max.y; };
         if (!isPointInRect(gestureCentre, ImPlot::GetCurrentContext()->CurrentPlot->PlotRect)) {
             return;
         }
