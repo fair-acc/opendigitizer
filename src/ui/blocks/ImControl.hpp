@@ -55,7 +55,7 @@ struct ImControl : gr::Block<TDerived, gr::Drawable<gr::UICategory::Toolbar, "Im
 
     GR_MAKE_REFLECTABLE(ImControl, target_map, label, icon, tooltip);
 
-    // used to track whether the property we are connected to has changed, to invalidate cache
+    // a changed target invalidates the cached value
     std::string _lastDrawnTarget;
 
     explicit ImControl(gr::property_map initParameters = {}) : DrawableBlock(std::move(initParameters)) {}

@@ -5,6 +5,8 @@
 
 template<typename T>
 struct CountSource : public gr::Block<CountSource<T>> {
+    using Description = gr::Doc<"Counts up or down from initial_value, publishing each timing_tags entry 'index,trigger' as a trigger tag at that sample index">;
+
     gr::PortOut<T> out;
 
     uint32_t                 n_samples       = 0; ///< Number of samples to produce, 0 means infinite
@@ -13,9 +15,9 @@ struct CountSource : public gr::Block<CountSource<T>> {
     std::pmr::string         signal_name     = "test signal";
     std::pmr::string         signal_unit     = "test unit";
     std::pmr::string         signal_quantity = "test quantity";
-    float                    signal_min      = std::numeric_limits<float>::lowest(); ///< minimum value of the signal
-    float                    signal_max      = std::numeric_limits<float>::max();    ///< maximum value of the signal
-    std::string              direction       = "up";                                 ///< direction of the count, "up" or "down"
+    float                    signal_min      = std::numeric_limits<float>::lowest();
+    float                    signal_max      = std::numeric_limits<float>::max();
+    std::string              direction       = "up"; ///< direction of the count, "up" or "down"
     std::vector<std::string> timing_tags;
     struct PendingTag {
         std::size_t      index;

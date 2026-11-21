@@ -131,7 +131,7 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    Digitizer::Settings::instance();
+    digitizer::Settings::instance();
     initialise();
 
     registerAppBlocks(*grGlobalBlockRegistry());
@@ -151,7 +151,7 @@ int main(int argc, char** argv) {
 
 #ifdef __EMSCRIPTEN__
     auto& pacer = globalFramePacer();
-    pacer.setMinRate(1.0); // min 1 Hz (idle/hidden)
+    pacer.setMinRate(1.0); // Hz, idle or hidden
     pacer.setMaxRate(LookAndFeel::instance().maxFrameRate);
 
     emscripten_set_visibilitychange_callback(nullptr, EM_FALSE, emVisibilityCallback);
@@ -164,7 +164,7 @@ int main(int argc, char** argv) {
 
     // the global pacer, on which data sources call requestFrame()
     auto& pacer = globalFramePacer();
-    pacer.setMinRate(1.0); // min 1 Hz (idle refresh for clock)
+    pacer.setMinRate(1.0); // Hz, idle refresh of the clock
     pacer.setMaxRate(LookAndFeel::instance().maxFrameRate);
 
     std::println("[Main] Event-driven rendering: min {:.1f}Hz, max {:.1f}Hz", pacer.minRateHz(), pacer.maxRateHz());

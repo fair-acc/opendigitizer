@@ -78,7 +78,7 @@ enum class AxisScale { Linear = 0, LinearReverse, Time, Log10, SymLog };
 }
 
 enum class LabelFormat {
-    Auto = 0,     // automatic based on range
+    Auto = 0,
     Metric,       // SI prefixes (k, M, G, etc.)
     MetricInline, // SI prefixes inline with value
     Scientific,
@@ -399,9 +399,7 @@ inline std::string truncateLabel(std::string_view original, float availableWidth
     return std::copysign(c * (std::pow(10.0, std::abs(value)) - 1.0), value);
 }
 
-// a trace of more points than its plot has pixel columns, reduced to each column's smallest and largest value in the order they came, as an oscilloscope's peak detect does:
-// the envelope drawn is that of every point, at two points a column, which keeps a trace of hundreds of thousands of samples interactive.
-// A shorter trace is left as it is.
+// peak detect: each pixel column's min and max in arrival order, which keeps traces of hundreds of thousands of samples interactive
 inline void reduceToColumns(std::vector<double>& x, std::vector<double>& y, std::size_t columns) {
     if (columns == 0UZ || x.size() != y.size() || x.size() <= 2UZ * columns) {
         return;
@@ -834,7 +832,6 @@ inline void showPlotMouseTooltip(double onDelay = LookAndFeel::instance().plotTo
 
 } // namespace tooltip
 
-/// D&D protocol for signal sink transfers between charts and legend.
 namespace dnd {
 
 constexpr const char* kPayloadType = "SIGNAL_SINK_DND";
@@ -956,7 +953,7 @@ struct ChartRequests {
 
 inline ChartRequests* gChartRequests = nullptr;
 
-/// Font Awesome icon constants for context menus.
+/// Font Awesome code points
 namespace menu_icons {
 inline constexpr const char* kXAxis      = "\uf547"; // ruler-horizontal
 inline constexpr const char* kYAxis      = "\uf548"; // ruler-vertical
@@ -1286,7 +1283,6 @@ struct Chart {
     std::array<bool, 3UZ>   _limitsForceAppliedX = {};
     std::array<bool, 3UZ>   _limitsForceAppliedY = {};
 
-    // helpers that abstract over scalar (bool / double) vs per-axis array (std::array<T,3>) properties
     template<typename Field>
     static bool readAutoScale(const Field& field, std::size_t idx) {
         if constexpr (requires { field.value[0]; }) {

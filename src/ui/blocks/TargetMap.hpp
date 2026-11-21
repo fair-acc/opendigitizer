@@ -77,11 +77,11 @@ namespace detail {
     if (colon == std::string_view::npos) {
         return std::unexpected(std::format("'{}': expected a ':' between blocks and property", entryText));
     }
-    const std::string property = Digitizer::trimWhitespace(entryText.substr(colon + 1UZ));
+    const std::string property = digitizer::trimWhitespace(entryText.substr(colon + 1UZ));
     if (property.empty()) {
         return std::unexpected(std::format("'{}': empty property", entryText));
     }
-    const std::string blocksText = Digitizer::trimWhitespace(entryText.substr(0UZ, colon));
+    const std::string blocksText = digitizer::trimWhitespace(entryText.substr(0UZ, colon));
     if (blocksText.empty()) {
         return std::unexpected(std::format("'{}': no block named", entryText));
     }
@@ -94,7 +94,7 @@ namespace detail {
     }
     std::vector<TargetEntry> entries;
     for (const std::string_view nameText : *nameTexts) {
-        std::string name = Digitizer::trimWhitespace(nameText);
+        std::string name = digitizer::trimWhitespace(nameText);
         if (name.empty() || name == "*") {
             return std::unexpected(std::format("'{}': {}", entryText, name.empty() ? "empty block name" : "'*' mixed with block names"));
         }
@@ -107,14 +107,14 @@ namespace detail {
 [[nodiscard]] inline bool isValidBlockName(std::string_view name) { //
     return !name.contains(';')                                      //
            && !name.contains('*')                                   //
-           && Digitizer::trimWhitespace(name) == name               //
+           && digitizer::trimWhitespace(name) == name               //
            && detail::splitStringOutsideOfAngleBrackets(name, ',').transform([](const auto& parts) { return parts.size() == 1UZ; }).value_or(false);
 }
 
 /// trim whitespace and replace special characters with underscores (;*,<>)
 [[nodiscard]] inline std::string sanitizeUserInputtedName(std::string_view name) {
     static constexpr std::string_view kTargetMapGrammarCharacters = ";*,<>";
-    std::string                       sanitized                   = Digitizer::trimWhitespace(name);
+    std::string                       sanitized                   = digitizer::trimWhitespace(name);
     std::ranges::replace_if(sanitized, [](char c) { return kTargetMapGrammarCharacters.contains(c); }, '_');
     assert(isValidBlockName(sanitized));
     return sanitized;
@@ -126,11 +126,11 @@ struct TargetMap {
 
     [[nodiscard]] static std::expected<TargetMap, std::string> fromString(std::string_view stringRepresentation) {
         TargetMap map;
-        if (Digitizer::trimWhitespace(stringRepresentation).empty()) {
+        if (digitizer::trimWhitespace(stringRepresentation).empty()) {
             return map;
         }
         for (const auto entryRange : stringRepresentation | std::views::split(';')) {
-            auto entries = detail::parseTargetEntries(Digitizer::trimWhitespace(std::string_view(entryRange.begin(), entryRange.end())));
+            auto entries = detail::parseTargetEntries(digitizer::trimWhitespace(std::string_view(entryRange.begin(), entryRange.end())));
             if (!entries) {
                 return std::unexpected(std::move(entries.error()));
             }
@@ -195,9 +195,9 @@ inline constexpr std::array<std::string_view, 2> kColorUnits{"Color", "RGB"};
     std::vector<std::string> types;
     std::vector<std::string> units;
     for (const auto entryRange : compatibleTypeMap | std::views::split(';')) {
-        std::string entry = Digitizer::trimWhitespace(std::string_view(entryRange.begin(), entryRange.end()));
+        std::string entry = digitizer::trimWhitespace(std::string_view(entryRange.begin(), entryRange.end()));
         if (entry.starts_with(kUnitPrefix)) {
-            units.push_back(Digitizer::trimWhitespace(std::string_view(entry).substr(kUnitPrefix.size())));
+            units.push_back(digitizer::trimWhitespace(std::string_view(entry).substr(kUnitPrefix.size())));
         } else if (!entry.empty()) {
             types.push_back(std::move(entry));
         }

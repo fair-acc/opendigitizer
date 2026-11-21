@@ -47,7 +47,7 @@ int main(int argc, char* argv[]) {
 
     UiGraphModel graphModel;
 
-    // for the styling
+    // the preview reads the node editor's style
     ax::NodeEditor::Config config;
     config.SettingsFile = nullptr;
     ax::NodeEditor::SetCurrentEditor(ax::NodeEditor::CreateEditor(&config));

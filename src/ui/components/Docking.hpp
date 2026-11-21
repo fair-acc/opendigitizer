@@ -62,7 +62,7 @@ struct DockSpace {
     void renderWindows(const Windows& windows, bool isEditable, ImVec2 paneSize);
     void drawEditableWindowDragArea();
 
-    // this function does not restore the location of floating windows, renderWindows() will do that
+    // floating windows: their location is restored by renderWindows()
     void relayout(const Windows& windows, bool isEditable, bool exactFreeLayoutRequested);
 
     // a row or a column
@@ -70,11 +70,10 @@ struct DockSpace {
 
     void layoutInGrid(const Windows& windows, bool isEditable);
 
-    // returns false if layout in the exactly requested geometries fails
+    // false: the exactly requested geometries cannot be laid out
     [[nodiscard]] bool layoutInExactFree(const Windows& windows, bool isEditable);
     void               layoutInFreeRegion(const std::vector<std::vector<int>>& grid, const Windows& windows, std::size_t x0, std::size_t x1, std::size_t y0, std::size_t y1, ImGuiID nodeId, bool isEditable);
 
-    // triggers a relayout for the next frame
     void setNeedsRelayout(bool);
 
     int nodeFlags(bool isEditable) const;

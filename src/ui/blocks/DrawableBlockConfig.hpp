@@ -18,7 +18,7 @@ inline constexpr double kImGuiSliderDoubleLimit = std::numeric_limits<double>::m
 
 /// constraints on the values a block property accepts
 struct BlockPropertyHints {
-    // we have no validation to stop min from being greater than max
+    // min > max is not rejected
     std::optional<double>    min     = {};
     std::optional<double>    max     = {};
     std::vector<std::string> choices = {}; // empty is the same as not specified
@@ -65,7 +65,7 @@ struct BlockPropertyHints {
             return result;
         }
 
-        // ignore non-string values but accept empty string as a choice. remove duplicates
+        // an empty string is a valid choice
         constexpr static auto valueToString    = [](auto value) { return value.value_or(std::string{}); };
         result.choices                         = *choices | std::views::filter(&gr::pmt::Value::is_string) | std::views::transform(valueToString) | std::ranges::to<std::vector>();
         const auto [firstRemoved, lastRemoved] = std::ranges::unique(result.choices);

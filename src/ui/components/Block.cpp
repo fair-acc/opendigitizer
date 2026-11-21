@@ -516,7 +516,7 @@ static void drawUiControlledPropertyActions(BlockControlsPanelContext& panelCont
 
 static void drawSettingRow(BlockControlsPanelContext& panelContext, const std::string& key, UiGraphBlock& block, const gr::pmt::Value& value, bool uiControlled) {
     if (!value.is_string() && !value.is_floating_point() && !value.is_integral()) {
-        return; // unsupported type
+        return;
     }
 
     auto          id = ImGui::GetID(key.c_str());

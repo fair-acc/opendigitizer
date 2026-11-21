@@ -9,24 +9,10 @@
 #include <opencmw.hpp>
 #include <type_traits>
 
-/***
- * A simple test program which allows to subscribe to a specific acquisition property and displays the range and sample count and rate of the received
- * data acquisition Objects.
- *
- * Example use:
- * ``` bash
- * $ ./cli-signal-subscribe mds://localhost:12345/GnuRadio/Acquisition?channelNameFilter=test
- * Subscribing to mds://localhost:12345/GnuRadio/Acquisition?channelNameFilter=test
- * t = 26ms: Update received: 1, samples: 640, min-max: -0.0027466659-0.0025940733, total_samples: 640, avg_sampling_rate: 24615.384615384617
- * t = 76ms: Update received: 2, samples: 640, min-max: -0.0027466659-0.0025940733, total_samples: 1280, avg_sampling_rate: 16842.105263157893
- * [...]
- * $ ./cli-signal-subscribe https://localhost:8080/GnuRadio/Acquisition?channelNameFilter=test&LongPollingIdx=Next # TODO: fix http subscription to not need long polling index
- * Subscribing to mds://localhost:12345/GnuRadio/Acquisition?channelNameFilter=test
- * t = 26ms: Update received: 1, samples: 640, min-max: -0.0027466659-0.0025940733, total_samples: 640, avg_sampling_rate: 24615.384615384617
- * t = 76ms: Update received: 2, samples: 640, min-max: -0.0027466659-0.0025940733, total_samples: 1280, avg_sampling_rate: 16842.105263157893
- * [...]
- * ```
- */
+// prints sample count, range, rate and latency of each update of an acquisition property, e.g.
+//   ./cli-signal-subscribe mds://localhost:12345/GnuRadio/Acquisition?channelNameFilter=test
+//   ./cli-signal-subscribe "https://localhost:8080/GnuRadio/Acquisition?channelNameFilter=test&LongPollingIdx=Next"
+// TODO: fix http subscription to not need the long polling index
 int main(int argc, char** argv) {
     using opencmw::URI;
     using namespace opendigitizer::acq;
@@ -70,8 +56,8 @@ int main(int argc, char** argv) {
         signalsReceived    = acq.channelValues.n(0UZ);
         samplesReceived += acq.channelValues.n(1UZ);
         updateCount++;
-        double sample_rate = (static_cast<double>(samplesReceived) / static_cast<double>(uptime.count())) * 1000.0;
-        auto [min, max]    = [&acq]() {
+        double sampleRate = (static_cast<double>(samplesReceived) / static_cast<double>(uptime.count())) * 1000.0;
+        auto [min, max]   = [&acq]() {
             if (acq.channelValues.elements().empty()) {
                 return std::ranges::min_max_result{0.0f, 0.0f};
             } else {
@@ -79,7 +65,7 @@ int main(int argc, char** argv) {
             }
         }();
         std::print("t = {}ms: Update received: {}, samples: {}, signals: {}, min-max: {}-{}, total_samples: {}, avg_sampling_rate: {}, latency: {}s\n", //
-            uptime.count(), updateCount, acq.channelValues.n(1UZ), acq.channelValues.n(0UZ), min, max, samplesReceived, sample_rate, 1e-9 * static_cast<double>(latency.count()));
+            uptime.count(), updateCount, acq.channelValues.n(1UZ), acq.channelValues.n(0UZ), min, max, samplesReceived, sampleRate, 1e-9 * static_cast<double>(latency.count()));
     });
 
     while (true) {

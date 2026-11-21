@@ -49,7 +49,7 @@ struct App {
     static constexpr std::string_view kBuiltinSamplesSource = "example://builtin-samples";
 
     std::unique_ptr<Dashboard>                   dashboard;
-    std::shared_ptr<opencmw::client::RestClient> restClient = std::make_unique<opencmw::client::RestClient>(opencmw::client::VerifyServerCertificates(Digitizer::Settings::instance().checkCertificates));
+    std::shared_ptr<opencmw::client::RestClient> restClient = std::make_unique<opencmw::client::RestClient>(opencmw::client::VerifyServerCertificates(digitizer::Settings::instance().checkCertificates));
 
     Dashboard*                     loadedDashboard = nullptr;
     std::unique_ptr<DashboardPage> dashboardPage;
@@ -73,8 +73,8 @@ struct App {
     std::optional<bool> _forcedEditable; // Settings::deprecatedEditable until the user locks or unlocks; never saved to the .grc
 
     App() : openDashboardPage(restClient) {
-        LookAndFeel::mutableInstance().theme = magic_enum::enum_cast<LookAndFeel::Theme>(Digitizer::Settings::instance().theme, magic_enum::case_insensitive).value_or(LookAndFeel::Theme::Classic);
-        setStyle(Digitizer::Settings::instance().darkMode ? LookAndFeel::Style::Dark : LookAndFeel::Style::Light);
+        LookAndFeel::mutableInstance().theme = magic_enum::enum_cast<LookAndFeel::Theme>(digitizer::Settings::instance().theme, magic_enum::case_insensitive).value_or(LookAndFeel::Theme::Classic);
+        setStyle(digitizer::Settings::instance().darkMode ? LookAndFeel::Style::Dark : LookAndFeel::Style::Light);
     }
 
     void loadEmptyDashboard() { loadDashboard(DashboardDescription::createEmpty("New dashboard")); }
@@ -153,7 +153,7 @@ struct App {
     }
 
     void init(int argc, char** argv) {
-        Digitizer::Settings& settings = Digitizer::Settings::instance();
+        digitizer::Settings& settings = digitizer::Settings::instance();
 
         openDashboardPage.requestCloseDashboard = [&] { closeDashboard(); };
         openDashboardPage.requestLoadDashboard  = [&](const auto& desc) {
@@ -172,7 +172,7 @@ struct App {
         flowgraphPage.requestBlockControlsPanel = [&](components::BlockControlsPanelContext& panelContext, const ImVec2& pos, const ImVec2& size, bool horizontalSplit) { components::blockControlsPanel(panelContext, pos, size, horizontalSplit); };
 
         header.requestApplicationSwitchMode = [this](ViewMode mode) { mainViewMode = mode; };
-        // use executeLater to avoid a potential bug where the style gets set in the scope of a push/restore of a style var from a different theme
+        // executeLater: the style must not switch inside a push/pop of another theme's style var
         header.requestApplicationSwitchStyle = [this](LookAndFeel::Style style) {
             EventLoop::instance().executeLater([this, style] {
                 setStyle(style);
@@ -312,7 +312,7 @@ struct App {
                     dashboard->editable = false;
                     mainViewMode        = ViewMode::INTERACTION;
                 });
-                _forcedEditable = Digitizer::Settings::instance().deprecatedEditable;
+                _forcedEditable = digitizer::Settings::instance().deprecatedEditable;
                 mainViewMode    = ViewMode::INTERACTION;
                 dashboardPage->setRequestSetLayoutModeHandler([this](bool isLayout) { mainViewMode = isLayout ? ViewMode::LAYOUT : ViewMode::INTERACTION; });
                 flowgraphPage.reset();

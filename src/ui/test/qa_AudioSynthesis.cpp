@@ -181,7 +181,6 @@ const suite<"GainEnvelope"> gainEnvelopeTests = [] {
         expect(volumeBefore < releasedAt && volumeBefore > 0.) << fatal << "partially faded";
         expect(lt(static_cast<double>(indexOfFirstSampleAtVolume(runEnvelope(envelope, numSamplesForFullRelease, 1.f), 0.)), static_cast<double>(numSamplesForFullRelease))) << "reaches silence before a full-volume release would";
 
-        // press again after a partial release
         GainEnvelope<float> second({{"sample_rate", kTestingSampleRate}, {"attack", kTestingAttack}, {"release", kTestingRelease}, {"pressed", true}});
         second.init(second.progress);
         std::ignore = runEnvelope(second, numAttackSamples / 2UZ, 1.f);

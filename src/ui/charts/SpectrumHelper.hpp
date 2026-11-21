@@ -218,12 +218,9 @@ inline void plotTrace(const char* label, std::span<const float> xValues, std::sp
     return nNew;
 }
 
-/// fixed number of log-spaced display columns for a log-frequency spectrum (waterfall/density/surface).
 inline constexpr std::size_t kLogSpectrumColumns = 2048;
 
-/// re-samples a linear spectrum (`freqs`/`mags`, `nBins`) onto `out.size()` log-spaced columns over [fMin, fMax]:
-/// a peak-preserving maximum per column, then columns finer than the bin spacing are filled.
-/// This keeps low-frequency detail on a log axis.
+/// peak-preserving maximum per log-spaced column over [fMin, fMax], columns finer than the bin spacing filled: keeps low-frequency detail on a log axis
 inline void buildLogBinnedRow(std::span<const float> freqs, std::span<const float> mags, std::size_t nBins, double fMin, double fMax, std::span<float> out) {
     std::ranges::fill(out, -std::numeric_limits<float>::infinity());
     const std::size_t nCols  = out.size();
@@ -241,7 +238,7 @@ inline void buildLogBinnedRow(std::span<const float> freqs, std::span<const floa
     bool  seen      = false;
     float firstVal  = 0.0f;
     bool  haveFirst = false;
-    for (float& v : out) { // forward-fill: propagate the last occupied column into the gaps above it
+    for (float& v : out) {
         if (std::isfinite(v)) {
             carry = v;
             seen  = true;
@@ -253,7 +250,7 @@ inline void buildLogBinnedRow(std::span<const float> freqs, std::span<const floa
             v = carry;
         }
     }
-    for (float& v : out) { // back-fill leading columns (below the first occupied bin) with the first value
+    for (float& v : out) {
         if (std::isfinite(v)) {
             break;
         }
@@ -410,7 +407,7 @@ struct DensityHistogram {
     float                   _peakDensity        = 0.f;
 
     std::vector<float> _scratchBuffer;
-    std::vector<float> _logRow; // linear spectrum re-binned onto log-spaced columns
+    std::vector<float> _logBinnedRow;
 
     std::vector<float>                  _cpuHistogram;
     std::vector<uint32_t>               _cpuPixels;
@@ -849,9 +846,9 @@ void main() {
     void accumulateAndPlot(const SpectrumFrame& newest, std::size_t nNew, const std::optional<LogFreqRange>& logRange, std::size_t ampBins, double decayTau, double yMin, double yMax, ImPlotColormap colormap, bool preferGpu) {
         if (logRange) {
             forEachNewSpectrum(newest, nNew, [&](const SpectrumFrame& s) {
-                _logRow.resize(kLogSpectrumColumns);
-                buildLogBinnedRow(s.xValues, s.yValues, s.nBins, logRange->min, logRange->max, _logRow);
-                update(_logRow, kLogSpectrumColumns, ampBins, decayTau, yMin, yMax, colormap, preferGpu);
+                _logBinnedRow.resize(kLogSpectrumColumns);
+                buildLogBinnedRow(s.xValues, s.yValues, s.nBins, logRange->min, logRange->max, _logBinnedRow);
+                update(_logBinnedRow, kLogSpectrumColumns, ampBins, decayTau, yMin, yMax, colormap, preferGpu);
             });
             plot(logRange->min, logRange->max, yMin, yMax);
         } else {
@@ -901,7 +898,7 @@ struct WaterfallBuffer {
     mutable std::vector<float> _linearized;    // CPU path: scratch for rendering
     double                     _effectiveScaleMin = 0.0;
     double                     _effectiveScaleMax = 0.0;
-    std::vector<float>         _logRow; // linear spectrum re-binned onto log-spaced columns
+    std::vector<float>         _logBinnedRow;
 
     WaterfallBuffer() = default;
 
@@ -951,9 +948,9 @@ struct WaterfallBuffer {
             updateAutoScale(f.yValues, f.nBins);
             const auto [cMin, cMax] = colourRange();
             if (logRange) {
-                _logRow.resize(kLogSpectrumColumns);
-                buildLogBinnedRow(f.xValues, f.yValues, f.nBins, logRange->min, logRange->max, _logRow);
-                pushRow(_logRow, kLogSpectrumColumns, cMin, cMax, timestampFromNanos(f.timestamp), colormap);
+                _logBinnedRow.resize(kLogSpectrumColumns);
+                buildLogBinnedRow(f.xValues, f.yValues, f.nBins, logRange->min, logRange->max, _logBinnedRow);
+                pushRow(_logBinnedRow, kLogSpectrumColumns, cMin, cMax, timestampFromNanos(f.timestamp), colormap);
                 pushed = FrequencySpan{.freqMin = logRange->min, .freqMax = logRange->max};
             } else {
                 pushRow(f.yValues, f.nBins, cMin, cMax, timestampFromNanos(f.timestamp), colormap);

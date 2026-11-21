@@ -135,7 +135,6 @@ dashboard:
         expect(!preview->charts.at(0).isFloating);
 
         expect(!preview->charts.at(0).signals.at(0).isDataSet);
-        // this one has a colour
         expect(preview->charts.at(0).signals.at(1) == DashboardPreview::Signal{.color = 4660U, .isDataSet = true});
         expect(!preview->charts.at(1).signals.at(0).isDataSet);
 
@@ -217,7 +216,6 @@ dashboard:
         }
 
         expect(eq(preview->charts.size(), 2UZ));
-        // split with the proper ratio
         expectRect(preview->charts.at(0).rect, 0.f, 0.f, 0.25f, 1.f);
         expectRect(preview->charts.at(1).rect, 0.25f, 0.f, 0.75f, 1.f);
         expect(!preview->charts.at(0).signals.at(0).isDataSet);

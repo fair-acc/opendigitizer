@@ -37,7 +37,7 @@ struct UniqueNameRegistry {
             const std::string_view base = withoutNumericSuffix(nonUniquePrefix);
             name                        = std::string(base);
             while (usedNames.contains(name)) {
-                // use format with parentheses instead of # in order to improve likelihood of differentiation from blocks' unique names
+                // parentheses rather than #: told apart from blocks' unique names
                 name = std::format("{} ({})", base, lastUsedId++);
             }
         }

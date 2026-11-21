@@ -1,7 +1,7 @@
 #include <boost/ut.hpp>
 #include <chrono>
 
-// mock SDL for unit testing (avoid SDL dependency)
+// mock SDL: no SDL dependency
 #ifndef SDL_EVENTS_MOCK
 #define SDL_EVENTS_MOCK
 struct SDL_Event {
@@ -87,7 +87,7 @@ const suite<"FramePacer basics"> basicTests = [] {
 const suite<"FramePacer render logic"> renderTests = [] {
     "should render when dirty and min period elapsed"_test = [] {
         Pacer pacer{1s, 5ms};
-        pacer.rendered(); // set lastRender to now
+        pacer.rendered();
 
         pacer.requestFrame();
         expect(pacer.isDirty());

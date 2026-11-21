@@ -100,7 +100,7 @@ struct UiControlMultiSelectPopup {
 
     [[nodiscard]] std::string_view controlUniqueName() const { return _controlUniqueName; }
 
-    /// property which was hovered during the last draw. this is used to highlight blocks which have the property and would be connected to if the user presses that
+    /// hovered during the last draw: for highlighting the blocks that would be connected to it
     [[nodiscard]] std::optional<std::string_view> hoveredProperty() const;
 
     SelectionPopupState draw(UiGraphModel& model);

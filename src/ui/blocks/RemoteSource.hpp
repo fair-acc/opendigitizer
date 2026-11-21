@@ -23,8 +23,8 @@
 #include <openssl/ssl.h>
 #endif
 
-#include "conversion.hpp"
 #include "settings.hpp"
+#include "stdex/cast.hpp"
 
 #include "../utils/TransparentStringHash.hpp"
 
@@ -168,7 +168,7 @@ private:
     // mutual exclusion between subscribing/unsubscribing (writing), and the rest client worker thread calling the callback (reading)
     mutable std::shared_mutex                                                                              _mutex;
     std::unordered_map<std::string, std::unique_ptr<Subscription>, TransparentStringHash, std::equal_to<>> _subscriptions;
-    opencmw::client::RestClient                                                                            _client = opencmw::client::RestClient(opencmw::client::VerifyServerCertificates(Digitizer::Settings::instance().checkCertificates));
+    opencmw::client::RestClient                                                                            _client = opencmw::client::RestClient(opencmw::client::VerifyServerCertificates(digitizer::Settings::instance().checkCertificates));
 
     static RemoteSubscriptions& instance();
 
@@ -471,7 +471,7 @@ struct RemoteStreamSource : RemoteSourceBase, RemoteSourceCommon<RemoteStreamSou
                     map.insert({gr::tag::kTriggerTime, {static_cast<std::uint64_t>(timestamp)}});
                     const auto now     = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now().time_since_epoch());
                     auto       latency = now - std::chrono::nanoseconds(timestamp);
-                    map.insert({"REMOTE_SOURCE_LATENCY", static_cast<int64_t>(latency.count())}); // compares the current system time with the time inside the tag
+                    map.insert({"REMOTE_SOURCE_LATENCY", static_cast<int64_t>(latency.count())});
                 }
                 const auto yamlMap = gr::pmt::yaml::deserialize(yaml);
                 if (yamlMap) {

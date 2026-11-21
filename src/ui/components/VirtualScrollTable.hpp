@@ -34,10 +34,10 @@ struct VirtualScrollTableParams {
 /// a table that draws only its visible rows, around ImGuiListClipper with a header of strings:
 /// `while (auto rows = table.step()) { for (i in *rows) { table.beginRow(); ... } }`
 struct VirtualScrollTable {
-    /// the index of the header column that was clicked this frame, if any
+    /// the header column clicked this frame
     std::optional<std::size_t> clickedColumn;
 
-    // calculated height of the header row after drawing
+    // valid once the header is drawn
     float columnHeaderRowHeight = 0.f;
 
     VirtualScrollTableParams _params;

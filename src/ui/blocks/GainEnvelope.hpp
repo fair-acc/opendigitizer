@@ -41,7 +41,6 @@ struct GainEnvelope : gr::Block<GainEnvelope<T>> {
     double _currentVolumeFraction           = 0.;
     bool   _hasSeenMaxAmplitudeSincePressed = false;
 
-    // the fractional volume change per sample for a linear ramp across `distance` within `seconds`
     [[nodiscard]] constexpr double changeNeededInVolumeFractionPerSample(double distance, double seconds) const noexcept {
         if (seconds <= 0.) {
             return 1.; // 1 == 100%, ie. changes completely and instantly

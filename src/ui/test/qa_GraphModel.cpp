@@ -141,7 +141,7 @@ struct TestApp : public test::ImGuiTestApp {
         return found.block != nullptr && found.parentGraph == rootGraph();
     }
 
-    // the normal configuration for qa_grouping, which is useful to verify that the graph is in (or has returned to) its normal state
+    // qa_grouping's edges in its normal state, also after returning to it
     static void expectEdgesOfQaGrouping() {
         for (const auto& [from, to] : {std::pair{"source", "middleA"}, {"middleA", "middleB"}, {"middleB", "sink"}}) {
             const UiGraphEdge* edge = findEdge(rootGraph(), uniqueNameOf(from), uniqueNameOf(to));
@@ -150,7 +150,7 @@ struct TestApp : public test::ImGuiTestApp {
         }
     }
 
-    // qa_grouping.grc has a counting sink in it, find the actual BlockModel so we can read the # of samples processed
+    // the BlockModel behind qa_grouping's counting sink, which counts the samples processed
     static CountingSink* findCountingSink(std::string_view uniqueName) {
         auto blocks     = gState->dashboard->session.graph().blocks();
         auto findResult = std::ranges::find(blocks, uniqueName, &gr::BlockModel::uniqueName);
@@ -521,7 +521,6 @@ struct TestApp : public test::ImGuiTestApp {
             expect(findEdge(rootGraph(), uniqueNameOf("source"), outerUniqueName) != nullptr) << fatal << "there should be an edge between the source block and the outer subgraph";
             expectGraphRunningAndConnected(ctx, sink, "after making a group");
 
-            // now group two of the blocks that are already inside that subgraph
             UiGraphBlock* inner = groupAndWait(ctx, {uniqueNameOf("middleB"), uniqueNameOf("sink")}, outerInterior);
             expect(inner != nullptr) << fatal;
             const std::string innerUniqueName = inner->blockUniqueName;

@@ -189,7 +189,7 @@ void DashboardPage::addSinkForRemoteSource(const SignalData& selectedRemoteSigna
     _addingRemoteSignals.erase(uriStr);
 
     const std::string_view sinkBlockType = remoteSourceType == gr::meta::type_name<RemoteStreamSource<float>>() ? registeredId<ImPlotSink<float>>() : remoteSourceType == gr::meta::type_name<RemoteStreamSource<double>>() ? registeredId<ImPlotSink<double>>() : remoteSourceType == gr::meta::type_name<RemoteDataSetSource<float>>() ? registeredId<ImPlotSink<gr::DataSet<float>>>() : remoteSourceType == gr::meta::type_name<RemoteDataSetSource<double>>() ? registeredId<ImPlotSink<gr::DataSet<double>>>() : withoutTemplateArguments(registeredId<ImPlotSink<float>>()); // not registered: the emplace fails
-    // need to avoid name collisions with both sink name and signal name because data_sinks searches for both
+    // unique against both sink and signal names: data_sinks searches for either
     const auto          isSignalNameOfASink = [](std::string_view name) { return charts::SinkRegistry::instance().findSink([name](const auto& sink) { return sink.signalName() == name; }) != nullptr; };
     UniqueNameRegistry& nameRegistry        = _dashboard->session.graphModel.nameRegistry;
     std::string         sinkName            = nameRegistry.ensureNameIsUnique(std::format("{}_sink", registeredUniqueName(sourceUniqueName)));

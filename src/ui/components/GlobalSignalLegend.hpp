@@ -191,7 +191,6 @@ struct GlobalSignalLegend {
         legendSize.x = ImGui::GetItemRectSize().x;
         legendSize.y = std::max(5.f, ImGui::GetItemRectSize().y);
 
-        // colour-only popup (right-click on colour square)
         if (_openColorPopup) {
             ImGui::OpenPopup("SinkColorPopup");
         }

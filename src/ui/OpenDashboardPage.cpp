@@ -70,9 +70,8 @@ struct DashboardsCollection {
                     }
                 });
             };
-            // notified when the dashboards list changes
 
-            // also request the list to be sent immediately
+            // the current list too, not only its changes
             command.command = opencmw::mdp::Command::Get;
             _restClient->request(command);
 #ifndef OD_DISABLE_DEMO_FLOWGRAPHS
@@ -318,7 +317,6 @@ components::SortFilterTreeModelParams OpenDashboardPage::makeSortFilterTreeModel
         params.getItemPathFunction = [this](std::size_t index) { return dashboardTreePath(index); };
     }
     if (_sort.byRelevance) {
-        // do the fuzzy search + scoring for every tree node, leaves and branches/folders
         params.score = [this](const components::SortFilterTreeModelNode& node) { return static_cast<float>(components::filterTypename(node.name, _searchInput.text).score); };
     } else {
         // branches sort before leaves, and by name
@@ -559,7 +557,7 @@ void OpenDashboardPage::drawViewOptionsSection() {
     const auto drawModeSelectable = [this](const char* label, ListViewMode mode) {
         const ImVec2 padding   = ImGui::GetStyle().FramePadding * 2.f;
         const ImVec2 labelSize = ImGui::CalcTextSize(label);
-        // use SelectableTextAlign to position text at a distance (padding) from the left edge, requires some math to convert to percentage of available space
+        // SelectableTextAlign is a fraction of the leftover width: the padding converts to one
         const float   leftoverWidth = std::max(1.f, ImGui::GetContentRegionAvail().x - labelSize.x);
         imw::StyleVar textAlign(ImGuiStyleVar_SelectableTextAlign, ImVec2{std::min(1.f, padding.x / leftoverWidth), 0.5f});
         if (selectable(label, _viewMode == mode, ImGuiSelectableFlags_None, ImVec2{0.f, labelSize.y + 2.f * padding.y}) && _viewMode != mode) {
@@ -876,7 +874,7 @@ OpenDashboardPage::ViewResult OpenDashboardPage::drawDashboardFileTree(ImVec2 si
             ImGui::SetScrollY(0.f);
         }
 
-        // draw date, might be unreadable but the user can scroll horizontally to it
+        // may clip, the user can scroll horizontally to it
         const float dateColumnWidth      = ImGui::CalcTextSize("00/00/0000").x;
         const auto  drawRightAlignedDate = [dateColumnWidth](const char* dateText) {
             ImGui::SameLine();
@@ -924,7 +922,7 @@ OpenDashboardPage::ViewResult OpenDashboardPage::drawDashboardFileTree(ImVec2 si
             if (node.path.size() + 1UZ < selectedPath.size()   //
                 && node.name == selectedPath[node.path.size()] //
                 && std::ranges::equal(node.path, std::span{selectedPath}.first(node.path.size()))) {
-                // this is on the path to the selected node, so keep it open
+                // on the path to the selected node
                 ImGui::SetNextItemOpen(true, ImGuiCond_Always);
             }
             return treeNodeEx(node.name.data(), ImGuiTreeNodeFlags_SpanAvailWidth);
@@ -971,7 +969,7 @@ void OpenDashboardPage::drawViewOverlayButtons(ImVec2 viewTopLeft, ImVec2 viewSi
     const ImVec2 oldCursorScreenPosition = ImGui::GetCursorScreenPos();
     ImGui::SetCursorScreenPos(ImVec2{viewTopLeft.x + viewSize.x - overlayWidth - ImGui::GetStyle().ScrollbarSize - spacing, viewTopLeft.y + viewSize.y - frameHeight - spacing});
 
-    // with a background you can see text scrolling behind the buttons, which is kind of noisy looking
+    // opaque: text scrolling behind the buttons looks noisy
     imw::StyleColor overlayBg(ImGuiCol_ChildBg, ImGui::GetStyleColorVec4(ImGuiCol_WindowBg));
 
     {
@@ -1124,7 +1122,7 @@ void OpenDashboardPage::drawCurrentDashboardPanel(Dashboard* optionalDashboard, 
 
     drawSaveAsDialog(optionalDashboard, optionalDashboardPage);
 
-    // we did everything else with custom draw so we have to register the actual space this took up with the layout
+    // custom drawn: the space taken is registered with the layout
     ImGui::SetCursorScreenPos(panelStart);
     ImGui::Dummy(ImVec2{panelWidth, panelHeight});
 }
@@ -1184,7 +1182,7 @@ void OpenDashboardPage::draw(Dashboard* optionalDashboard, DashboardPage* option
         case ListViewMode::FileTree:
         case ListViewMode::CustomTree: viewResult = drawDashboardFileTree(viewSize); break;
         }
-        // okay, iteration and drawing is done, it is safe to change the models
+        // iteration and drawing done: the models may change
         applyDashboardAction(viewResult.dashboardAction);
         dashboardToLoad = std::move(viewResult.dashboardToLoad);
 
@@ -1203,7 +1201,7 @@ void OpenDashboardPage::draw(Dashboard* optionalDashboard, DashboardPage* option
         {
             imw::Disabled disabled(_selectedDashboard == nullptr);
             if (doIconButton("Load", kIconLoad, buttonSize) && _selectedDashboard != nullptr) {
-                // it is okay to override dashboardToLoad because there is only one interaction per frame
+                // one interaction per frame: overriding dashboardToLoad is safe
                 dashboardToLoad = _selectedDashboard;
             }
         }

@@ -128,7 +128,7 @@ struct TestDashboardRunner {
             location);
     }
 
-    // waits for `count` replies on `endpoint` since the last wait or clearMessages()
+    // since the last wait or clearMessages()
     bool waitForReplies(ImGuiTestContext* ctx, std::string_view endpoint, std::size_t count = 1UZ, std::source_location location = std::source_location::current()) {
         waitUntil(ctx, std::format("{} replies on {}", count, endpoint), [this, endpoint, count] { return static_cast<std::size_t>(std::ranges::count(collectedMessages, endpoint, &gr::Message::endpoint)) >= count; }, location);
         clearMessages();

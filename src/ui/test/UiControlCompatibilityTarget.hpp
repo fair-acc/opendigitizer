@@ -35,9 +35,8 @@ struct UiControlCompatibilityTarget : gr::Block<UiControlCompatibilityTarget> {
     gr::work::Result work(std::size_t = std::numeric_limits<std::size_t>::max(), gr::device::DeviceContext& = gr::device::hostBackend()) noexcept { return {0UZ, 0UZ, gr::work::Status::OK}; }
 };
 
-/// a device setting with the devices to choose from, listed as GR4's audio blocks list them; clocked so it applies settings
 struct UiControlDeviceTarget : gr::Block<UiControlDeviceTarget> {
-    using Description = gr::Doc<"testing block for a device picker">;
+    using Description = gr::Doc<"testing block for a device picker: a device setting with the devices to choose from, listed as GR4's audio blocks list them; clocked so that it applies settings">;
 
     gr::PortIn<std::uint8_t> clk;
     std::string              device;

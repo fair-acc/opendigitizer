@@ -26,7 +26,6 @@ struct InputTextCompletionContext {
             std::string_view         inputBufferSoFar = {d->Buf, static_cast<std::size_t>(d->BufTextLen)};
 
             if (inputBufferSoFar.empty()) {
-                // nothing typed yet: no completion
                 return 0;
             }
 

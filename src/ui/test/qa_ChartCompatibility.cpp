@@ -33,7 +33,7 @@ using namespace boost::ut;
 using namespace charts;
 
 struct TestState : public test::TestDashboardRunner {
-    // this test retains dashboardPage because we need it to see its _pendingTransmutation from the previous frame
+    // retained: the test reads its _pendingTransmutation of the previous frame
     std::shared_ptr<DashboardPage> dashboardPage;
     DashboardPage::Mode            mode = DashboardPage::Mode::Interaction;
 };
@@ -204,7 +204,6 @@ struct TestApp : public test::ImGuiTestApp {
             };
 
             "incompatible chart types are disabled in the change type menu"_test = [&ctx] {
-                // this test tries to use the UI to change type to YYChart and makes sure that the button is disabled
                 auto* dataSinkPlot = findWindowByName("DataSinkPlot");
                 expect(dataSinkPlot && dataSinkPlot->block);
 

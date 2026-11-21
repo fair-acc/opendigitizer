@@ -104,7 +104,7 @@ struct Dashboard {
     };
 
     std::shared_ptr<gr::PluginLoader> pluginLoader = [] {
-        auto pluginPaths = Digitizer::resolvePluginSearchPaths();
+        auto pluginPaths = digitizer::resolvePluginSearchPaths();
         return std::make_shared<gr::PluginLoader>(gr::globalBlockRegistry(), gr::globalSchedulerRegistry(), std::span<const std::string>(pluginPaths));
     }();
 

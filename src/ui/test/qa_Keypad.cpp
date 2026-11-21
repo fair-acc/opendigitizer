@@ -49,7 +49,7 @@ struct TestApp : public test::ImGuiTestApp {
                 ut::expect(vars.value == 0);
                 ut::expect(!vars.edited);
 
-                // KeyPads buttons are actually in a child window
+                // the Keypad's buttons live in a child window
                 auto subWindowInfo = ctx->WindowInfo("//KeypadX/drawKeypad Input");
                 ctx->SetRef(subWindowInfo.Window->ID);
 

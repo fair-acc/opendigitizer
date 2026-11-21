@@ -31,7 +31,7 @@
 #include "blocks/ImControlTrigger.hpp"
 #include "blocks/ImPlotSink.hpp"
 #include "blocks/ImPropertyReadout.hpp"
-#include "blocks/TestSpectrumGenerator.hpp" // although the symbol is unused by this file, we need this for static block registration
+#include "blocks/TestSpectrumGenerator.hpp" // symbol unused here: static block registration
 
 #include <cmrc/cmrc.hpp>
 
@@ -56,7 +56,7 @@ struct TestState : public test::TestDashboardRunner {
     void waitForScheduler(ImGuiTestContext* ctx, std::source_location location = std::source_location::current()) override {
         test::TestDashboardRunner::waitForScheduler(ctx, location);
 
-        // the default waitForScheduler waits for the scheduler to become active. we also want to wait for inspection to complete
+        // the base waits for an active scheduler, not for the inspection
         if (flowgraphPage.editorCount() == 0) {
             std::println("\tScheduler started, sending kSchedulerInspect message");
             dashboard->session.graphModel.send(gr::message::Command::Get, "", std::string(gr::scheduler::property::kSchedulerInspect));
@@ -403,7 +403,7 @@ struct TestApp : public test::ImGuiTestApp { // NOSONAR (more methods than autho
     }
 
     static void dragUiControlDragHandleToPosition(ImGuiTestContext* ctx, FlowgraphEditor& editor, const UiGraphBlock* control, ImVec2 dropScreenPos) {
-        // avoid the edit panel covering things which might happen depending on previous UI state, maybe there was just a drag going on and releasing caused a block to be selected
+        // the edit panel may cover the view, e.g. when releasing a drag selected a block
         editor._editPaneContext.setSelectedBlock(nullptr, nullptr);
         ctx->Yield();
         pressAndHoldUiControlDragHandle(ctx, editor, control);
@@ -655,7 +655,7 @@ struct TestApp : public test::ImGuiTestApp { // NOSONAR (more methods than autho
                 UiGraphPort* targetPort = findTargetPort();
                 expect(targetPort != nullptr) << fatal;
 
-                ctx->Yield(2); // for some reason ax::NodeEditor pin positions are not resolved until after the frame after first draw
+                ctx->Yield(2); // ax::NodeEditor pin positions resolve only the frame after the first draw
 
                 waitForSettledView(ctx, gState->flowgraphPage.currentEditor());
                 gState->flowgraphPage.currentEditor().makeCurrent();
@@ -704,7 +704,7 @@ struct TestApp : public test::ImGuiTestApp { // NOSONAR (more methods than autho
                 gState->waitForScheduler(ctx);
                 gState->waitUntil(ctx, "the graph has blocks", [] { return gState->hasBlocks(); });
 
-                // create the scheduler subgraph, as if through the "Add sub graph..." dialog (bug does not happen if the scheduler is loaded at the same time as its contents)
+                // emplaced separately: a scheduler loaded together with its contents does not reproduce this
                 requestEmplaceBlock(gState->flowgraphPage.currentEditor(), "gr::scheduler::Simple<gr::scheduler::ExecutionPolicy::singleThreaded>");
                 expect(gState->waitForReplies(ctx, gr::scheduler::property::kBlockEmplaced)) << "Scheduler never responded about the request to create the subgraph\n" << fatal;
 
@@ -727,7 +727,6 @@ struct TestApp : public test::ImGuiTestApp { // NOSONAR (more methods than autho
                 gState->enterSubgraphEditor();
                 expect(gState->flowgraphPage.editorCount() > 1) << fatal;
 
-                // place a DataSink inside the subgraph, as if through the "Add block..." dialog
                 requestEmplaceBlock(gState->flowgraphPage.currentEditor(), "gr::basic::DataSink<float32>");
                 expect(gState->waitForReplies(ctx, gr::scheduler::property::kBlockEmplaced)) << "Scheduler never responded about the request to create the DataSink\n" << fatal;
 
@@ -781,7 +780,6 @@ struct TestApp : public test::ImGuiTestApp { // NOSONAR (more methods than autho
                 auto* sourcePort = findFirstPortOfBlock(gState->currentRootBlock(), "connectSignalGenerator", gr::PortDirection::OUTPUT);
                 expect(sourcePort != nullptr) << fatal;
 
-                // a normal forwards drag, from the source's output pin to the exported input pin
                 dragPinToPin(ctx, gState->flowgraphPage.currentEditor(), sourcePort, findExportedPort());
 
                 expect(gState->waitUntil(ctx, "the graph model follows", [] { return edgeExistsIn(gState->currentRootBlock(), "connectSignalGenerator", "exported_in"); })) << "edge from root graph block to exported input port should appear in the UI\n";
@@ -805,7 +803,6 @@ struct TestApp : public test::ImGuiTestApp { // NOSONAR (more methods than autho
                 expect(sourcePort != nullptr) << fatal;
                 expect(destinationPort != nullptr) << fatal;
 
-                // drag starting from the input pin towards the output pin
                 dragPinToPin(ctx, gState->flowgraphPage.currentEditor(), destinationPort, sourcePort);
 
                 expect(gState->waitUntil(ctx, "the graph model follows", [] { return edgeExistsIn(gState->currentRootBlock(), "connectSignalGenerator", "in"); })) << "edge should appear in the UI when connecting backwards\n";
@@ -1220,7 +1217,7 @@ struct TestApp : public test::ImGuiTestApp { // NOSONAR (more methods than autho
             };
         }
 
-        // ui controls have a unique gui func because we also need to draw the toolbar
+        // draws the toolbar too: ui control blocks act only when drawn
         constexpr auto uiControlGuiFunc = [](ImGuiTestContext*) {
             imw::Window window("Test Window", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoSavedSettings);
             ImGui::SetWindowPos({0, 0});
@@ -1376,7 +1373,7 @@ struct TestApp : public test::ImGuiTestApp { // NOSONAR (more methods than autho
                     expect(!ctx->ItemExists("**/signal_name"));
                     expect(!ctx->ItemExists("**/sample_rate"));
 
-                    // hovering an option should show a preview of what would be selected
+                    // a hovered option previews its selection
                     ctx->MouseMove("**/visible");
                     ctx->Yield(2);
                     captureScreenshot(*ctx, "//Test Window");
@@ -1526,7 +1523,7 @@ struct TestApp : public test::ImGuiTestApp { // NOSONAR (more methods than autho
                     const UiGraphBlock* trigger = findRootChildByName("controlTrigger");
                     return getTargetMapForBlock("controlTrigger") == "sink1:visible" && trigger != nullptr && trigger->blockSettings.value_or<std::string>("target_map", std::string{}) == "sink1:visible";
                 });
-                ctx->Yield(2); // block gets resized, imgui node editor needs time to figure it out
+                ctx->Yield(2); // the block resizes: the node editor needs two frames to settle
 
                 "the button for the trigger is in the block itself"_test = [&] {
                     const ImRect button = canvasItemRect(ctx, "**/Trig");
@@ -2011,7 +2008,6 @@ struct TestApp : public test::ImGuiTestApp { // NOSONAR (more methods than autho
         }
 
         {
-            // regression: sliders drawn even when a double value, min or max was out of the range ImGui accepts
             ImGuiTest* t = IM_REGISTER_TEST(engine(), "flowgraph", "we can draw valid imgui slider for values with min/max ranges, regression test");
             t->GuiFunc   = uiControlGuiFunc;
 
@@ -2026,7 +2022,6 @@ struct TestApp : public test::ImGuiTestApp { // NOSONAR (more methods than autho
         }
 
         {
-            /// regression: undefined behaviour when clamping very large doubles into the range of int64
             ImGuiTest* t = IM_REGISTER_TEST(engine(), "flowgraph", "valid number editor for int64 with extremely large min and max values");
             t->GuiFunc   = uiControlGuiFunc;
 
@@ -2053,7 +2048,7 @@ struct TestApp : public test::ImGuiTestApp { // NOSONAR (more methods than autho
                     // reached by tab, without a click, which would open the keypad popup: tabbing keeps the keypad closed and does not skip the item
                     const ImGuiID fieldId = ctx->ItemInfo("**/##parameter_value").ID;
                     ctx->NavMoveTo("**/##parameter_value");
-                    // if there were other tab-navigation targets then this would take us away, but this input is the only one
+                    // the only tab-navigation target: the tab cannot leave it
                     ctx->KeyPress(ImGuiKey_Tab);
                     expect(ImGui::GetActiveID() == fieldId) << fatal << "the text input of the field is activated by tab";
                     ctx->KeyCharsReplaceEnter("5");

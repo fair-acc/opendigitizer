@@ -40,7 +40,7 @@ struct ImControlColor : ImControl<ImControlColor> {
             const std::string id    = widgetId();
             const ImVec4      color = ImGui::ColorConvertU32ToFloat4(rgbToImGuiABGR(value.value));
             std::array        rgb{color.x, color.y, color.z};
-            // see ImControlChoice for why we need to disable widgets that have popups while in the flowgraph
+            // popups are disabled inside the flowgraph editor, see ImControlChoice
             imw::Disabled cannotOpenPicker(parsedConfig.drawingContext == DrawableBlockConfig::DrawingContext::FlowgraphView);
             if (ImGui::ColorEdit3(id.c_str(), rgb.data(), ImGuiColorEditFlags_NoInputs)) {
                 value.value = float4ToRGBA(ImVec4{rgb[0], rgb[1], rgb[2], 1.f}) >> 8;

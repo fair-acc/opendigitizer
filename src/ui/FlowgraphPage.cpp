@@ -55,13 +55,12 @@ bool isPortConnected(const UiGraphPort& port, const std::vector<UiGraphEdge>& ed
     });
 }
 
-std::string simplerName(std::string_view rawName) {
+std::string withoutNamespaceQualifiers(std::string_view rawName) {
     std::string result;
     result.reserve(rawName.size());
 
     const auto isIdentifierCharacter = [](const char c) { return std::isalnum(static_cast<unsigned char>(c)) || c == '_'; };
 
-    // drops namespace qualifiers: at each ::, the identifier before it is erased
     for (size_t i = 0; i < rawName.size(); ++i) {
         if (i + 1 < rawName.size() && rawName[i] == ':' && rawName[i + 1] == ':') {
             while (!result.empty() && isIdentifierCharacter(result.back())) {
@@ -350,7 +349,7 @@ void FlowgraphEditor::drawBoundingBoxExterior(const BoundingBox& canvasSpacingBo
     // while in canvas space, ImGui::GetMousePos() returns the canvas space value and does not need to be converted
     if (!canvasSpacingBoundingBox.contains(ImGui::GetMousePos())) {
         this->_wasHoveringBoundingBoxExteriorThisFrame = true;
-        if (this->_timeSpentHoldingPin < fadeLengthSeconds) { // accelerate quickly to the background being fully faded in
+        if (this->_timeSpentHoldingPin < fadeLengthSeconds) {
             this->_timeSpentHoldingPin += ImGui::GetIO().DeltaTime * LookAndFeel::instance().flowgraph.exportAreaFadeInSpeedup;
         }
         ax::NodeEditor::Suspend();
@@ -421,7 +420,7 @@ FlowgraphEditor::NodeDrawResult FlowgraphEditor::drawNode(                      
 
     // less padding at the top: the font has empty space above its glyphs
     ImGui::SetCursorScreenPos(blockScreenPosition - ImVec2{0.f, ImGui::GetFontBaked()->FindGlyph('H')->Y0});
-    ImGui::TextUnformatted(simplerName(block.blockName).c_str());
+    ImGui::TextUnformatted(withoutNamespaceQualifiers(block.blockName).c_str());
     {
         const float menuButtonWidthInsideNode = -components::nodeMenuButtonRect(ImVec2{}).Min.x;
         const float titleRightPadding         = std::max(0.f, menuButtonWidthInsideNode - ax::NodeEditor::GetStyle().NodePadding.z) + ImGui::GetStyle().ItemInnerSpacing.x;
@@ -464,7 +463,6 @@ FlowgraphEditor::NodeDrawResult FlowgraphEditor::drawNode(                      
     }
     const float pinAreaHeight = pinAreaBottomScreenY() - nodeTopScreenY;
 
-    // property connection indicators, the circuit-diagram-like marks, including a preview shown while hovering an interaction about to connect to that property
     const auto                                           notchColor = LookAndFeel::getColorU32ImGui(&Palette::flowgraphUiControlConnectionIndicator);
     std::vector<components::PropertyConnectionIndicator> connectionIndicators;
     for (const auto& [property, controls] : controlledProperties) {
@@ -1060,14 +1058,13 @@ void FlowgraphEditor::draw(const ImVec2& contentTopLeft, const ImVec2& contentSi
         }
     }
 
-    // we draw this before we draw the graph, because this may want to request that some nodes be highlighted when the user is hovering certain options
+    // before the graph: hovering its options may request highlighting blocks
     drawUiControlPopups();
 
     if (const auto dragConnectOverlay = drawGraph(contentSize)) {
         dragConnectOverlay->draw();
     }
 
-    // don't open properties pane if just clicking on the block menu button
     const bool blockMenuButtonPressed = _blockContextMenuRequest != nullptr;
 
     const auto mouseDrag         = ImLengthSqr(ImGui::GetMouseDragDelta(ImGuiMouseButton_Right));
@@ -1151,7 +1148,7 @@ void FlowgraphEditor::drawPortsMenu(const char* text, const char* portDirection,
 
     const auto* exportTarget = exportPortTargetBlock();
     if (!exportTarget) {
-        return; // probably in the root graph. in any case there is nowhere to export to, so this menu would be useless
+        return; // nowhere to export to, e.g. in the root graph
     }
 
     auto portsSubMenu = imw::Menu{text, /*enabled*/ true};
@@ -1162,7 +1159,6 @@ void FlowgraphEditor::drawPortsMenu(const char* text, const char* portDirection,
     for (const UiGraphPort& port : blockPorts) {
         bool exported = port.isExportedTo(exportTarget);
 
-        // only one item in the menu: a checkbox to toggle whether exported
         if (!checkbox(std::format("{}##{}-{}", port.portName, port.ownerBlock->blockUniqueName, port.portName).c_str(), &exported)) {
             continue;
         }

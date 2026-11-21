@@ -7,15 +7,8 @@
 
 namespace opendigitizer {
 
-/**
- * @brief Fast non-crypto PRNG for DSP/simulation; provides uniform and cheap “semi-uniform” (triangular) noise.
- *
- * @details Engine: xoshiro256++ (small state, high throughput); seed via SplitMix64 (avoid zero state).
- * Triangular noise = (u1 + u2 - 1): Irwin–Hall(n=2), i.e. triangular distribution.
- * @see D. Blackman, S. Vigna, “Scrambled Linear Pseudorandom Number Generators”, arXiv:1805.01407.
- * @see xoshiro256++ + SplitMix64 reference code: https://prng.di.unimi.it/
- * @see Irwin–Hall distribution (n=2): https://en.wikipedia.org/wiki/Irwin%E2%80%93Hall_distribution
- */
+// non-crypto xoshiro256++ PRNG (Blackman & Vigna, arXiv:1805.01407; https://prng.di.unimi.it/), seeded via SplitMix64 to avoid the zero state;
+// triangular noise u1 + u2 - 1 is Irwin–Hall with n = 2
 struct Xoshiro256pp {
     std::array<std::uint64_t, 4> _s{};
 

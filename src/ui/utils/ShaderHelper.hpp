@@ -99,7 +99,6 @@ inline GLuint attachFBO(GLuint tex) {
 }
 
 // probes whether the driver supports rendering into R32F textures (requires EXT_color_buffer_float on WebGL2)
-// result is cached after the first probe
 [[nodiscard]] inline bool supportsR32FFBO() {
     static std::optional<bool> cached;
     if (cached.has_value()) {

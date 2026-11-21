@@ -204,7 +204,6 @@ struct UiGraphBlock {
     void                       setSchedulerGraph(const gr::property_map& data);
     std::optional<UiGraphEdge> parseEdgeData(const gr::property_map& edgeData);
 
-    /// resolves the childEdges' port pointers by port and block names and removes those that do not resolve:
     /// subgraph blocks change their ports with their exported and imported ports
     void graphResolveEdgePortPointersAndRemoveIfInvalid();
 
@@ -280,8 +279,8 @@ struct UiGraphModel {
     };
 
     enum class VisitorResult {
-        Recurse,  // recurse into children
-        Continue, // continue to sibling and ignore children of this block
+        Recurse,
+        Continue, // to the sibling, skipping the children
         Break,
     };
 

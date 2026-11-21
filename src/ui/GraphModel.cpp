@@ -326,7 +326,7 @@ void UiGraphBlock::setBasicBlockData(const gr::property_map& blockData) {
         }
     };
 
-    // handle the case where parameters are in the "scheduler" key and not at the root of the block description
+    // parameters may sit under the "scheduler" key instead of the block description root
     const auto scheduler = getOptionalProperty<gr::property_map>(blockData, "scheduler");
     if (scheduler) {
         tryGetParameters(*scheduler);
@@ -1087,7 +1087,6 @@ bool UiGraphModel::apply(const gr::Message& message) {
         knownSchedulerTypes["gr::Graph"] = {"<>"};
 
     } else if (message.endpoint == "LifecycleState") {
-        // nothing to do for lifecycle state changes
         auto valueIt = data.find("state");
         if (valueIt != data.end() && valueIt->second.value_or(std::string()) == "RUNNING") {
             gr::log::debug("lifecycle state changed to RUNNING, requesting an update");
@@ -1274,7 +1273,7 @@ static bool fitsImGuiSlider(double minValue, double maxValue) {
         constexpr double kLimit = kImGuiSliderDoubleLimit;
         return minValue >= -kLimit && maxValue <= kLimit;
     } else {
-        // imgui limit for integer slider is (2^62 - 1) (using < below instead of subtracting to prevent overflowing double precision at this large of a number)
+        // ImGui integer slider limit is 2^62 - 1: `<` below instead of subtracting, beyond double precision
         constexpr double kLimit = static_cast<double>(std::int64_t{1} << 62);
         return minValue >= -kLimit && maxValue < kLimit;
     }

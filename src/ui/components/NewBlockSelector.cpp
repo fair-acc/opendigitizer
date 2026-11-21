@@ -8,7 +8,7 @@
 #include "../components/StyledWidgets.hpp"
 
 #include "NewBlockSelectorFuzzySearch.hpp"
-#include "tolower.hpp"
+#include "stdex/tolower.hpp"
 
 #include <gnuradio-4.0/meta/utils.hpp>
 
@@ -56,7 +56,7 @@ void ensureItemVisible() {
     const bool     shouldScrollToSelected = components::inputTextCompletion(names).inputText("##filterBlockType", &state.filterString);
 
     if (auto listbox = imw::ListBox("##Available Block types", ImVec2{size.x, size.y - (ImGui::GetCursorPosY() - y)})) {
-        const auto matchesFilter = [&state](std::string_view name) { return !name.empty() && Digitizer::utils::caseInsensitiveContains(name, state.filterString); };
+        const auto matchesFilter = [&state](std::string_view name) { return !name.empty() && digitizer::utils::case_insensitive_contains(name, state.filterString); };
         if (state.selected && !matchesFilter(*state.selected)) {
             state.selected.reset();
         }
@@ -147,7 +147,7 @@ struct Symbol {
     }
 };
 
-/// A node in a tree of namespaces (branches) + symbols (leaf nodes). Built each frame based on the full typenames of registered blocks
+/// a node in a tree of namespaces (branches) and symbols (leaves), rebuilt each frame from the full type names of the registered blocks
 struct NamespaceOrSymbol {
     struct NamespaceTag {};
 
@@ -304,7 +304,7 @@ void NewBlockSelector::drawNamespaceTree(const ImVec2& size) {
         NamespaceOrSymbol* cursor = globalNamespace.get();
         using namespace std::literals;
         for (const auto& namespaceElement : entry.blockTypeName() | std::views::split("::"sv)) {
-            if (namespaceElement.end() == entry.blockTypeName().end()) { // last element in thing::thing::thing chain
+            if (namespaceElement.end() == entry.blockTypeName().end()) {
                 cursor->insertElementChild(std::string_view{namespaceElement}, entry.blockTypeName(), *entry.filterResult);
             } else {
                 cursor = cursor->insertOrFindNameSpaceChild(std::string_view{namespaceElement});

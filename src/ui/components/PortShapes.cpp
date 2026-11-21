@@ -90,7 +90,7 @@ struct CornerRingLayout {
     };
 }
 
-// returns a description of an intersection of a line with a circle, returning the two points on the circle as angles from 0
+// the line parameters (0 at `from`, 1 at `to`) of the two points where the line crosses the circle
 [[nodiscard]] std::optional<std::pair<float, float>> circleIntersectionParameters(ImVec2 from, ImVec2 to, ImVec2 circleCenter, float circleRadius) {
     const ImVec2 direction    = to - from;
     const ImVec2 fromToCenter = from - circleCenter;
@@ -245,7 +245,7 @@ void drawSolidPentagonPort(ImDrawList* drawList, ImVec2 center, float size, ImU3
 void drawSolidHexagonPort(ImDrawList* drawList, ImVec2 center, float size, ImU32 color) { drawHexagon(drawList, center, size, color); }
 void drawSolidDiamondPort(ImDrawList* drawList, ImVec2 center, float size, ImU32 color) { drawDiamond(drawList, center, size, color); }
 
-// this is a bit awkward to fill, and unfortunately we need to do it concave to avoid having two shapes which might overlap if transparent or have gaps
+// filled as one concave shape: two shapes would overlap when transparent, or leave gaps
 void drawSolidCornerRingPort(ImDrawList* drawList, ImVec2 center, float size, ImU32 color) {
     const auto   cornerRingLayout = cornerRingLayoutInSquare(center, size);
     const float  outerRadius      = cornerRingLayout.ringRadius + flowgraphLookAndFeel().dataTypeIconLineThickness / 2.f;

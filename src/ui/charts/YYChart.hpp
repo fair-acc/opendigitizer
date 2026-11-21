@@ -20,9 +20,9 @@
 
 namespace gr::od::charts {
 
-/// one signal against another, for Lissajous figures, phase plots and I-Q diagrams:
-/// one signal plots over time, two as Y1 vs Y2, three or more against the first
 struct YYChart : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui">>, Chart {
+    using Description = gr::Doc<"One signal against another, for Lissajous figures, phase plots and I-Q diagrams: one signal plots over time, two as Y1 vs Y2, three or more against the first.">;
+
     template<typename T, gr::meta::fixed_string description = "", typename... Arguments>
     using A = gr::Annotated<T, description, Arguments...>;
 

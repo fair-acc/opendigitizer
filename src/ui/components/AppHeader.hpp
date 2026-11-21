@@ -225,7 +225,7 @@ struct AppHeader {
             return headerIconButton(kDevMenuIcon, iconColor);
         }();
 
-        // check showDevMenuButton first to make sure that IsItemHovered is referring to the dev menu and not some other item in the header
+        // showDevMenuButton first: IsItemHovered() must refer to the dev menu button, not another header item
         if (showDevMenuButton && (devMenuButtonPushed || ImGui::IsItemHovered())) {
             using enum WindowMode;
 

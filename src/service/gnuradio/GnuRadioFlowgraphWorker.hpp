@@ -87,12 +87,9 @@ private:
                         }
                     }
 
-                    // Sending the message, or an error
                     out.data = serialiseMessage(message);
 
                 } else {
-                    // If this is not a message to replace the whole graph,
-                    // it is a message to be sent to the graph
                     WriterSpanLike auto msgSpan = _acquisitionWorker.messagesToScheduler().streamWriter().template reserve<SpanReleasePolicy::ProcessAll>(1UZ);
                     msgSpan[0]                  = std::move(message);
                     msgSpan.publish(1UZ);

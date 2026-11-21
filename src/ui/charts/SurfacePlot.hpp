@@ -659,7 +659,7 @@ struct SurfacePlot : gr::Block<SurfacePlot, gr::Drawable<gr::UICategory::Content
 
     SurfaceBuffer              _surface;
     SurfaceGpuRenderer         _gpuRenderer;
-    std::vector<float>         _logRow;      // scratch: linear spectrum re-binned onto log-spaced columns
+    std::vector<float>         _logBinnedRow;
     std::vector<float>         _logFreqAxis; // log10(centre frequency) per log column — the X coordinate in log mode
     bool                       _logModeActive         = false;
     std::size_t                _lastSpectrumSize      = 0;
@@ -1062,10 +1062,10 @@ struct SurfacePlot : gr::Block<SurfacePlot, gr::Drawable<gr::UICategory::Content
 
             _surface.updateAutoScale(f.yValues, f.nBins);
             if (logRange) {
-                _logRow.resize(kLogSpectrumColumns);
-                buildLogBinnedRow(f.xValues, f.yValues, f.nBins, logRange->min, logRange->max, _logRow);
+                _logBinnedRow.resize(kLogSpectrumColumns);
+                buildLogBinnedRow(f.xValues, f.yValues, f.nBins, logRange->min, logRange->max, _logBinnedRow);
                 buildLog10FreqAxis(logRange->min, logRange->max);
-                _surface.pushRow(_logFreqAxis, _logRow, kLogSpectrumColumns, timestampFromNanos(f.timestamp));
+                _surface.pushRow(_logFreqAxis, _logBinnedRow, kLogSpectrumColumns, timestampFromNanos(f.timestamp));
             } else {
                 _surface.pushRow(f.xValues, f.yValues, f.nBins, timestampFromNanos(f.timestamp));
             }

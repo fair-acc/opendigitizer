@@ -8,6 +8,8 @@ namespace gr::od {
 
 template<typename T>
 struct TagToSample : public gr::Block<TagToSample<T>> {
+    using Description = gr::Doc<"Outputs the value of the latest input tag entry named by key_filter, a number or numeric string, on every sample until the next such tag.">;
+
     gr::PortIn<T>  in;
     gr::PortOut<T> out;
 

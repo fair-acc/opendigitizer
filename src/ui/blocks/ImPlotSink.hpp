@@ -36,7 +36,7 @@
 
 #include <implot.h>
 
-#include "conversion.hpp"
+#include "stdex/cast.hpp"
 #include <PluginPaths.hpp>
 
 #include "../charts/Chart.hpp"
@@ -71,6 +71,8 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
     using LineStyle = gr::od::LineStyle;
     template<typename U, gr::meta::fixed_string description = "", typename... Arguments>
     using A = gr::Annotated<U, description, Arguments...>;
+
+    using Description = gr::Doc<"Buffers the samples, DataSets, Tensor frames or events of its input as a chart signal with a name, colour, line style, quantity and unit; streaming samples are dated in UTC from the trigger tags.">;
 
     static constexpr bool kIsStreaming = std::is_arithmetic_v<T>;
     static constexpr bool kIsDataSet   = gr::DataSetLike<T>;
@@ -479,7 +481,7 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
                         _xUtcOffsetInitialised = true;
                     }
                 } else {
-                    tagOK = false; // mark fishy tag
+                    tagOK = false;
                 }
 
                 if (plot_tags && kIsStreaming) {
@@ -547,7 +549,7 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
             ImPlot::SetAxis(kYAxes[std::clamp(getValueOrDefault<std::size_t>(config, "yAxisID", 0UZ), 0UZ, 2UZ)]);
         }
         std::string     scaleStr  = config.contains("scale") ? config.find_value("scale").value_or(gr::pmt::Value{}).value_or(std::string{"Linear"}) : std::string{"Linear"};
-        const AxisScale axisScale = gr::meta::parseEnum<AxisScale>(Digitizer::trimWhitespace(scaleStr)).value_or(AxisScale::Linear);
+        const AxisScale axisScale = gr::meta::parseEnum<AxisScale>(digitizer::trimWhitespace(scaleStr)).value_or(AxisScale::Linear);
         const char*     label     = signal_name.value.empty() ? this->name.value.c_str() : signal_name.value.c_str();
         if (_yValues.empty()) {
             // plot one single dummy value so that the sink shows up in the plot legend
@@ -601,7 +603,7 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
             ImPlot::SetNextLineStyle(lineColor);
 
             auto [minX, maxX] = std::ranges::minmax(_xValues);
-            // draw tags before data (data is drawn on top)
+            // before the data, which draws on top
             if (getValueOrDefault<bool>(config, "draw_tag", false)) {
                 ImVec4 tagColor = lineColor;
                 tagColor.w *= LookAndFeel::instance().chartStyle.tagAlpha;
@@ -637,14 +639,14 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
                     }
                 }
 
-                // draw tags before data (data is drawn on top)
+                // before the data, which draws on top
                 if (historyIdx == 0UZ && getValueOrDefault<bool>(config, "draw_tag", false)) {
                     ImVec4 tagColor = lineColor;
-                    tagColor.w *= std::max(0.35f - 0.05f * static_cast<float>(historyIdx), 0.f); // semi-transparent
+                    tagColor.w *= std::max(0.35f - 0.05f * static_cast<float>(historyIdx), 0.f);
                     drawDataSetTimingEvents(dataSet, tagColor);
                 }
 
-                // NOTE: npoints is long int, while ImPlot lines are limited to int
+                // ImPlot limits a line to int points
                 const auto npoints = cast_to_signed(dataSet.axisValues(0UZ).size());
                 if (dataset_index == std::numeric_limits<gr::Size_t>::max()) {
                     auto [minVal, maxVal] = std::ranges::minmax(dataSet.signal_values);
@@ -655,7 +657,6 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
                         ImPlot::PlotLineG(historyIdx == 0UZ ? dataSet.signal_names[sigIdx].c_str() : "", pointGetter, &ctx, static_cast<int>(npoints));
                     }
                 } else {
-                    // single sub-signal
                     if (dataset_index >= static_cast<gr::Size_t>(nsignals)) {
                         dataset_index = 0U;
                     }

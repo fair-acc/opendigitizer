@@ -16,12 +16,12 @@ struct UiGraphModel;
 
 namespace gr::od::components {
 
-// describes an incoming connection to a property, from a UI control block
+// an incoming connection to a property, from a UI control block
 struct UiControlConnection {
     std::string controlUniqueName;
     std::string controlName;
     bool        allBlocks = false;
-    // checkbox state, used, for example, while the "Modify Connections" dialog is open
+    // checkbox state, e.g. in the "Modify Connections" dialog
     bool keep = true;
 };
 

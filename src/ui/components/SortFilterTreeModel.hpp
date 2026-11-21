@@ -20,7 +20,7 @@ namespace gr::od::components {
 
 struct SortFilterTreeModelNode {
     std::string_view             name;
-    std::optional<std::size_t>   index; // the index of this item in the actual array, if it is a leaf/item
+    std::optional<std::size_t>   index; // into the source items; none for a branch
     std::span<const std::string> path;  // names of the ancestor branches not including this node
 
     [[nodiscard]] constexpr bool isBranch() const { return !index.has_value(); }
@@ -117,7 +117,7 @@ struct SortFilterTreeModel {
             return;
         }
 
-        // filter before creating branch elements, that way we only create branches that have children
+        // filtered before any branch is created, so every branch has children
         if (_params.filter && !_params.filter(itemIndex)) {
             return;
         }

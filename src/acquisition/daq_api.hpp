@@ -77,7 +77,7 @@ ENABLE_REFLECTION_FOR(opendigitizer::flowgraph::SerialisedFlowgraphMessage, data
 #endif
 
 namespace opendigitizer::gnuradio {
-// Yaml to gr::message and back, TODO should be moved to GR
+// TODO should be moved to GR
 inline std::string serialiseMessage(const gr::Message& message) {
     using namespace gr;
     property_map yaml;

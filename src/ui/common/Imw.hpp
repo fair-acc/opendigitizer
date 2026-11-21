@@ -4,7 +4,7 @@
 #include <imgui.h>
 #include <imgui_internal.h>
 
-#include <c_resource.hpp>
+#include <stdex/c_resource.hpp>
 
 #include <algorithm>
 #include <string_view>

@@ -25,10 +25,10 @@ struct ImGuiTestEngineIO;
 namespace gr::od::test {
 
 struct TestOptions {
-    // the user starts the tests from a dialog, for debugging a test
+    // the tests start from a dialog, for debugging a test
     bool useInteractiveMode = false;
 
-    // the GUI keeps running after the tests, for visual debugging
+    // after the tests, for visual debugging
     bool keepGui = false;
 
     // the cursor teleports or moves at human speed
@@ -42,7 +42,6 @@ struct TestOptions {
 
     ImVec2 windowSize{1600.f, 1000.f};
 
-    // defaults adjusted by the program arguments
     static TestOptions fromArgs(int argc, char** argv);
 };
 

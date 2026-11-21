@@ -393,7 +393,7 @@ std::optional<DashboardPreview> DashboardPreview::fromFlowgraphYaml(std::string_
                     const PlotSinkDetails& details = sinkIt->second;
                     chart.signals.push_back(details.hasInput ? details.signal : Signal{.isDataSet = details.signal.isDataSet});
                 } else if (sinks.allBlockNames.contains(blockName)) {
-                    // probably some user defined sink, just draw a sine wave
+                    // probably a user-defined sink
                     chart.signals.push_back({});
                 }
             }

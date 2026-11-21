@@ -9,11 +9,10 @@
 
 namespace gr::od {
 
-// forwards a contiguous window of `input_chunk_size` samples, then skips ahead by `stride` samples:
-// the strided windowing in front of the gr4 FFT block, which has no `Stride<>`.
-// Skipped samples are consumed incrementally, so a fast stream drains cheaply, e.g. one 2^19-sample window per second of a 4 MS/s signal.
 template<typename T>
 struct StridedWindow : gr::Block<StridedWindow<T>, gr::Resampling<1U, 1U, false>, gr::Stride<0U, false>> {
+    using Description = gr::Doc<"Forwards a contiguous window of input_chunk_size samples, then skips ahead by stride samples, for the GR4 FFT block, which has no Stride. Skipped samples are consumed incrementally, so a fast stream drains cheaply.">;
+
     gr::PortIn<T>  in;
     gr::PortOut<T> out;
 

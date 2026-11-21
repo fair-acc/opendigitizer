@@ -290,7 +290,6 @@ const static boost::ut::suite<"SortFilterTreeModel"> sortFilterTreeModelTests = 
         params.score = [](const SortFilterTreeModelNode& node) { return static_cast<float>(node.name.size()); };
         SortFilterTreeModel model(std::move(params));
 
-        // longest names first always
         const TreeChildren expected{
             {"remote",
                 TreeChildren{

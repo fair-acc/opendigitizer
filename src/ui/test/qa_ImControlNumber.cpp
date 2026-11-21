@@ -325,8 +325,7 @@ struct TestApp : public test::ImGuiTestApp {
             };
 
             "the min and max is decided as an intersection of the property's min and max, and the min and max settings of the control block"_test = [&] {
-                // standalone_limited has min -1 and max 1
-                // the target property should have 0 to 10
+                // standalone_limited limits to [-1, 1], the target property to [0, 10]
                 const auto lastSent = [&](const char* typed) {
                     std::ignore = gState->toggleMinAndMaxControl->takeSent();
                     ctx->ItemInputValue("**/##Limited", typed);
@@ -338,7 +337,6 @@ struct TestApp : public test::ImGuiTestApp {
                 expect(sentExactly<double>(lastSent("5"), "TargetA", "limited", 1.)) << "clamping seems to respect the control block's max";
                 expect(sentExactly<double>(lastSent("-5"), "TargetA", "limited", -1.)) << "clamping seems to respect the control block's min";
 
-                // now try with the property's min and max values being sent
                 gState->isMinMaxEnabledForToggleMinMaxControl = true;
                 expect(sentExactly<double>(lastSent("0.5"), "TargetA", "limited", 0.5));
                 expect(sentExactly<double>(lastSent("50"), "TargetA", "limited", 1.)) << "when the property's min and max are sent, the block's max is still respected";

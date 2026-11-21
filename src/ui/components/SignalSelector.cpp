@@ -4,8 +4,8 @@
 #include <gnuradio-4.0/Message.hpp>
 
 #include "../blocks/RemoteSource.hpp"
-#include "FAIR/DeviceNameHelper.hpp"
 #include "StyledWidgets.hpp"
+#include "fair/DeviceNameHelper.hpp"
 
 #include <charconv>
 #include <cstdlib>
@@ -270,7 +270,7 @@ std::vector<SignalData> SignalSelector::drawSignalSelector() {
             ImGuiListClipper clipper;
             clipper.Begin(static_cast<int>(_filteredItems.size()));
             if (io->RangeSrcItem != -1) {
-                clipper.IncludeItemByIndex(static_cast<int>(io->RangeSrcItem)); // do not clip RangeSrcItem
+                clipper.IncludeItemByIndex(static_cast<int>(io->RangeSrcItem));
             }
 
             while (clipper.Step()) {

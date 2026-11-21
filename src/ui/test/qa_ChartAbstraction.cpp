@@ -632,7 +632,6 @@ int main() {
     "YYChart buildMultiYCategories groups sinks correctly"_test = [] {
         auto chart = makeYYChart("GroupTest");
 
-        // sink[0] = X-axis source
         auto sinkX = makeTestStreamingSink("x_signal");
         sinkX->setSignalQuantity("time");
         sinkX->setSignalUnit("s");

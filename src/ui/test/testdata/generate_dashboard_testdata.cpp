@@ -29,7 +29,7 @@ constexpr std::chrono::year_month_day kBaseDate{std::chrono::year{2026}, std::ch
 
 std::mt19937 rng(kSeed);
 
-// from testDeviceNames in DeviceNameHelper.hpp
+// from kTestDeviceNames in DeviceNameHelper.hpp
 constexpr std::array<std::string_view, 50> kDeviceNames{                              //
     "GS11MU2", "GE01KS1", "YR03BG1E", "GE01BU1", "GE01KP02", "GE01KX3", "GE01QS1F",   //
     "GE02BE1", "GE02KY4", "GECD001", "GECEBG2T", "GECEKT1G", "GECEKY5C", "GEITQT11",  //

@@ -13,13 +13,9 @@
 
 namespace gr::od {
 
-/// low-pass filter that, unlike gr::filter::BasicFilter, interpolates and does not reconfigure when its settings change, for live cutoff changes;
-/// it lacks BasicFilter's decimation and types other than float.
-/// After V. Zavalishin, "The Art of VA Filter Design", rev. 2.1.2, Native Instruments, 2020, ch. 4,
-/// and A. Simper, "Linear Trapezoidal Integrated State Variable Filter", Cytomic technical paper, 2013.
 template<typename T>
 struct LowPassFilter : gr::Block<LowPassFilter<T>> {
-    using Description = gr::Doc<"4th-order Butterworth lowpass filter">;
+    using Description = gr::Doc<"4th-order Butterworth lowpass filter whose cutoff glides to a new setting without reconfiguring, unlike gr::filter::BasicFilter, for live cutoff changes; float only, without decimation.">;
 
     using NonNegative   = gr::Limits<0.f, std::numeric_limits<float>::max()>;
     using PositiveFloat = gr::Limits<std::numeric_limits<float>::min(), std::numeric_limits<float>::max()>;
@@ -30,9 +26,7 @@ struct LowPassFilter : gr::Block<LowPassFilter<T>> {
         double ic2eq = 0.;
     };
 
-    // Q of the two second-order sections of a 4th-order Butterworth filter
-    // - 1 / (2 cos(pi/8))
-    // - 1 / (2 cos(3 pi/8))
+    // Q of the two second-order sections of a 4th-order Butterworth filter: 1 / (2 cos(pi/8)) and 1 / (2 cos(3 pi/8))
     static constexpr std::array<double, 2> kSectionQ{0.54119610014619698, 1.3065629648763766};
 
     gr::PortIn<T>  in;
@@ -69,7 +63,8 @@ struct LowPassFilter : gr::Block<LowPassFilter<T>> {
         return 1. - std::exp(-1. / (static_cast<double>(cutoff_smoothing_time) * static_cast<double>(sample_rate)));
     }
 
-    /// one sample through a trapezoidal-integrated state-variable filter with g = tan(pi cutoff / sample_rate) and k = 1 / Q (the damping); returns the output gain
+    /// one sample through a trapezoidal-integrated state-variable filter with g = tan(pi cutoff / sample_rate) and k = 1 / Q (the damping); returns the output gain,
+    /// after V. Zavalishin, "The Art of VA Filter Design", rev. 2.1.2, 2020, ch. 4, and A. Simper, "Linear Trapezoidal Integrated State Variable Filter", Cytomic, 2013
     [[nodiscard]] static double lowPassSection(double input, double g, double k, SectionState& state) noexcept {
         const double a1 = 1. / (1. + g * (g + k));
         const double a2 = g * a1;

@@ -130,7 +130,7 @@ struct SpectrumView : gr::Block<SpectrumView, gr::Drawable<gr::UICategory::Conte
         _rowRatios[0] = top_pane_ratio;
         _rowRatios[1] = 1.0f - top_pane_ratio;
 
-        // precompute x-axis limit condition once — both panes share x-axis via LinkAllX
+        // once for both panes: they share the x-axis via LinkAllX
         const auto [xMinLim, xMaxLim] = axisLimits(x_auto_scale.value, x_min.value, x_max.value, parseAxisConfig(this->ui_constraints.value, true));
         _sharedXCond                  = trackLimitsCond(true, xMinLim, xMaxLim);
 

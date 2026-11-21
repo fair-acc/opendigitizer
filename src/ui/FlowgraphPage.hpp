@@ -49,8 +49,8 @@ struct FlowgraphEditor {
     enum class EdgeConflict { InputHasInternalConnection, UnexportingPortHasExternalConnection };
 
     struct UnexportPortRequest {
-        ExportPortMessageData      message;           // exportFlag = false
-        std::string                exportedName;      // name of the port as exported on the subgraph block
+        ExportPortMessageData      message; // exportFlag = false
+        std::string                exportedName;
         std::optional<gr::Message> thenEmplaceEdge{}; // edge to create once the port is unexported
     };
 
@@ -116,7 +116,7 @@ struct FlowgraphEditor {
     const UiGraphBlock* _filterBlock   = nullptr;
     UiGraphBlock*       _selectedBlock = nullptr;
 
-    // keep track of whether a block has been destroyed and if so refresh things, so we don't have dangling NodeIds
+    // a changed count refreshes NodeIds that may dangle
     std::uint64_t _seenBlockDestructionCount = 0;
 
     components::BlockControlsPanelContext _editPaneContext;

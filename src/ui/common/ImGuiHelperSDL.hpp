@@ -35,7 +35,7 @@ inline bool requestGLContext(std::string_view windowTitle, ImVec2 windowSize, st
     std::println("[Main] Requesting OpenGL context 3.3");
 
 #ifdef __EMSCRIPTEN__
-    // WebGL2 via GLES 3.0 + GLSL ES 300
+    // WebGL2 is GLES 3.0
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);

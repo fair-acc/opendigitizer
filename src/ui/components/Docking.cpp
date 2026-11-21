@@ -398,7 +398,6 @@ void DockSpace::layoutInFreeRegion(const std::vector<std::vector<int>>& grid, co
         return;
     }
 
-    // vertical split: left and right
     for (std::size_t cutX = x0 + 1; cutX < x1; cutX++) {
         const bool canSplit = std::ranges::all_of(std::views::iota(y0, y1), [&](auto y) { return grid[cutX][y] != grid[cutX - 1][y]; });
         if (canSplit) {
@@ -411,7 +410,6 @@ void DockSpace::layoutInFreeRegion(const std::vector<std::vector<int>>& grid, co
         }
     }
 
-    // horizontal split: top and bottom
     for (std::size_t cutY = y0 + 1; cutY < y1; cutY++) {
         const bool canSplit = std::ranges::all_of(std::views::iota(x0, x1), [&](auto x) { return grid[x][cutY] != grid[x][cutY - 1]; });
         if (canSplit) {

@@ -61,7 +61,7 @@ void drawUnlinkIcon(ImDrawList* drawList, ImVec2 center, float iconFontSize, boo
 }
 
 [[nodiscard]] std::size_t uiControlTargetRowCount(std::size_t entryCount) {
-    // max of 1 because we always draw one notch for the drag-connect handle
+    // the drag-connect handle always has a notch
     return std::max(entryCount, 1UZ);
 }
 
@@ -375,7 +375,7 @@ std::optional<ImVec2> drawUiControlTargetList(UiGraphModel& graphModel, const Ui
     if (isDragHandleActive) {
         ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
     }
-    // part of the reason for GetColorU32 here is to apply the style alpha, for greying out the node when it is filtered
+    // GetColorU32 applies the style alpha, which greys out a filtered node
     const ImU32 lineColor = ImGui::GetColorU32(isDragHandleActive ? LookAndFeel::instance().palette().flowgraphUiControlHighlight : color);
 
     auto*             drawList = ImGui::GetWindowDrawList();
@@ -481,7 +481,7 @@ void drawIncomingPropertyConnectionIndicators(                                  
     }
     imw::Font font(LookAndFeel::instance().fontSmall());
 
-    // iterate blockSettings rather than indicators so that we draw in the same order the properties would be drawn in if they were not being indicated as connected
+    // blockSettings order, not indicator order: as the properties are drawn when not connected
     for (const auto& [propertyKey, propertyValue] : block.blockSettings) {
         auto indicatorsForProperty = indicators | std::views::filter([&propertyKey](const auto& indicator) { return indicator.propertyName == propertyKey; });
         if (std::ranges::empty(indicatorsForProperty)) {
@@ -502,7 +502,7 @@ void drawIncomingPropertyConnectionIndicators(                                  
 
         drawLeftHandSideNotchAndBlockName(*indicatorsForProperty.begin(), ImGui::GetTextLineHeight());
 
-        // just draw the RHS property name (the target of the connection) only once, the rest are more entries on the left, beneath this first entry
+        // the target property name only once; further connections are entries on the left, beneath the first
         const auto&       currentPropertyMetaInformation = block.blockSettingsMetaInformation[std::string(propertyKey)];
         const std::string value                          = valueToString(propertyValue);
         const std::string displayName                    = currentPropertyMetaInformation.description.empty() ? std::string(propertyKey) : currentPropertyMetaInformation.description;

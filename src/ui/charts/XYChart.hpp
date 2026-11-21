@@ -29,9 +29,9 @@ struct DataSetPlotContext {
     const gr::DataSet<float>* dataSet;
 };
 
-/// Y values over a common X axis: signals grouped onto several axes by quantity and unit,
-/// UTC, relative-time or sample-index X, tags, and a fading DataSet history
 struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui">>, Chart {
+    using Description = gr::Doc<"Y values over a common X axis: signals grouped onto several axes by quantity and unit, with a UTC, relative-time or sample-index X axis, tags and a fading DataSet history.">;
+
     template<typename T, gr::meta::fixed_string description = "", typename... Arguments>
     using A = gr::Annotated<T, description, Arguments...>;
 

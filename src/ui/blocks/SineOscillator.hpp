@@ -14,10 +14,9 @@
 
 namespace gr::od {
 
-/// for musical synthesisers, hence "oscillator" rather than "generator"
 template<typename T>
 struct SineOscillator : gr::Block<SineOscillator<T>>, gr::BlockingSync<SineOscillator<T>> {
-    using Description = gr::Doc<"Sine wave generator with portamento">;
+    using Description = gr::Doc<"Sine wave generator with portamento, for musical synthesisers (hence oscillator rather than generator).">;
 
     using NonNegativeFloat         = gr::Limits<0.f, std::numeric_limits<float>::max()>;
     using PositiveFloat            = gr::Limits<std::numeric_limits<float>::min(), std::numeric_limits<float>::max()>;

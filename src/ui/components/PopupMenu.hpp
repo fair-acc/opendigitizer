@@ -25,7 +25,7 @@ struct MenuButton {
     bool                  isNewRow      = false;
     float                 padding       = std::max(ImGui::GetStyle().FramePadding.x, ImGui::GetStyle().FramePadding.y);
     std::optional<ImVec4> buttonColor   = std::nullopt; // unset: an opaque version of the ImGui button colour
-    std::optional<ImVec4> iconColor     = std::nullopt; // by default is whatever ImGuiCol_Text is
+    std::optional<ImVec4> iconColor     = std::nullopt; // unset: ImGuiCol_Text
     mutable float         _size;
 
     [[nodiscard]] float size() const {
@@ -180,7 +180,7 @@ struct PopupMenu {
 
     template<bool transparent = false, bool newRow = false>
     void addButton(std::string label, auto onClick, float buttonSize = -1.f, std::string toolTip = "") {
-        if (_animationProgress > 0.f) { // we do not allow to add buttons when the popup is already open or animating
+        if (_animationProgress > 0.f) { // open or animating
             return;
         }
         updateElementCoordinate();
@@ -190,7 +190,7 @@ struct PopupMenu {
 
     template<bool transparent = false, bool newRow = false>
     void addButton(std::string label, auto onClick, ImFont* font, std::string toolTip = "", std::optional<ImVec4> buttonColor = std::nullopt, std::optional<ImVec4> iconColor = std::nullopt) {
-        if (_animationProgress > 0.f) { // we do not allow to add buttons when the popup is already open or animating
+        if (_animationProgress > 0.f) { // open or animating
             return;
         }
         updateElementCoordinate();
@@ -240,7 +240,7 @@ struct PopupMenu {
         const float  mouseDistance = std::hypot(mousePos.x - centre.x, mousePos.y - centre.y);
         const float  mouseAngle    = std::atan2(mousePos.y - centre.y, mousePos.x - centre.x) * 180.0f / std::numbers::pi_v<float>;
         const float  arcRadius     = _extraRadius + static_cast<float>(nButtonRows + 1) * (buttonSize + _padding);
-        // the last statement is to keep the menu open when the mouse is outside the arc segment but on the calling button.
+        // the last term keeps the menu open while the mouse is outside the arc segment but on the calling button
         const bool mouseInArc = (mouseDistance <= arcRadius && mouseAngle >= _startAngle && mouseAngle <= _stopAngle) || mouseDistance <= std::max(_menuSize.x, _menuSize.y);
         timeOutOfBoundingArea = !mouseInArc ? timeOutOfBoundingArea + deltaTime : 0.f;
         if (timeOutOfBoundingArea >= _timeOut) {

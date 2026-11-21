@@ -20,7 +20,7 @@
 #include <SDL3/SDL.h>
 
 #include "../common/LookAndFeel.hpp"
-#include "conversion.hpp"
+#include "stdex/cast.hpp"
 
 namespace gr::od {
 
@@ -39,7 +39,7 @@ struct TouchHandler {
     static inline std::array<ImVec2, kMaxFingers>    fingerPosDiff{};
     static inline std::array<ImVec2, kMaxFingers>    fingerPosDown{};
     static inline std::array<ImVec2, kMaxFingers>    fingerPosUp{};
-    static inline std::array<TimePoint, kMaxFingers> fingerTimeStamp{}; // time stamp when the last change occurred
+    static inline std::array<TimePoint, kMaxFingers> fingerLastChangeTimeStamp{};
     static inline std::array<TimePoint, kMaxFingers> fingerDownTimeStamp{};
     static inline TimePoint                          gestureTimeStamp{};
     static inline ImVec2                             gestureCentre{-1.f, -1.f};
@@ -111,7 +111,7 @@ struct TouchHandler {
         if (fingerIndex >= kMaxFingers) {
             return std::chrono::microseconds(-1);
         }
-        return std::chrono::duration_cast<std::chrono::microseconds>(fingerTimeStamp[fingerIndex] - fingerDownTimeStamp[fingerIndex]);
+        return std::chrono::duration_cast<std::chrono::microseconds>(fingerLastChangeTimeStamp[fingerIndex] - fingerDownTimeStamp[fingerIndex]);
     }
 
     static void drawFingerPositions() {
@@ -132,7 +132,7 @@ struct TouchHandler {
                 drawList->AddCircle(fingerPos[fingerIndex], 3.0f * circleRadius, IM_COL32(255, 165, 0, 255), 12, 3.0f);
             }
 
-            const auto timeSinceLifted = std::chrono::duration_cast<std::chrono::milliseconds>(now - fingerTimeStamp[fingerIndex]);
+            const auto timeSinceLifted = std::chrono::duration_cast<std::chrono::milliseconds>(now - fingerLastChangeTimeStamp[fingerIndex]);
             if (fingerPosUp[fingerIndex].x != -1.f && fingerPosUp[fingerIndex].y != -1.f && (timeSinceLifted < std::chrono::seconds(3))) {
                 drawList->AddNgon(fingerPosUp[fingerIndex], circleRadius, IM_COL32(255, 0, 0, 255), 3, 3.0f);
             }
@@ -159,17 +159,17 @@ struct TouchHandler {
 
         switch (event.type) {
         case SDL_EVENT_FINGER_DOWN: {
-            const std::size_t fingerIndex    = getOrAssignIndex(event.tfinger.fingerID);
-            touchActive                      = true;
-            fingerDown                       = true;
-            fingerTimeStamp[fingerIndex]     = now;
-            fingerDownTimeStamp[fingerIndex] = fingerTimeStamp[fingerIndex];
-            fingerPressed[fingerIndex]       = true;
-            fingerPos[fingerIndex]           = {event.tfinger.x * displaySize.x, event.tfinger.y * displaySize.y};
-            fingerLastPos[fingerIndex]       = fingerPos[fingerIndex];
-            fingerPosDiff[fingerIndex]       = {0.f, 0.f};
-            fingerPosDown[fingerIndex]       = fingerPos[fingerIndex];
-            fingerPosUp[fingerIndex]         = {-1.f, -1.f};
+            const std::size_t fingerIndex          = getOrAssignIndex(event.tfinger.fingerID);
+            touchActive                            = true;
+            fingerDown                             = true;
+            fingerLastChangeTimeStamp[fingerIndex] = now;
+            fingerDownTimeStamp[fingerIndex]       = fingerLastChangeTimeStamp[fingerIndex];
+            fingerPressed[fingerIndex]             = true;
+            fingerPos[fingerIndex]                 = {event.tfinger.x * displaySize.x, event.tfinger.y * displaySize.y};
+            fingerLastPos[fingerIndex]             = fingerPos[fingerIndex];
+            fingerPosDiff[fingerIndex]             = {0.f, 0.f};
+            fingerPosDown[fingerIndex]             = fingerPos[fingerIndex];
+            fingerPosUp[fingerIndex]               = {-1.f, -1.f};
             ++nFingers;
 
             if (nFingers >= 2 && !gestureActive) {
@@ -197,15 +197,15 @@ struct TouchHandler {
             if (knownFinger == fingerIdToIndex.end()) {
                 break;
             }
-            const std::size_t fingerIndex = knownFinger->second;
-            touchActive                   = true;
-            fingerUp                      = true;
-            fingerTimeStamp[fingerIndex]  = now;
-            fingerPressed[fingerIndex]    = false;
-            fingerLastPos[fingerIndex]    = fingerPos[fingerIndex];
-            fingerPos[fingerIndex]        = {event.tfinger.x * displaySize.x, event.tfinger.y * displaySize.y};
-            fingerPosDiff[fingerIndex]    = fingerPos[fingerIndex] - fingerLastPos[fingerIndex];
-            fingerPosUp[fingerIndex]      = fingerPos[fingerIndex];
+            const std::size_t fingerIndex          = knownFinger->second;
+            touchActive                            = true;
+            fingerUp                               = true;
+            fingerLastChangeTimeStamp[fingerIndex] = now;
+            fingerPressed[fingerIndex]             = false;
+            fingerLastPos[fingerIndex]             = fingerPos[fingerIndex];
+            fingerPos[fingerIndex]                 = {event.tfinger.x * displaySize.x, event.tfinger.y * displaySize.y};
+            fingerPosDiff[fingerIndex]             = fingerPos[fingerIndex] - fingerLastPos[fingerIndex];
+            fingerPosUp[fingerIndex]               = fingerPos[fingerIndex];
             assert(nFingers > 0);
             --nFingers;
             releaseIndex(event.tfinger.fingerID);
@@ -240,8 +240,8 @@ struct TouchHandler {
             if (knownFinger == fingerIdToIndex.end()) {
                 break;
             }
-            const std::size_t fingerIndex = knownFinger->second;
-            fingerTimeStamp[fingerIndex]  = now;
+            const std::size_t fingerIndex          = knownFinger->second;
+            fingerLastChangeTimeStamp[fingerIndex] = now;
             releaseFinger(fingerIndex);
             if (diagnostics) {
                 std::print("touch: finger cancelled: {} fingerID: {}\n", nFingers, fingerIndex);
@@ -252,13 +252,13 @@ struct TouchHandler {
             if (knownFinger == fingerIdToIndex.end()) {
                 break;
             }
-            const std::size_t fingerIndex = knownFinger->second;
-            touchActive                   = true;
-            fingerTimeStamp[fingerIndex]  = now;
-            fingerPressed[fingerIndex]    = true;
-            fingerLastPos[fingerIndex]    = fingerPos[fingerIndex];
-            fingerPos[fingerIndex]        = {event.tfinger.x * displaySize.x, event.tfinger.y * displaySize.y};
-            fingerPosDiff[fingerIndex]    = fingerPos[fingerIndex] - fingerLastPos[fingerIndex];
+            const std::size_t fingerIndex          = knownFinger->second;
+            touchActive                            = true;
+            fingerLastChangeTimeStamp[fingerIndex] = now;
+            fingerPressed[fingerIndex]             = true;
+            fingerLastPos[fingerIndex]             = fingerPos[fingerIndex];
+            fingerPos[fingerIndex]                 = {event.tfinger.x * displaySize.x, event.tfinger.y * displaySize.y};
+            fingerPosDiff[fingerIndex]             = fingerPos[fingerIndex] - fingerLastPos[fingerIndex];
             if (nFingers == 1) {
                 ImGui::GetIO().AddMousePosEvent(fingerPos[fingerIndex].x, fingerPos[fingerIndex].y);
             }
@@ -273,9 +273,9 @@ struct TouchHandler {
         const auto now = ClockSourceType::now();
 
         // auto-lift a finger inactive for more than 5 s: its SDL_EVENT_FINGER_UP was probably lost
-        const auto timeSinceAnyLastActive = std::chrono::duration_cast<std::chrono::milliseconds>(now - *std::max_element(fingerTimeStamp.begin(), fingerTimeStamp.end()));
+        const auto timeSinceAnyLastActive = std::chrono::duration_cast<std::chrono::milliseconds>(now - *std::max_element(fingerLastChangeTimeStamp.begin(), fingerLastChangeTimeStamp.end()));
         for (std::size_t fingerIndex = 0UL; fingerIndex < kMaxFingers; fingerIndex++) {
-            const auto timeSinceLastActive = std::chrono::duration_cast<std::chrono::milliseconds>(now - fingerTimeStamp[fingerIndex]);
+            const auto timeSinceLastActive = std::chrono::duration_cast<std::chrono::milliseconds>(now - fingerLastChangeTimeStamp[fingerIndex]);
             if (fingerPressed[fingerIndex] && (timeSinceLastActive > std::chrono::seconds(5)) && (timeSinceAnyLastActive > std::chrono::seconds(5))) {
                 releaseFinger(fingerIndex);
                 fingerUp = true;
@@ -357,7 +357,7 @@ struct TouchHandler {
         gestureRotationDeg = gestureRotationRad * (180.f / std::numbers::pi_v<float>);
 
         if (diagnostics) {
-            std::print("multi-gesture event -- {}: numFingers: {} @({},{} delta {},{}) pinchFactor:{} dTheta:{}\n", fingerTimeStamp[0].time_since_epoch(), nFingers, fingerLastPos[0].x, fingerLastPos[0].y, fingerPosDiff[1].x, fingerPosDiff[1].y, pinchFactor, gestureRotationDeg);
+            std::print("multi-gesture event -- {}: numFingers: {} @({},{} delta {},{}) pinchFactor:{} dTheta:{}\n", fingerLastChangeTimeStamp[0].time_since_epoch(), nFingers, fingerLastPos[0].x, fingerLastPos[0].y, fingerPosDiff[1].x, fingerPosDiff[1].y, pinchFactor, gestureRotationDeg);
         }
     }
 

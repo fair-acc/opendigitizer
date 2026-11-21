@@ -30,7 +30,7 @@ struct DashboardPage {
     static constexpr const char* kPropertyControlWindowContextMenuId = "propertyControlWindowContextMenu";
     static constexpr ImRect      kNoBarDrawn{FLT_MAX, FLT_MAX, -FLT_MAX, -FLT_MAX};
 
-    // source blocks which are added, waiting for the plot sinks to be created
+    // source blocks added, until their plot sinks exist
     struct SourceBlockInWaiting {
         SignalData  signalData;
         std::string sourceBlockName;

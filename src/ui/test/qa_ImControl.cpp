@@ -115,7 +115,6 @@ struct TestApp : public test::ImGuiTestApp {
             ImGui::SetNextWindowSize(kWindowSize);
             {
                 imw::Window window("Host", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
-                // draw the toolbar for the dashboard, if the dashboard is active
                 if (gState->dashboard) {
                     gState->dashboard->session.receiveMessages();
                     if (gState->dashboard->isInitialised) {
@@ -123,12 +122,12 @@ struct TestApp : public test::ImGuiTestApp {
                     }
                 }
 
-                // draw the standalone controls, which are not used in all tests but always drawn so as to only have one gui function
+                // drawn in every test, so that one gui function serves all
                 ImGui::SetNextWindowPos(kUiControlWindowPos);
                 ImGui::SetNextWindowSize(kWindowSize);
                 {
                     imw::Window uiControlPanel("uiControlPanel", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
-                    // makeConfig() here needs a targetValue to be provided just to tell the control that it is connected to something. controls which do not receive a value are drawn disabled.
+                    // the targetValue only marks the control as connected: a control without one draws disabled
                     const auto makeConfig = [](gr::pmt::Value targetValue) { return DrawableBlockConfig{.firstControlledProperty = {.value = std::move(targetValue)}, .showLabel = gState->showLabels}.toMap().value_or(gr::property_map{}); };
                     std::ignore           = gState->toggle->block.draw(makeConfig(false));
                     ImGui::SameLine();
@@ -202,7 +201,7 @@ struct TestApp : public test::ImGuiTestApp {
                 expect(gState->blockHasStringKeyValuePair("sineSink1", "signal_name", "sine 1")) << "connecting does not modify the target";
 
                 "changing a connection from one property to another with identical hints still causes the control block to reload the value"_test = [&] {
-                    sendSetTargetMapMessage("controlText", "sineSink2:signal_name"); // same property, same target block type, but going to a difference block instance
+                    sendSetTargetMapMessage("controlText", "sineSink2:signal_name"); // same property and target block type, but a different block instance
                     gState->waitUntil(ctx, "UI received update to controlText target_map", [] { return getFirstControlledProperty("controlText").value.value_or(std::string{}) == "sine 2"; });
                     gState->waitUntil(ctx, "the value has been loaded upon connection", [] { return gState->blockHasStringKeyValuePair("controlText", "value", "sine 2"); });
                     expect(gState->blockHasStringKeyValuePair("sineSink1", "signal_name", "sine 1")) << "moving the connection does not modify the old target";
@@ -428,7 +427,7 @@ struct TestApp : public test::ImGuiTestApp {
                     gState->waitUntil(ctx, "text input stores the edited value", [] { return gState->text->block.value == std::string("ramp"); });
                     expect(gState->text->takeSent().empty()) << "nothing sent because text is still focused";
                     ctx->KeyPress(ImGuiKey_Enter);
-                    // text block should synchronously output the set text message, no need to yield or wait
+                    // synchronous: no yield or wait
                     expect(containsMatchingMessage<std::string>(gState->text->takeSent(), "TargetA", "caption", std::string("ramp"))) << "Enter sends the text";
                 };
 
