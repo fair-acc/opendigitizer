@@ -1,6 +1,6 @@
 #include <boost/ut.hpp>
 
-#include "../include/c_resource.hpp"
+#include "../include/stdex/c_resource.hpp"
 
 #include <atomic>
 #include <format>
@@ -38,24 +38,24 @@ void desS2(S** ressource) {
 }
 
 const static boost::ut::suite c_wrapper_API = [] {
-    using w1 = stdex::c_resource<S*, conS1, desS1>;
-    using w2 = stdex::c_resource<S*, conS2, desS2>;
+    using W1 = stdex::c_resource<S*, conS1, desS1>;
+    using W2 = stdex::c_resource<S*, conS2, desS2>;
 
-    static_assert(std::is_nothrow_default_constructible_v<w1>);
-    static_assert(!std::is_copy_constructible_v<w1>);
-    static_assert(std::is_nothrow_move_constructible_v<w1>);
-    static_assert(!std::is_copy_assignable_v<w1>);
-    static_assert(std::is_nothrow_move_assignable_v<w1>);
-    static_assert(std::is_nothrow_destructible_v<w1>);
-    static_assert(std::is_nothrow_swappable_v<w1>);
+    static_assert(std::is_nothrow_default_constructible_v<W1>);
+    static_assert(!std::is_copy_constructible_v<W1>);
+    static_assert(std::is_nothrow_move_constructible_v<W1>);
+    static_assert(!std::is_copy_assignable_v<W1>);
+    static_assert(std::is_nothrow_move_assignable_v<W1>);
+    static_assert(std::is_nothrow_destructible_v<W1>);
+    static_assert(std::is_nothrow_swappable_v<W1>);
 
-    static_assert(std::is_nothrow_default_constructible_v<w2>);
-    static_assert(!std::is_copy_constructible_v<w2>);
-    static_assert(std::is_nothrow_move_constructible_v<w2>);
-    static_assert(!std::is_copy_assignable_v<w2>);
-    static_assert(std::is_nothrow_move_assignable_v<w2>);
-    static_assert(std::is_nothrow_destructible_v<w2>);
-    static_assert(std::is_nothrow_swappable_v<w2>);
+    static_assert(std::is_nothrow_default_constructible_v<W2>);
+    static_assert(!std::is_copy_constructible_v<W2>);
+    static_assert(std::is_nothrow_move_constructible_v<W2>);
+    static_assert(!std::is_copy_assignable_v<W2>);
+    static_assert(std::is_nothrow_move_assignable_v<W2>);
+    static_assert(std::is_nothrow_destructible_v<W2>);
+    static_assert(std::is_nothrow_swappable_v<W2>);
 };
 
 const static boost::ut::suite c_wrapper_functional_c_api_schema12 = [] {
@@ -85,14 +85,14 @@ const static boost::ut::suite c_wrapper_functional_c_api_schema12 = [] {
 
 const static boost::ut::suite c_wrapper_functional_lambda = [] {
     using namespace boost::ut;
-    constexpr auto construct = +[] {
+    constexpr auto kConstruct = +[] {
         cApiRessource++;
         return &cApiRessource;
     };
-    constexpr auto destruct = +[](S const*) { cApiRessource--; };
+    constexpr auto kDestruct = +[](S const*) { cApiRessource--; };
 
     [] { // API schema 1: pointer-type return value using lambda
-        using WrappedType     = stdex::c_resource<S*, construct, destruct>;
+        using WrappedType     = stdex::c_resource<S*, kConstruct, kDestruct>;
         cApiRessource.counter = 0;
         expect(eq(0, cApiRessource.counter));
         WrappedType wrapped;
@@ -107,12 +107,12 @@ const static boost::ut::suite c_wrapper_functional_bool_return = [] {
     static int counter = 0;
 
     [] { // API schema 3a: boolean return value
-        constexpr auto construct = +[] {
+        constexpr auto kConstruct = +[] {
             counter++;
             return true;
         };
-        constexpr auto destruct = +[] { counter--; };
-        using WrappedType       = stdex::c_resource<bool, construct, destruct>;
+        constexpr auto kDestruct = +[] { counter--; };
+        using WrappedType        = stdex::c_resource<bool, kConstruct, kDestruct>;
         expect(eq(0, counter));
         WrappedType wrapped;
         expect(eq(1, counter));
@@ -120,15 +120,15 @@ const static boost::ut::suite c_wrapper_functional_bool_return = [] {
     expect(eq(0, counter));
 
     [] { // API schema 3a: boolean return value
-        constexpr auto construct = +[] {
+        constexpr auto kConstruct = +[] {
             counter++;
             return false;
         };
-        constexpr auto destruct = +[] {
+        constexpr auto kDestruct = +[] {
             counter--;
             std::println(stderr, "should not be invoked");
         };
-        using WrappedType = stdex::c_resource<bool, construct, destruct>;
+        using WrappedType = stdex::c_resource<bool, kConstruct, kDestruct>;
         expect(eq(0, counter));
         WrappedType wrapped;
         expect(eq(1, counter));
@@ -140,15 +140,15 @@ const static boost::ut::suite c_wrapper_functional_bool_return = [] {
         static int     argument1    = 0;
         static double  argument2    = 0;
         static bool    optArgument3 = false;
-        constexpr auto construct    = +[](int arg1, double arg2, bool optArg3 = true) {
+        constexpr auto kConstruct   = +[](int arg1, double arg2, bool optArg3 = true) {
             counter++;
             argument1    = arg1;
             argument2    = arg2;
             optArgument3 = optArg3;
             return true;
         };
-        constexpr auto destruct = +[] { counter--; };
-        using WrappedType       = stdex::c_resource<bool, construct, destruct>;
+        constexpr auto kDestruct = +[] { counter--; };
+        using WrappedType        = stdex::c_resource<bool, kConstruct, kDestruct>;
         expect(eq(0, counter));
         WrappedType wrapped(42, 3.141, true); // all arguments provided explicitly
         expect(eq(1, counter));
@@ -162,15 +162,15 @@ const static boost::ut::suite c_wrapper_functional_bool_return = [] {
         static int     argument1    = 0;
         static double  argument2    = 0;
         static bool    optArgument3 = false;
-        constexpr auto construct    = +[](int arg1, double arg2, bool optArg3 = true) {
+        constexpr auto kConstruct   = +[](int arg1, double arg2, bool optArg3 = true) {
             counter++;
             argument1    = arg1;
             argument2    = arg2;
             optArgument3 = optArg3;
             return true;
         };
-        constexpr auto destruct = +[] { counter--; };
-        using WrappedType       = stdex::c_resource<bool, construct, destruct>;
+        constexpr auto kDestruct = +[] { counter--; };
+        using WrappedType        = stdex::c_resource<bool, kConstruct, kDestruct>;
         expect(eq(0, counter));
         bool invoked = false;
         if (auto _ = WrappedType(42, 3.141, true)) { // not assigning to '_' will correctly fail to compile
@@ -192,15 +192,15 @@ const static boost::ut::suite c_wrapper_functional_bool_return = [] {
         static int     argument1    = 0;
         static double  argument2    = 0;
         static bool    optArgument3 = false;
-        constexpr auto construct    = +[](int arg1, double arg2, bool optArg3 = true) {
+        constexpr auto kConstruct   = +[](int arg1, double arg2, bool optArg3 = true) {
             counter++;
             argument1    = arg1;
             argument2    = arg2;
             optArgument3 = optArg3;
             return true;
         };
-        constexpr auto destruct = +[] { counter--; };
-        using WrappedType       = stdex::c_resource<bool, construct, destruct>;
+        constexpr auto kDestruct = +[] { counter--; };
+        using WrappedType        = stdex::c_resource<bool, kConstruct, kDestruct>;
         expect(eq(0, counter));
         WrappedType wrapped(42, 3.141); // last argument is defaulted (seems to work only for gcc)
         expect(eq(1, counter));
@@ -214,15 +214,15 @@ const static boost::ut::suite c_wrapper_functional_bool_return = [] {
         static int     argument1    = 0;
         static double  argument2    = 0;
         static bool    optArgument3 = false;
-        constexpr auto construct    = +[](int arg1, double arg2, bool optArg3 = true) {
+        constexpr auto kConstruct   = +[](int arg1, double arg2, bool optArg3 = true) {
             counter++;
             argument1    = arg1;
             argument2    = arg2;
             optArgument3 = optArg3;
             return true;
         };
-        constexpr auto destruct = +[] { counter--; };
-        using WrappedType       = stdex::c_resource<bool, construct, destruct>;
+        constexpr auto kDestruct = +[] { counter--; };
+        using WrappedType        = stdex::c_resource<bool, kConstruct, kDestruct>;
         expect(eq(0, counter));
         bool invoked = false;
         if (auto _ = WrappedType(42, 3.141)) { // last argument is defaulted (seems to work only for gcc)

@@ -61,7 +61,7 @@ void registerTestBlocks(Registry& registry) {
 
 namespace magic_enum::customize {
 template<typename opendigitizer::gnuradio::SignalType>
-constexpr bool enum_format_enabled() noexcept {
+constexpr bool enumFormatEnabled() noexcept {
     return true;
 }
 } // namespace magic_enum::customize
@@ -120,10 +120,10 @@ std::span<const T> samplesForSignalIndex(const MultiArray<T, 2>& arr, size_t sig
     return std::span<const T>(arr.elements().data() + signalInd * nSamples, nSamples);
 }
 
-void checkAcquisitionMeta(const Acquisition& acq, std::size_t nSignals_, std::size_t nSamples_, const std::vector<std::string>& names, const std::vector<std::string>& units, const std::vector<std::string>& quantities, //
+void checkAcquisitionMeta(const Acquisition& acq, std::size_t signalCount, std::size_t sampleCount, const std::vector<std::string>& names, const std::vector<std::string>& units, const std::vector<std::string>& quantities, //
     const std::vector<float>& rangeMin, const std::vector<float>& rangeMax, std::string_view configStr, std::source_location location = std::source_location::current()) {
-    const auto nSignals = static_cast<std::uint32_t>(nSignals_);
-    const auto nSamples = static_cast<std::uint32_t>(nSamples_);
+    const auto nSignals = static_cast<std::uint32_t>(signalCount);
+    const auto nSamples = static_cast<std::uint32_t>(sampleCount);
 
     std::string configAndLoc = std::format("\n{} \ncheckAcquisitionMeta() at {}:{}", configStr, location.file_name(), location.line());
 
@@ -191,7 +191,7 @@ void checkDnsEntries(std::vector<SignalEntry> lastDnsEntries, const std::vector<
     }
     if (!sampleRates.empty()) {
         expect(eq(lastDnsEntries.size(), sampleRates.size())) << configAndLoc;
-        expect(eq(lastDnsEntries | std::views::transform([](const auto& dnsEntry) { return dnsEntry.sample_rate.value_or(0.f); }), sampleRates)) << configAndLoc;
+        expect(eq(lastDnsEntries | std::views::transform([](const auto& dnsEntry) { return dnsEntry.sampleRate.value_or(0.f); }), sampleRates)) << configAndLoc;
     }
 }
 
@@ -209,7 +209,7 @@ void checkDnsEntries(std::vector<SignalEntry> lastDnsEntries, const std::vector<
            && matches(names, &SignalEntry::name)          //
            && matches(units, &SignalEntry::unit)          //
            && matches(quantities, &SignalEntry::quantity) //
-           && matches(sampleRates, [](const SignalEntry& dnsEntry) { return dnsEntry.sample_rate.value_or(0.f); });
+           && matches(sampleRates, [](const SignalEntry& dnsEntry) { return dnsEntry.sampleRate.value_or(0.f); });
 }
 
 struct ThreadsafeSignalEntries {
@@ -280,10 +280,10 @@ struct TestApp {
     using AcqWorker = GnuRadioAcquisitionWorker<"/GnuRadio/Acquisition", description<"Provides data acquisition updates">>;
     using FgWorker  = GnuRadioFlowGraphWorker<AcqWorker, "/GnuRadio/FlowGraph", description<"Provides access to flow graph">>;
 
-    inline static constexpr std::uint16_t    httpPort = 12347;
-    inline static constexpr std::string_view httpHost = "https://127.0.0.1:12347";
-    inline static constexpr std::string_view mdpHost  = "mdp://127.0.0.1:12346";
-    inline static constexpr std::string_view mdsHost  = "mds://127.0.0.1:12345";
+    inline static constexpr std::uint16_t    kHttpPort = 12347;
+    inline static constexpr std::string_view kHttpHost = "https://127.0.0.1:12347";
+    inline static constexpr std::string_view kMdpHost  = "mdp://127.0.0.1:12346";
+    inline static constexpr std::string_view kMdsHost  = "mds://127.0.0.1:12345";
 
     TestConfig config;
 
@@ -304,9 +304,9 @@ struct TestApp {
     ThreadsafeSignalEntries dnsEntries;
 
     TestApp() {
-        const auto brokerPubAddress = broker.bind(URI<>(std::string(mdsHost)));
+        const auto brokerPubAddress = broker.bind(URI<>(std::string(kMdsHost)));
         expect((brokerPubAddress.has_value() == "bound successful"_b));
-        const auto brokerRouterAddress = broker.bind(URI<>(std::string(mdpHost)));
+        const auto brokerRouterAddress = broker.bind(URI<>(std::string(kMdpHost)));
         expect((brokerRouterAddress.has_value() == "bound successful"_b));
         using namespace opencmw::majordomo;
         opencmw::majordomo::rest::Settings restSettings;
@@ -315,7 +315,7 @@ struct TestApp {
         restSettings.keyFilePath         = getEnvironmentVariable("OPENCMW_REST_PRIVATE_KEY_FILE", "demo_private.key");
         std::println("Using certificate file: {}", restSettings.certificateFilePath.string());
         std::println("Using private key file: {}", restSettings.keyFilePath.string());
-        restSettings.port      = httpPort;
+        restSettings.port      = kHttpPort;
         restSettings.protocols = opencmw::majordomo::rest::Protocol::Http2;
         if (auto rc = broker.bindRest(restSettings); !rc) {
             std::println(std::cerr, "Could not bind REST bridge: {}", rc.error());
@@ -331,7 +331,7 @@ struct TestApp {
     [[nodiscard]] bool opendigitizerServiceHasAcquisitionAndFlowgraph() {
         std::atomic<bool> receivedReply = false;
         std::string       services;
-        client.get(URI(std::string(mdpHost) + "/mmi.service"s), [&](const mdp::Message& reply) {
+        client.get(URI(std::string(kMdpHost) + "/mmi.service"s), [&](const mdp::Message& reply) {
             services      = reply.data.asString();
             receivedReply = true;
         });
@@ -364,7 +364,7 @@ struct TestApp {
     };
 
     void subscribeClient(std::string_view relativeUri, std::function<void(const Acquisition&)>&& handlerFnc) {
-        std::string_view host          = config.protocol == TestConfig::Protocol::http ? httpHost : mdsHost;
+        std::string_view host          = config.protocol == TestConfig::Protocol::http ? kHttpHost : kMdsHost;
         std::string      serializerStr = "";
         if (config.serializer == TestConfig::Serializer::Json) {
             serializerStr = "&contentType=application/json";
@@ -400,8 +400,8 @@ struct TestApp {
         });
     }
 
-    void setGrc(std::string_view grc, auto callback) {
-        opendigitizer::flowgraph::Flowgraph fg{std::string(grc), {}};
+    void setGrc(std::string_view kGrc, auto callback) {
+        opendigitizer::flowgraph::Flowgraph fg{std::string(kGrc), {}};
         gr::Message                         message;
         message.endpoint = "ReplaceGraphGRC";
         opendigitizer::flowgraph::storeFlowgraphToMessage(fg, message);
@@ -415,12 +415,12 @@ struct TestApp {
         opencmw::serialise<opencmw::Json>(buffer, serialised);
 
         std::print("Sending ReplaceGraphGRC message to the service {}\n", buffer.asString());
-        client.set(URI(std::string(mdpHost) + "/GnuRadio/FlowGraph"s), std::move(callback), std::move(buffer));
+        client.set(URI(std::string(kMdpHost) + "/GnuRadio/FlowGraph"s), std::move(callback), std::move(buffer));
     }
 
-    [[nodiscard]] bool setGrc(std::string_view grc) {
+    [[nodiscard]] bool setGrc(std::string_view kGrc) {
         std::atomic<bool> receivedReply = false;
-        setGrc(grc, [&](const auto& reply) {
+        setGrc(kGrc, [&](const auto& reply) {
             expect(eq(reply.error, std::string{}));
             expect(!reply.data.empty());
             receivedReply = true;
@@ -440,7 +440,7 @@ struct TestApp {
 const boost::ut::suite GnuRadioWorker_tests = [] {
     using enum TestConfig::Protocol;
     using enum TestConfig::Serializer;
-    constexpr std::array testConfigs{
+    constexpr std::array kTestConfigs{
         TestConfig{http, YaS},
         TestConfig{http, Json},
         TestConfig{http, CmwLight},
@@ -450,7 +450,7 @@ const boost::ut::suite GnuRadioWorker_tests = [] {
     };
 
     "Streaming"_test = [](auto config) {
-        constexpr std::string_view grc = R"(
+        constexpr std::string_view kGrc = R"(
 blocks:
   - id: CountSource<float32>
     parameters:
@@ -509,7 +509,7 @@ connections:
             receivedDownCount = receivedDownData.size();
         });
 
-        if (!test.waitForNumSubscriptions(2UZ) || !test.setGrc(grc) || !waitWhile([&] { return receivedUpCount < kExpectedSamples || receivedDownCount < kExpectedSamples; })) {
+        if (!test.waitForNumSubscriptions(2UZ) || !test.setGrc(kGrc) || !waitWhile([&] { return receivedUpCount < kExpectedSamples || receivedDownCount < kExpectedSamples; })) {
             return;
         }
 
@@ -519,10 +519,10 @@ connections:
         expect(eq(receivedDownData, expectedDownData)) << config.toString();
 
         test.expectDnsEntries({SignalType::Plain, SignalType::Plain}, {"Signal_Down", "Signal_Up"}, {"Unit_Down", "Unit_Up"}, {"Quantity_Down", "Quantity_Up"}, {}, config.toString());
-    } | testConfigs;
+    } | kTestConfigs;
 
     "Streaming late subscription"_test = [](auto config) {
-        constexpr std::string_view grc = R"(
+        constexpr std::string_view kGrc = R"(
 blocks:
   - id: CountSource<float32>
     parameters:
@@ -543,7 +543,7 @@ connections:
         TestApp                    test;
         std::atomic<std::size_t>   receivedCount = 0;
 
-        if (!test.setGrc(grc)) {
+        if (!test.setGrc(kGrc)) {
             return;
         }
         test.expectDnsEntries({SignalType::Plain}, {"Signal_A"}, {"Unit_A"}, {"Quantity_A"}, {8.f}, config.toString());
@@ -557,10 +557,10 @@ connections:
 
         // ignore as it is the last step of the test
         std::ignore = waitWhile([&] { return receivedCount == 0; });
-    } | testConfigs;
+    } | kTestConfigs;
 
     "Flow graph management"_test = [] {
-        constexpr std::string_view grc1 = R"(
+        constexpr std::string_view kGrc1 = R"(
 blocks:
   - id: CountSource<float32>
     parameters:
@@ -577,7 +577,7 @@ blocks:
 connections:
   - [count_up, 0, test_sink_up, 0]
 )";
-        constexpr std::string_view grc2 = R"(
+        constexpr std::string_view kGrc2 = R"(
 blocks:
   - id: CountSource<float32>
     parameters:
@@ -624,9 +624,9 @@ connections:
         });
 
         if (!test.waitForNumSubscriptions(2UZ) ||                             //
-            !test.setGrc(grc1) ||                                             //
+            !test.setGrc(kGrc1) ||                                            //
             !waitWhile([&] { return receivedUpCount < kExpectedSamples; }) || //
-            !test.setGrc(grc2) ||                                             //
+            !test.setGrc(kGrc2) ||                                            //
             !waitWhile([&] { return receivedDownCount < kExpectedSamples; })) {
             return;
         }
@@ -638,7 +638,7 @@ connections:
     };
 
     "Flow graph management non-terminating graphs"_test = [] {
-        constexpr std::string_view grc1 = R"(
+        constexpr std::string_view kGrc1 = R"(
 blocks:
   - id: ForeverSource<float32>
     parameters:
@@ -653,7 +653,7 @@ blocks:
 connections:
   - [source1, 0, test_sink1, 0]
 )";
-        constexpr std::string_view grc2 = R"(
+        constexpr std::string_view kGrc2 = R"(
 blocks:
   - id: ForeverSource<float32>
     parameters:
@@ -686,19 +686,19 @@ connections:
         });
 
         constexpr auto kExpectedSamples = 50000UZ;
-        if (!test.waitForNumSubscriptions(2UZ) || !test.setGrc(grc1) || !waitWhile([&] { return receivedCount1 < kExpectedSamples; })) {
+        if (!test.waitForNumSubscriptions(2UZ) || !test.setGrc(kGrc1) || !waitWhile([&] { return receivedCount1 < kExpectedSamples; })) {
             return;
         }
         test.expectDnsEntries({SignalType::Plain}, {"Signal_A"}, {"Unit_A"}, {"Quantity_A"}, {1234.f}, "");
 
-        if (!test.setGrc(grc2) || !waitWhile([&] { return receivedCount2 < kExpectedSamples; })) {
+        if (!test.setGrc(kGrc2) || !waitWhile([&] { return receivedCount2 < kExpectedSamples; })) {
             return;
         }
         test.expectDnsEntries({SignalType::Plain}, {"Signal_B"}, {"Unit_B"}, {"Quantity_B"}, {123456.f}, "");
     };
 
     "Streaming - unsubscribed poller is released"_test = [] {
-        constexpr std::string_view grc   = R"(
+        constexpr std::string_view kGrc  = R"(
 blocks:
   - id: ForeverSource<float32>
     parameters:
@@ -724,11 +724,11 @@ connections:
         std::atomic<std::size_t> receivedCountB = 0;
         test.subscribeClient(kUriB, [&receivedCountB](const auto& acq) { receivedCountB += samplesForSignalIndex(acq.channelValues, 0).size(); });
 
-        if (!test.waitForNumSubscriptions(2UZ) || !test.setGrc(grc) || !waitWhile([&] { return receivedCountB == 0UZ; })) {
+        if (!test.waitForNumSubscriptions(2UZ) || !test.setGrc(kGrc) || !waitWhile([&] { return receivedCountB == 0UZ; })) {
             return;
         }
 
-        test.client.unsubscribe(URI(std::format("{}{}", TestApp::mdsHost, kUriB)));
+        test.client.unsubscribe(URI(std::format("{}{}", TestApp::kMdsHost, kUriB)));
         if (!waitWhile([&test] { return test.acqWorker.activeSubscriptions().size() > 1UZ; })) {
             return;
         }
@@ -739,7 +739,7 @@ connections:
     };
 
     "Trigger - tightly packed tags"_test = [] {
-        constexpr std::string_view grc = R"(
+        constexpr std::string_view kGrc = R"(
 blocks:
   - id: CountSource<float32>
     parameters:
@@ -772,7 +772,7 @@ connections:
             receivedCount = receivedData.size();
         });
 
-        if (!test.waitForNumSubscriptions(1UZ) || !test.setGrc(grc) || !waitWhile([&] { return receivedCount < 20; })) {
+        if (!test.waitForNumSubscriptions(1UZ) || !test.setGrc(kGrc) || !waitWhile([&] { return receivedCount < 20; })) {
             return;
         }
 
@@ -781,7 +781,7 @@ connections:
 
     "Trigger - sparse tags"_test = [] {
         // Tests that tags detection and offsets work when the tag data is spread among multiple threads
-        constexpr std::string_view grc = R"(
+        constexpr std::string_view kGrc = R"(
 blocks:
   - id: CountSource<float32>
     parameters:
@@ -814,7 +814,7 @@ connections:
             receivedCount = receivedData.size();
         });
 
-        if (!test.waitForNumSubscriptions(1UZ) || !test.setGrc(grc) || !waitWhile([&] { return receivedCount < 20; })) {
+        if (!test.waitForNumSubscriptions(1UZ) || !test.setGrc(kGrc) || !waitWhile([&] { return receivedCount < 20; })) {
             return;
         }
 
@@ -822,7 +822,7 @@ connections:
     };
 
     "Multiplexed"_test = [] {
-        constexpr std::string_view grc = R"(
+        constexpr std::string_view kGrc = R"(
 blocks:
   - id: CountSource<float32>
     parameters:
@@ -856,7 +856,7 @@ connections:
             receivedCount = receivedData.size();
         });
 
-        if (!test.waitForNumSubscriptions(1UZ) || !test.setGrc(grc) || !waitWhile([&] { return receivedCount < 20; })) {
+        if (!test.waitForNumSubscriptions(1UZ) || !test.setGrc(kGrc) || !waitWhile([&] { return receivedCount < 20; })) {
             return;
         }
 
@@ -866,7 +866,7 @@ connections:
     };
 
     "Snapshot"_test = [] {
-        constexpr std::string_view grc = R"(
+        constexpr std::string_view kGrc = R"(
 blocks:
   - id: CountSource<float32>
     parameters:
@@ -901,7 +901,7 @@ connections:
             receivedCount = receivedData.size();
         });
 
-        if (!test.waitForNumSubscriptions(1UZ) || !test.setGrc(grc) || !waitWhile([&] { return receivedCount == 0; })) {
+        if (!test.waitForNumSubscriptions(1UZ) || !test.setGrc(kGrc) || !waitWhile([&] { return receivedCount == 0; })) {
             return;
         }
 
@@ -912,7 +912,7 @@ connections:
     };
 
     "DataSet FFT"_test = [](auto config) {
-        constexpr std::string_view grc = R"(
+        constexpr std::string_view kGrc = R"(
 blocks:
   - id: CountSource<float32>
     parameters:
@@ -943,16 +943,16 @@ connections:
             receivedCount++;
         });
 
-        if (!test.waitForNumSubscriptions(1UZ) || !test.setGrc(grc) || !waitWhile([&receivedCount] { return receivedCount < 97UZ; })) {
+        if (!test.waitForNumSubscriptions(1UZ) || !test.setGrc(kGrc) || !waitWhile([&receivedCount] { return receivedCount < 97UZ; })) {
             return;
         }
         expect(eq(receivedCount.load(), 97UZ)) << config.toString();
 
         test.expectDnsEntries({SignalType::DataSet}, {"FFTTestSignal"}, {}, {}, {/*1.0f*/}, config.toString()); // TODO: verify correct handling of sample rate
-    } | testConfigs;
+    } | kTestConfigs;
 
     "DataSet signal values"_test = [](auto config) {
-        constexpr std::string_view grc = R"(
+        constexpr std::string_view kGrc = R"(
 blocks:
   - id: CountSource<float32>
     parameters:
@@ -991,17 +991,17 @@ connections:
             receivedDataSetCount++;
         });
 
-        if (!test.waitForNumSubscriptions(1UZ) || !test.setGrc(grc) || !waitWhile([&receivedCount] { return receivedCount < 12UZ; })) {
+        if (!test.waitForNumSubscriptions(1UZ) || !test.setGrc(kGrc) || !waitWhile([&receivedCount] { return receivedCount < 12UZ; })) {
             return;
         }
         expect(eq(receivedCount.load(), 12UZ)) << config.toString();
         expect(eq(receivedDataSetCount.load(), 3UZ)) << config.toString();
         std::vector<float> expectedData = {18.f, 19.f, 20.f, 21.f, 48.f, 49.f, 50.f, 51.f, 68.f, 69.f, 70.f, 71.f};
         expect(eq(receivedData, expectedData)) << config.toString();
-    } | testConfigs;
+    } | kTestConfigs;
 
     "Flow graph handling - Unknown block"_test = [] {
-        constexpr std::string_view grc = R"(
+        constexpr std::string_view kGrc = R"(
 blocks:
   - id: UnknownBlock<float32>
     parameters:
@@ -1017,7 +1017,7 @@ connections:
         TestApp test;
 
         std::atomic<bool> receivedReply = false;
-        test.setGrc(grc, [&receivedReply](const auto& reply) {
+        test.setGrc(kGrc, [&receivedReply](const auto& reply) {
             expect(eq(reply.data.asString(), std::string{}));
             expect(neq(reply.error, std::string{}));
             receivedReply = true;
@@ -1030,7 +1030,7 @@ connections:
     };
 
     "Dynamic signal metadata"_test = [] {
-        constexpr std::string_view grc               = R"(
+        constexpr std::string_view kGrc              = R"(
 blocks:
   - id: CountSource<float32>
     parameters:
@@ -1073,11 +1073,11 @@ connections:
 
             std::ranges::sort(entries, {}, &SignalEntry::name);
 
-            return entries[0].name == "Signal_A" && entries[0].unit == "Unit_A" && entries[0].quantity == "Quantity_A" && entries[0].signal_min == std::optional<float>{-42.f} && entries[0].signal_max == std::optional<float>{42.f} //
-                   && entries[1].name == "Signal_B" && entries[1].unit == "Unit_B" && entries[1].quantity == "Quantity_B" && entries[1].signal_min == std::optional<float>{0.f} && entries[1].signal_max == std::optional<float>{100.f};
+            return entries[0].name == "Signal_A" && entries[0].unit == "Unit_A" && entries[0].quantity == "Quantity_A" && entries[0].signalMin == std::optional<float>{-42.f} && entries[0].signalMax == std::optional<float>{42.f} //
+                   && entries[1].name == "Signal_B" && entries[1].unit == "Unit_B" && entries[1].quantity == "Quantity_B" && entries[1].signalMin == std::optional<float>{0.f} && entries[1].signalMax == std::optional<float>{100.f};
         };
 
-        if (!test.setGrc(grc) || !waitWhile([&] { return !hasExpectedDnsEntries(); })) {
+        if (!test.setGrc(kGrc) || !waitWhile([&] { return !hasExpectedDnsEntries(); })) {
             return;
         }
 
@@ -1103,9 +1103,9 @@ connections:
     };
 
     "Streaming timestamp fallback"_test = [] {
-        constexpr std::int64_t epoch = 1'800'000'000'000'000'123LL;
+        constexpr std::int64_t kEpoch = 1'800'000'000'000'000'123LL;
         StreamingPollerEntry   entry(nullptr);
-        entry.sample_rate  = 1'000.f;
+        entry.sampleRate   = 1'000.f;
         const auto process = [&entry](std::size_t chunkSampleCount, std::span<const gr::Tag> tags = {}) {
             Acquisition acq;
             entry.updateTimestamp(acq, tags, chunkSampleCount);
@@ -1114,13 +1114,13 @@ connections:
 
         checkStreamingTimestamp(process(2UZ), 0LL, "NO_REF_TRIGGER");
         const auto invalidTrigger = gr::property_map{{gr::tag::kTriggerName, "invalid"}, {gr::tag::kTriggerTime, "invalid"}};
-        const auto firstTrigger   = makeStreamingTriggerTagMap(epoch + 1'000'000LL);
-        const auto laterTrigger   = makeStreamingTriggerTagMap(epoch + 20'000'000LL, "later trigger");
-        checkStreamingTimestamp(process(3UZ, std::array{gr::Tag{0UZ, invalidTrigger}, gr::Tag{1UZ, firstTrigger}, gr::Tag{2UZ, laterTrigger}}), epoch);
-        checkStreamingTimestamp(process(2UZ), epoch + 3'000'000LL);
-        checkStreamingTimestamp(process(1UZ), epoch + 5'000'000LL);
-        checkStreamingTimestamp(process(2UZ, std::array{gr::Tag{1UZ, makeStreamingTriggerTagMap(epoch + 101'000'000LL, "new trigger")}}), epoch + 100'000'000LL, "new trigger");
-        checkStreamingTimestamp(process(1UZ), epoch + 102'000'000LL, "new trigger");
+        const auto firstTrigger   = makeStreamingTriggerTagMap(kEpoch + 1'000'000LL);
+        const auto laterTrigger   = makeStreamingTriggerTagMap(kEpoch + 20'000'000LL, "later trigger");
+        checkStreamingTimestamp(process(3UZ, std::array{gr::Tag{0UZ, invalidTrigger}, gr::Tag{1UZ, firstTrigger}, gr::Tag{2UZ, laterTrigger}}), kEpoch);
+        checkStreamingTimestamp(process(2UZ), kEpoch + 3'000'000LL);
+        checkStreamingTimestamp(process(1UZ), kEpoch + 5'000'000LL);
+        checkStreamingTimestamp(process(2UZ, std::array{gr::Tag{1UZ, makeStreamingTriggerTagMap(kEpoch + 101'000'000LL, "new trigger")}}), kEpoch + 100'000'000LL, "new trigger");
+        checkStreamingTimestamp(process(1UZ), kEpoch + 102'000'000LL, "new trigger");
     };
 
     "Streaming timestamp validation"_test = [] {
@@ -1132,22 +1132,22 @@ connections:
         };
         const auto trigger = makeStreamingTriggerTagMap(10'000'000'000);
         checkStreamingTimestamp(process(1UZ, std::array{gr::Tag{0UZ, trigger}}), 0LL, "NO_REF_TRIGGER");
-        entry.sample_rate = 0.f;
+        entry.sampleRate = 0.f;
         checkStreamingTimestamp(process(1UZ, std::array{gr::Tag{0UZ, trigger}}), 0LL, "NO_REF_TRIGGER");
-        entry.sample_rate = 1'000.f;
+        entry.sampleRate = 1'000.f;
         checkStreamingTimestamp(process(1UZ, std::array{gr::Tag{0UZ, trigger}}), 10'000'000'000LL);
 
-        entry.sample_rate = 2'000.f;
+        entry.sampleRate = 2'000.f;
         checkStreamingTimestamp(process(1UZ), 0LL, "NO_REF_TRIGGER");
-        entry.sample_rate = 1'000.f;
+        entry.sampleRate = 1'000.f;
         checkStreamingTimestamp(process(1UZ), 0LL, "NO_REF_TRIGGER");
-        entry.sample_rate = 2'000.f;
+        entry.sampleRate = 2'000.f;
         checkStreamingTimestamp(process(1UZ, std::array{gr::Tag{0UZ, trigger}}), 10'000'000'000LL);
         checkStreamingTimestamp(process(1UZ), 10'000'500'000LL);
 
-        entry.sample_rate.reset();
+        entry.sampleRate.reset();
         checkStreamingTimestamp(process(1UZ), 0LL, "NO_REF_TRIGGER");
-        entry.sample_rate = 2'000.f;
+        entry.sampleRate = 2'000.f;
         checkStreamingTimestamp(process(1UZ), 0LL, "NO_REF_TRIGGER");
 
         const auto limit = makeStreamingTriggerTagMap(std::numeric_limits<std::int64_t>::max());
@@ -1164,14 +1164,14 @@ connections:
             return acq;
         };
 
-        const auto bpStartTagMap = makeFairTimingTagMap(1000, TimingEventState::CmdBpStartEventNumber, 11, 22, 33, 44);
+        const auto bpStartTagMap = makeFairTimingTagMap(1000, TimingEventState::kCmdBpStartEventNumber, 11, 22, 33, 44);
         state.updateFromTags(std::array{gr::Tag{0, bpStartTagMap}});
         auto acq = apply();
         expect(eq(acq.chainIndex.value(), 11));
         expect(eq(acq.sequenceIndex.value(), 22));
         expect(eq(acq.processIndex.value(), 33));
         expect(eq(acq.timingGroupID.value(), 44));
-        expect(eq(acq.eventNumber.value(), TimingEventState::CmdBpStartEventNumber));
+        expect(eq(acq.eventNumber.value(), TimingEventState::kCmdBpStartEventNumber));
         expect(eq(acq.acquisitionStamp.value(), 1000LL));
         expect(eq(acq.eventStamp.value(), 1000LL));
         expect(eq(acq.chainStartStamp.value(), 1000LL));
@@ -1192,14 +1192,14 @@ connections:
         expect(eq(acq.sequenceStartStamp.value(), 1000LL));
         expect(eq(acq.processStartStamp.value(), 1000LL));
 
-        const auto nextBpStartTagMap = makeFairTimingTagMap(1200, TimingEventState::CmdBpStartEventNumber, 11, 22, 34, 44);
+        const auto nextBpStartTagMap = makeFairTimingTagMap(1200, TimingEventState::kCmdBpStartEventNumber, 11, 22, 34, 44);
         state.updateFromTags(std::array{gr::Tag{0, nextBpStartTagMap}});
         acq = apply();
         expect(eq(acq.chainIndex.value(), 11));
         expect(eq(acq.sequenceIndex.value(), 22));
         expect(eq(acq.processIndex.value(), 34));
         expect(eq(acq.timingGroupID.value(), 44));
-        expect(eq(acq.eventNumber.value(), TimingEventState::CmdBpStartEventNumber));
+        expect(eq(acq.eventNumber.value(), TimingEventState::kCmdBpStartEventNumber));
         expect(eq(acq.acquisitionStamp.value(), 1200LL));
         expect(eq(acq.eventStamp.value(), 1200LL));
         expect(eq(acq.chainStartStamp.value(), 1000LL));

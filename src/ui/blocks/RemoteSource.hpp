@@ -20,8 +20,8 @@
 #include <MdpMessage.hpp>
 #include <RestClient.hpp>
 
-#include "conversion.hpp"
 #include "settings.hpp"
+#include "stdex/cast.hpp"
 
 #include "../utils/TransparentStringHash.hpp"
 
@@ -161,7 +161,7 @@ private:
     // mutual exclusion between subscribing/unsubscribing (writing), and the rest client worker thread calling the callback (reading)
     mutable std::shared_mutex                                                                              _mutex;
     std::unordered_map<std::string, std::unique_ptr<Subscription>, TransparentStringHash, std::equal_to<>> _subscriptions;
-    opencmw::client::RestClient                                                                            _client = opencmw::client::RestClient(opencmw::client::VerifyServerCertificates(Digitizer::Settings::instance().checkCertificates));
+    opencmw::client::RestClient                                                                            _client = opencmw::client::RestClient(opencmw::client::VerifyServerCertificates(digitizer::Settings::instance().checkCertificates));
 
     static RemoteSubscriptions& instance();
 

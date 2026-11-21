@@ -2,7 +2,7 @@ add_library(raii_wrapper INTERFACE)
 
 target_include_directories(raii_wrapper INTERFACE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
                                                   $<INSTALL_INTERFACE:include/>)
-set_target_properties(raii_wrapper PROPERTIES PUBLIC_HEADER /include/c_resource.hpp)
+set_target_properties(raii_wrapper PROPERTIES PUBLIC_HEADER /include/stdex/c_resource.hpp)
 
 add_library(digitizer_settings INTERFACE)
 
@@ -22,8 +22,8 @@ target_sources(
          BASE_DIRS
          ${CMAKE_CURRENT_SOURCE_DIR}/include/
          FILES
-         ${CMAKE_CURRENT_SOURCE_DIR}/include/conversion.hpp
-         ${CMAKE_CURRENT_SOURCE_DIR}/include/tolower.hpp)
+         ${CMAKE_CURRENT_SOURCE_DIR}/include/stdex/cast.hpp
+         ${CMAKE_CURRENT_SOURCE_DIR}/include/stdex/tolower.hpp)
 
 if(OPENDIGITIZER_ENABLE_TESTING)
   add_subdirectory(test)

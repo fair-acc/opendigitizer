@@ -124,27 +124,27 @@ private:
     // static_assert(destructFunction != nullptr, "destructFunction must not be null");
     static_assert(!std::is_pointer_v<T> || (std::is_invocable_v<TDestructor, T> || std::is_invocable_v<TDestructor, T*>), "require either destructFunction(T) or destructFunction(T*)");
 
-    constexpr static auto initElement() {
+    constexpr static auto init_element() {
         if constexpr (std::is_pointer_v<T>) {
             return c_resource_null_value<T>; // pointer-type value
         } else {
             return element_type{}; // integral value
         }
     }
-    static constexpr element_type initValue = initElement();
-    element_type                  _element  = initValue;
+    static constexpr element_type kInitValue = init_element();
+    element_type                  _element   = kInitValue;
 
     constexpr static void destruct(element_type& p) noexcept
     requires std::is_invocable_v<TDestructor, T>
     {
-        if (p != initValue) {
+        if (p != kInitValue) {
             destructFunction(p);
         }
     }
     constexpr static void destruct(element_type& p) noexcept
     requires std::is_invocable_v<TDestructor, T*>
     {
-        if (p != initValue) {
+        if (p != kInitValue) {
             destructFunction(&p);
         }
     }
@@ -176,7 +176,7 @@ public:
     requires(std::is_invocable_v<TConstructor, T*, Ts...>)
     [[nodiscard]] constexpr explicit(sizeof...(Ts) == 1) c_resource(Ts&&... Args) noexcept {
         if constexpr (std::is_pointer_v<T>) {
-            _element = initValue;
+            _element = kInitValue;
             constructFunction(&_element, std::forward<Ts>(Args)...);
         } else {
             _element = [](auto&&... args) -> decltype(auto) { // construct wrapper to allow for default constructor arguments
@@ -191,7 +191,7 @@ public:
     requires std::is_pointer_v<T>
     {
         destruct(_element);
-        _element = initValue;
+        _element = kInitValue;
         return construct(&_element, static_cast<Ts&&>(Args)...);
     }
 
@@ -199,7 +199,7 @@ public:
     requires std::is_pointer_v<T>
     {
         if (this != &other) {
-            _element = std::exchange(other._element, initValue);
+            _element = std::exchange(other._element, kInitValue);
         }
     }
     constexpr c_resource& operator=(c_resource&& rhs) noexcept
@@ -207,7 +207,7 @@ public:
     {
         if (this != &rhs) {
             destruct(_element);
-            _element = std::exchange(rhs._element, initValue);
+            _element = std::exchange(rhs._element, kInitValue);
         }
         return *this;
     }
@@ -229,7 +229,7 @@ public:
     constexpr void clear() noexcept {
         if constexpr (std::is_pointer_v<T>) {
             destruct(_element);
-            _element = initValue;
+            _element = kInitValue;
         } else {
             destructFunction();
         }
@@ -239,15 +239,15 @@ public:
         return *this;
     }
 
-    [[nodiscard]] constexpr explicit operator bool() const& noexcept { return _element != initValue; }
+    [[nodiscard]] constexpr explicit operator bool() const& noexcept { return _element != kInitValue; }
     [[nodiscard]] constexpr explicit operator bool() && { // N.B. suppresses user-code error
         static_assert(detail::always_false<T>, "\n**** you probably did not intend this. The resource must be assigned to an lvalue! ****\n"
                                                "**** e.g. potential error: if (ImScoped::Window(...)) // as the temporary would be destroyed immediately ****");
         return false;
     }
 
-    [[nodiscard]] constexpr bool        empty() const noexcept { return _element == initValue; }
-    [[nodiscard]] constexpr friend bool have(const c_resource& r) noexcept { return r._element != initValue; }
+    [[nodiscard]] constexpr bool        empty() const noexcept { return _element == kInitValue; }
+    [[nodiscard]] constexpr friend bool have(const c_resource& r) noexcept { return r._element != kInitValue; }
 
     auto               operator<=>(const c_resource&) = delete;
     [[nodiscard]] bool operator==(const c_resource& rhs) const noexcept { return 0 == std::memcmp(_element, rhs._element, sizeof(*_element)); }
@@ -296,7 +296,7 @@ private:
 public:
 #endif
 
-    constexpr void reset(element_type ptr = initValue) noexcept
+    constexpr void reset(element_type ptr = kInitValue) noexcept
     requires std::is_pointer_v<T>
     {
         destruct(_element);
@@ -307,7 +307,7 @@ public:
     requires std::is_pointer_v<T>
     {
         auto ptr = _element;
-        _element = initValue;
+        _element = kInitValue;
         return ptr;
     }
 
@@ -319,15 +319,15 @@ public:
         static_assert(std::is_function_v<std::remove_pointer_t<cleaner>>, "I need a C function");
         static_assert(std::is_invocable_v<cleaner, element_type>, "Please check the function");
 
-        constexpr explicit guard(c_resource& Obj) noexcept : ptr_{Obj._element} {}
+        constexpr explicit guard(c_resource& Obj) noexcept : _ptr{Obj._element} {}
         constexpr ~guard() noexcept {
-            if (ptr_ != initValue) {
-                CleanupFunction(ptr_);
+            if (_ptr != kInitValue) {
+                CleanupFunction(_ptr);
             }
         }
 
     private:
-        element_type ptr_;
+        element_type _ptr;
     };
 };
 

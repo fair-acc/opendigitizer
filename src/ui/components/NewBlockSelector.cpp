@@ -8,7 +8,7 @@
 #include "../components/StyledWidgets.hpp"
 
 #include "NewBlockSelectorFuzzySearch.hpp"
-#include "tolower.hpp"
+#include "stdex/tolower.hpp"
 
 #include <gnuradio-4.0/meta/utils.hpp>
 
@@ -56,7 +56,7 @@ void ensureItemVisible() {
     const bool     shouldScrollToSelected = components::inputTextCompletion(names).inputText("##filterBlockType", &state.filterString);
 
     if (auto listbox = imw::ListBox("##Available Block types", ImVec2{size.x, size.y - (ImGui::GetCursorPosY() - y)})) {
-        const auto matchesFilter = [&state](std::string_view name) { return !name.empty() && Digitizer::utils::caseInsensitiveContains(name, state.filterString); };
+        const auto matchesFilter = [&state](std::string_view name) { return !name.empty() && digitizer::utils::case_insensitive_contains(name, state.filterString); };
         if (state.selected && !matchesFilter(*state.selected)) {
             state.selected.reset();
         }

@@ -4,8 +4,8 @@
 #include <gnuradio-4.0/Message.hpp>
 
 #include "../blocks/RemoteSource.hpp"
-#include "FAIR/DeviceNameHelper.hpp"
 #include "StyledWidgets.hpp"
+#include "fair/DeviceNameHelper.hpp"
 
 #include <charconv>
 #include <cstdlib>

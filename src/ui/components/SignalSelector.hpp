@@ -62,7 +62,7 @@ struct QueryFilters {
 struct SignalList {
     std::function<void(const std::vector<opencmw::service::dns::Entry>&)> updateSignalsCallback;
 
-    Digitizer::Settings&           _settings      = Digitizer::Settings::instance();
+    digitizer::Settings&           _settings      = digitizer::Settings::instance();
     opencmw::client::ClientContext _clientContext = [this]() {
         std::vector<std::unique_ptr<opencmw::client::ClientBase>> clients;
         clients.emplace_back(std::make_unique<opencmw::client::RestClient>(opencmw::client::DefaultContentTypeHeader(opencmw::MIME::BINARY), opencmw::client::VerifyServerCertificates(_settings.checkCertificates)));

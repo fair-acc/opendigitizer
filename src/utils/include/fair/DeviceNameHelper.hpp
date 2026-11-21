@@ -9,7 +9,7 @@
 
 namespace fair {
 
-constexpr inline std::array<std::string_view, 630> testDeviceNames = {"1S00KS2CV", "1S00MH", "1S00QD1F", "1S11KH1", "1S11KV1", "GE00BE_F", "GE01BU1", "GE01BU1F", "GE01BU2", "GE01BU2F", "GE01KP02", "GE01KP03", "GE01KP04", "GE01KP05", "GE01KP06", "GE01KP07", "GE01KP08", "GE01KP09", "GE01KP10", "GE01KP17", "GE01KP18", "GE01KP19", "GE01KP20", "GE01KP21", "GE01KP22", "GE01KP23", "GE01KP24", "GE01KS1", "GE01KS2", "GE01KS3", "GE01KS4", "GE01KX1", "GE01KX2", "GE01KX3", "GE01KX4", "GE01KX5", "GE01KX6", "GE01KY1", "GE01KY2", "GE01KY3", "GE01KY4", "GE01MU0R", "GE01MU1", "GE01MU4I", "GE01MU5L", "GE01QS0D", "GE01QS1F", "GE01QS2F", "GE01QS3D", "GE01QS4F", "GE01QS5F", "GE01QS6D", "GE01QS7F", "GE01QS8F", "GE01QS9D", "GE02BE1", "GE02BE1F", "GE02KS1", "GE02KS2", "GE02KS3", "GE02KS4", "GE02KX1", "GE02KX2", "GE02KX3", "GE02KX4", "GE02KX5", "GE02KX6", "GE02KY1", "GE02KY2", "GE02KY3", "GE02KY4", "GE02MU0L", "GECD001", "GECD002", "GECD003", "GECD004", "GECD008", "GECD009", "GECD010", "GECD011", "GECD012", "GECD013", "GECD014", "GECD015", "GECD016", "GECD017", "GECD018", "GECD019", "GECD020", "GECD021", "GECD022", "GECD023", "GECD024", "GECD025", "GECD026", "GECD027", "GECD028", "GECEBG1D", "GECEBG1E", "GECEBG2D", "GECEBG2T", "GECEBG3D", "GECEBG4D", "GECEBG5T", "GECEBG6T", "GECEBG7T", "GECEBG8T", "GECEKD1D", "GECEKD2D", "GECEKT1G", "GECEKT3C", "GECEKT4C", "GECEKT5K", "GECEKX1", "GECEKX3G", "GECEKX4K", "GECEKX5C", "GECEKY1", "GECEKY3G", "GECEKY4K", "GECEKY5C", "GECEKY6G", "GECEKY7K", "GECEKY8G", "GECEKY9K", "GECEMO1P", "GECEMO3C", "GECEMO4K", "GECEMT3G", "GEITKX1", "GEITKX1_H", "GEITKX2", "GEITKX2_H", "GEITQT11", "GEITQT12", "GEITQT13", "GHADKX1", "GHADKY1", "GHADKY2", "GHADKY3", "GHADKY4", "GHADMU1", "GHADMU2", "GHADQD11", "GHADQD12", "GHADQD21", "GHADQD22", "GHADQD31", "GHADQD32", "GHADQD41", "GHADQD42", "GHADQT51", "GHADQT52", "GHADQT53", "GHFSKS1", "GHFSKY1", "GHFSMU1", "GHFSMU1_0", "GHFSQT11", "GHFSQT12", "GHFSQT13", "GHHDKX1", "GHHDKX2", "GHHDKY1", "GHHDKY2", "GHHTKV1", "GHHTKV2",
+constexpr inline std::array<std::string_view, 630> kTestDeviceNames = {"1S00KS2CV", "1S00MH", "1S00QD1F", "1S11KH1", "1S11KV1", "GE00BE_F", "GE01BU1", "GE01BU1F", "GE01BU2", "GE01BU2F", "GE01KP02", "GE01KP03", "GE01KP04", "GE01KP05", "GE01KP06", "GE01KP07", "GE01KP08", "GE01KP09", "GE01KP10", "GE01KP17", "GE01KP18", "GE01KP19", "GE01KP20", "GE01KP21", "GE01KP22", "GE01KP23", "GE01KP24", "GE01KS1", "GE01KS2", "GE01KS3", "GE01KS4", "GE01KX1", "GE01KX2", "GE01KX3", "GE01KX4", "GE01KX5", "GE01KX6", "GE01KY1", "GE01KY2", "GE01KY3", "GE01KY4", "GE01MU0R", "GE01MU1", "GE01MU4I", "GE01MU5L", "GE01QS0D", "GE01QS1F", "GE01QS2F", "GE01QS3D", "GE01QS4F", "GE01QS5F", "GE01QS6D", "GE01QS7F", "GE01QS8F", "GE01QS9D", "GE02BE1", "GE02BE1F", "GE02KS1", "GE02KS2", "GE02KS3", "GE02KS4", "GE02KX1", "GE02KX2", "GE02KX3", "GE02KX4", "GE02KX5", "GE02KX6", "GE02KY1", "GE02KY2", "GE02KY3", "GE02KY4", "GE02MU0L", "GECD001", "GECD002", "GECD003", "GECD004", "GECD008", "GECD009", "GECD010", "GECD011", "GECD012", "GECD013", "GECD014", "GECD015", "GECD016", "GECD017", "GECD018", "GECD019", "GECD020", "GECD021", "GECD022", "GECD023", "GECD024", "GECD025", "GECD026", "GECD027", "GECD028", "GECEBG1D", "GECEBG1E", "GECEBG2D", "GECEBG2T", "GECEBG3D", "GECEBG4D", "GECEBG5T", "GECEBG6T", "GECEBG7T", "GECEBG8T", "GECEKD1D", "GECEKD2D", "GECEKT1G", "GECEKT3C", "GECEKT4C", "GECEKT5K", "GECEKX1", "GECEKX3G", "GECEKX4K", "GECEKX5C", "GECEKY1", "GECEKY3G", "GECEKY4K", "GECEKY5C", "GECEKY6G", "GECEKY7K", "GECEKY8G", "GECEKY9K", "GECEMO1P", "GECEMO3C", "GECEMO4K", "GECEMT3G", "GEITKX1", "GEITKX1_H", "GEITKX2", "GEITKX2_H", "GEITQT11", "GEITQT12", "GEITQT13", "GHADKX1", "GHADKY1", "GHADKY2", "GHADKY3", "GHADKY4", "GHADMU1", "GHADMU2", "GHADQD11", "GHADQD12", "GHADQD21", "GHADQD22", "GHADQD31", "GHADQD32", "GHADQD41", "GHADQD42", "GHADQT51", "GHADQT52", "GHADQT53", "GHFSKS1", "GHFSKY1", "GHFSMU1", "GHFSMU1_0", "GHFSQT11", "GHFSQT12", "GHFSQT13", "GHHDKX1", "GHHDKX2", "GHHDKY1", "GHHDKY2", "GHHTKV1", "GHHTKV2",
     "GHHTMU1", "GHHTMU1_0", "GHHTMU2", "GHHTMU3", "GHHTMU4", "GHHTQD11", "GHHTQD12", "GHHTQD21", "GHHTQD22", "GHHTQT31", "GHHTQT32", "GHHTQT33", "GHTAKX1", "GHTAKY1", "GHTAMU1", "GHTAMU2", "GHTAQD11", "GHTAQD12", "GHTAQD21", "GHTAQD22", "GHTBKH1", "GHTBKH2", "GHTBKV2", "GHTBMU1", "GHTBQD11", "GHTBQD12", "GHTCKY1", "GHTCKY2", "GHTCKY3", "GHTCMU1", "GHTCQD11", "GHTCQD12", "GHTCQT21", "GHTCQT22", "GHTCQT23", "GHTDMU1", "GHTMKX1", "GHTMKX2", "GHTMKY1", "GHTMKY2", "GHTMMU1", "GHTMMU2", "GHTMQD11", "GHTMQD12", "GHTMQD21", "GHTMQD22", "GHTMQD31", "GHTMQD32", "GHTTKY1", "GHTTQD11", "GHTTQD12", "GHTYKH1", "GHTYKH2", "GHTYKH4", "GHTYKV1", "GHTYKV2", "GHTYKV3", "GHTYKV4", "GHTYMH1", "GHTYMH2", "GHTYQD11", "GHTYQD12", "GHTYQD21", "GHTYQD22", "GHTYQD31", "GHTYQD32", "GHTYQD41", "GHTYQD42", "GS00BE_F", "GS00BS1W", "GS01BO1EH", "GS01KM2DV", "GS01KM3QS", "GS01KS1C", "GS01KS3C", "GS01MU1A", "GS01QS1F", "GS01QS2D", "GS02BB1F", "GS02BE1", "GS02BE1F", "GS02KM2DV", "GS02KM3QS", "GS02KM5SS", "GS02KQ1E", "GS02KQ4", "GS02MU1A", "GS03KH1I", "GS03KH2I", "GS03KH3I", "GS03KM2DV", "GS03KS1C", "GS03KS3C", "GS03KV1I", "GS03KV2I", "GS03KV3I", "GS03MU1A", "GS04KM2DV", "GS04KM3QS", "GS04KQ4", "GS04MU1A", "GS04MU2A", "GS05KM2DV", "GS05KS1C", "GS05KS3C", "GS05MU1A", "GS05MU2A", "GS06KM2DV", "GS06KM3QS", "GS06MU1A", "GS06MU2A", "GS06MU4", "GS07BE3", "GS07BE3F", "GS07BE4", "GS07BE4F", "GS07BE5", "GS07BE5F", "GS07KM2DV", "GS07KM3QS", "GS07KS1C", "GS07KS3C", "GS07MU1A", "GS07MU2A", "GS08BE2", "GS08BE2F", "GS08KM2DV", "GS08KM3QS", "GS08KM5SS", "GS08KQ4", "GS08MU1A", "GS09KM2DV", "GS09KS1C", "GS09KS3C", "GS09MU1A", "GS10KM2DV", "GS10KM3QS", "GS10KQ4", "GS10KX1", "GS10KX2", "GS10MU1A", "GS10MU2A", "GS11KM2DV", "GS11KS1C", "GS11KS3C", "GS11MU1A", "GS11MU2", "GS11MU2A", "GS12KM2DV", "GS12KM3QS", "GS12MU1A", "GS12MU2A", "GS12QS1F", "GS12QS2D", "GS12QS3T", "GSCD001", "GSCD002", "GSCD005", "GSCD012", "GSCD013", "GSCD014", "GSCD015", "GSCD016", "GSCD017", "GSCD018", "GSCD019", "GSCD021", "GSCD022", "GSCD023",
     "GSCD024", "GSCD025", "GSCD027", "GSCD028", "GSCD029", "GSCD031", "GSCD032", "GSCD034", "GSCD035", "GSCD038", "GSCD040", "GSCD042", "GSCD043", "GSCD044", "GSCD045", "GSCD047", "GSCD049", "GSCD050", "GSCD051", "GSCD053", "GSCD054", "GSCD057", "GSCD058", "GSCD059", "GSCD060", "GSCEBG1D", "GSCEBG1E", "GSCEBG2D", "GSCEBG2T", "GSCEBG3D", "GSCEBG3T", "GSCEBG4D", "GSCEBG4T", "GSCEBG5T", "GSCEKD1D", "GSCEKD2D", "GSCEKX1G", "GSCEKX3C", "GSCEKX5K", "GSCEKY1G", "GSCEKY2G", "GSCEKY3C", "GSCEKY4K", "GSCEKY5K", "GSCEMO3C", "GSCEMO5K", "GSCEMT4K", "GTE1KY1", "GTE1QD11", "GTE1QD12", "GTE2KX1", "GTE2QT11", "GTE2QT12", "GTE2QT13", "GTE3KY1", "GTE3MU1", "GTE3MU1_0", "GTE3QD11", "GTE3QD12", "GTE4KX3", "GTE4KY1", "GTE4KY2", "GTE4KY3", "GTE4MU1", "GTE4MU2", "GTE4QD11", "GTE4QD12", "GTE4QT21", "GTE4QT22", "GTE4QT23", "GTE4QT31", "GTE4QT32", "GTE4QT33", "GTE5KS1", "GTE5KY1", "GTE5MU0", "GTE5QD11", "GTE5QD12", "GTE5QD21", "GTE5QD22", "GTH1KX1", "GTH1KY1", "GTH1QD11", "GTH1QD12", "GTH2KX1", "GTH2KY1", "GTH2QD11", "GTH2QD12", "GTH2QD21", "GTH2QD22", "GTH3KY1", "GTH3MK1", "GTH3MU1", "GTH3QD11", "GTH3QD12", "GTH4KS1", "GTH4KY1", "GTH4MU1", "GTH4MU1_0", "GTH4MU2", "GTH4QD11", "GTH4QD12", "GTH4QD21", "GTH4QD22", "GTH4QD31", "GTH4QD32", "GTK7MU5", "GTP1KY1", "GTP1KY2", "GTP1MU1", "GTP1QD11", "GTP1QD12", "GTR1KYA", "GTR1KYB", "GTR1MU0", "GTR1MU1", "GTR1QD11", "GTR1QD12", "GTR2KX1", "GTR2KX2", "GTR2KX3", "GTR2KY1", "GTR2KY2", "GTR2KY3", "GTR2QT21", "GTR2QT22", "GTR2QT23", "GTR3KX4", "GTR3KX5", "GTR3KY4", "GTR3KY5", "GTR3KY6", "GTR3KY7", "GTR3QD41", "GTR3QD42", "GTR3QD51", "GTR3QD52", "GTR3QT31", "GTR3QT32", "GTR3QT33", "GTS1KY1", "GTS1MU1", "GTS1MU1_0", "GTS1MU2", "GTS1QD11", "GTS1QD12", "GTS2KS1", "GTS2KY1", "GTS2QT11", "GTS2QT12", "GTS2QT13", "GTS3KS1", "GTS3KS2", "GTS3KS3", "GTS3KY1", "GTS3KY2", "GTS3MU1", "GTS3MU1_0", "GTS3QD11", "GTS3QD12", "GTS3QD21", "GTS3QD22", "GTS3QT31", "GTS3QT32", "GTS3QT33", "GTS4KS1", "GTS4KS2", "GTS4KS3", "GTS4KY1", "GTS4KY2", "GTS4MU1", "GTS4QD21", "GTS4QD22",
     "GTS4QD31", "GTS4QD32", "GTS4QT11", "GTS4QT12", "GTS4QT13", "GTS5KS1", "GTS5KY1", "GTS5MU1", "GTS5QT11", "GTS5QT12", "GTS5QT13", "GTS6MU1", "GTS6MU1_0", "GTS7KS1", "GTS7KY1", "GTS7KY2", "GTS7MU1", "GTS7MU1_0", "GTS7QD11", "GTS7QD12", "GTT1KX2", "GTT1KY1", "GTT1KY2", "GTT1MU0", "GTT1MU1", "GTT1QD11", "GTT1QD12", "GTT1QD21", "GTT1QD22", "GTT1QD31", "GTT1QD32", "GTV1MU1", "GTV1MU2", "GTV2MU1", "GTV2MU2", "GTV2MU3", "GTV2QD11", "GTV2QD12", "GUCD001", "YR00BE_F", "YR00MH", "YR00QS1", "YR00QS2", "YR01MP1I", "YR02KD", "YR02KH", "YR02KS1", "YR02KS2", "YR02KV", "YR03BG0E", "YR03BG1E", "YR03BG2E", "YR03BG3T", "YR03BG3TS", "YR03BG4T", "YR03BG5T", "YR03BG6T", "YR03BG7T", "YR03BG7TL", "YR03DX1K", "YR03KD1D", "YR03KD2D", "YR03KH1", "YR03KH3G", "YR03KH4K", "YR03KH5C", "YR03KV3G", "YR03KV4K", "YR03KV5C", "YR03KV6G", "YR03KV7K", "YR03MO3C", "YR04KH", "YR04KS1", "YR04KS2", "YR04KV", "YR05BE1", "YR06KH", "YR06KS1", "YR06KS2", "YR07KV", "YR07MP1E", "YR08KH", "YR08KS1", "YR08KS2", "YR08KV", "YR10KH", "YR10KS1", "YR10KS2", "YR10KV", "YR12KH", "YR12KS1", "YR12KS2", "YR12KV", "YRCD001", "YRCD002", "YRCD003", "YRCD004", "YRCD005", "YRT1IN1E", "YRT1IN1K", "YRT1IN1M", "YRT1IQ1H", "YRT1IQ1O", "YRT1IZ1EP", "YRT1KH1", "YRT1KH2", "YRT1KV1", "YRT1KV2", "YRT1LD51H", "YRT1LD51V", "YRT1LD52H", "YRT1LD52V", "YRT1LE1", "YRT1MH1", "YRT1MH2", "YRT1QD61", "YRT1QD62", "YRT1QD71", "YRT1QD72", "ZZCD002"};
@@ -37,7 +37,7 @@ constexpr DeviceInfo getDeviceInfo(std::string_view deviceName) {
 
     DeviceInfo info = {.name = deviceName};
 
-    static constexpr std::array<std::pair<std::string_view, std::array<std::pair<std::string_view, std::string_view>, 22>>, 35> locations = {{
+    static constexpr std::array<std::pair<std::string_view, std::array<std::pair<std::string_view, std::string_view>, 22>>, 35> kLocations = {{
         //
         {"1S", {{
                    {"", "SIS100"},    //
@@ -165,7 +165,7 @@ constexpr DeviceInfo getDeviceInfo(std::string_view deviceName) {
     }};
 
     // Function specifier mappings based on technical groups
-    static constexpr std::array<std::pair<std::string_view, std::array<std::pair<std::string_view, std::string_view>, 10>>, 205> functionSpecifiers = {{
+    static constexpr std::array<std::pair<std::string_view, std::array<std::pair<std::string_view, std::string_view>, 10>>, 205> kFunctionSpecifiers = {{
         {"AK", {{
                    {"", "vacuum chamber"}, //
                }}},                        //
@@ -980,7 +980,7 @@ constexpr DeviceInfo getDeviceInfo(std::string_view deviceName) {
                 }}} //
     }};
 
-    static constexpr std::array<std::pair<std::string_view, std::string_view>, 20> positionSpecifiers = {{
+    static constexpr std::array<std::pair<std::string_view, std::string_view>, 20> kPositionSpecifiers = {{
         {"0", "automatic dipole field suppression"},    //
         {"A", "outside"},                               //
         {"B", "bypass/shunt PSU"},                      //
@@ -1014,9 +1014,9 @@ constexpr DeviceInfo getDeviceInfo(std::string_view deviceName) {
     if (deviceName.size() >= 4) {
         std::string_view locationPrefix = deviceName.substr(0, 2); // Extract the 'AA' part
         std::string_view section        = deviceName.substr(2, 2); // Extract the 'SS' part
-        auto             locIt          = std::find_if(locations.begin(), locations.end(), [locationPrefix](const auto& loc) { return loc.first == locationPrefix; });
+        auto             locIt          = std::find_if(kLocations.begin(), kLocations.end(), [locationPrefix](const auto& loc) { return loc.first == locationPrefix; });
 
-        if (locIt != locations.end()) {
+        if (locIt != kLocations.end()) {
             // Find the section name
             auto sectionIt = std::find_if(locIt->second.begin(), locIt->second.end(), [section](const auto& sec) { return sec.first == section; });
 
@@ -1047,8 +1047,8 @@ constexpr DeviceInfo getDeviceInfo(std::string_view deviceName) {
         // check for the generic digitizer convention 'AACDSSS'
         if (section == "CD" && deviceName.size() >= 7) {
             sequence            = deviceName.substr(4, 3);
-            auto techFuncIt     = std::ranges::find_if(functionSpecifiers, [section](const auto& funcSpec) { return funcSpec.first == section; });
-            info.deviceFunction = techFuncIt != functionSpecifiers.end() ? techFuncIt->second.begin()->second : "gen. digitizer DAQ";
+            auto techFuncIt     = std::ranges::find_if(kFunctionSpecifiers, [section](const auto& funcSpec) { return funcSpec.first == section; });
+            info.deviceFunction = techFuncIt != kFunctionSpecifiers.end() ? techFuncIt->second.begin()->second : "gen. digitizer DAQ";
             info.sequence       = sequence;
             return info; // early return since this special case is handled
         }
@@ -1075,8 +1075,8 @@ constexpr DeviceInfo getDeviceInfo(std::string_view deviceName) {
             info.deviceFunction = deviceFunction;
         }
 
-        // extract and set the function based on functionSpecifiers map
-        if (auto techFuncIt = std::ranges::find_if(functionSpecifiers, [technicalName](const auto& funcSpec) { return funcSpec.first == technicalName; }); techFuncIt != functionSpecifiers.end()) {
+        // extract and set the function based on kFunctionSpecifiers map
+        if (auto techFuncIt = std::ranges::find_if(kFunctionSpecifiers, [technicalName](const auto& funcSpec) { return funcSpec.first == technicalName; }); techFuncIt != kFunctionSpecifiers.end()) {
             // try to find 'B' or 'BB' in the function specifiers for 'AA'
             if (!deviceFunction.empty()) {
                 if (auto funcIt = std::ranges::find_if(techFuncIt->second, [deviceFunction](const auto& func) { return func.first == deviceFunction; }); funcIt != techFuncIt->second.end()) {
@@ -1102,12 +1102,12 @@ constexpr DeviceInfo getDeviceInfo(std::string_view deviceName) {
         }
     }
 
-    // extract and set the position based on positionSpecifiers map
+    // extract and set the position based on kPositionSpecifiers map
     if (deviceName.size() >= 9) {
         std::string_view positionSpecifier = deviceName.substr(8, 1);
-        auto             posIt             = std::find_if(positionSpecifiers.begin(), positionSpecifiers.end(), [positionSpecifier](const auto& posSpec) { return posSpec.first == positionSpecifier; });
+        auto             posIt             = std::find_if(kPositionSpecifiers.begin(), kPositionSpecifiers.end(), [positionSpecifier](const auto& posSpec) { return posSpec.first == positionSpecifier; });
 
-        if (posIt != positionSpecifiers.end()) {
+        if (posIt != kPositionSpecifiers.end()) {
             info.devicePosition = posIt->second; // Found the position specifier
         }
     }

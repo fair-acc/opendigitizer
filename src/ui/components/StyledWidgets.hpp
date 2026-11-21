@@ -1,7 +1,7 @@
 #ifndef OPENDIGITIZER_UI_COMPONENTS_STYLED_WIDGETS_HPP_
 #define OPENDIGITIZER_UI_COMPONENTS_STYLED_WIDGETS_HPP_
 
-#include <c_resource.hpp>
+#include <stdex/c_resource.hpp>
 
 #include <imgui.h>
 

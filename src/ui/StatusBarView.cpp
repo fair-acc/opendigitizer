@@ -24,7 +24,7 @@
 #include "components/ImGuiNotify.hpp"
 #include "components/StyledWidgets.hpp"
 
-#include "tolower.hpp"
+#include "stdex/tolower.hpp"
 
 using namespace std::string_literals;
 
@@ -86,7 +86,7 @@ Records filterRecords(const Records& records, std::optional<Level> levelFilter, 
     Records filtered;
     std::copy_if(records.begin(), records.end(), std::back_inserter(filtered), [&](const gr::log::LogRecord& record) {
         const bool levelMatches = !levelFilter || record.level == *levelFilter;
-        return levelMatches && Digitizer::utils::caseInsensitiveContains(textOf(record), messageFilter);
+        return levelMatches && digitizer::utils::case_insensitive_contains(textOf(record), messageFilter);
     });
     return filtered;
 }

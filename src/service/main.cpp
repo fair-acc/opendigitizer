@@ -39,8 +39,8 @@
 #include <gnuradio-4.0/GrMathBlocks.hpp>
 #include <gnuradio-4.0/GrTestingBlocks.hpp>
 
-#include "FAIR/DeviceNameHelper.hpp"
 #include "dashboard/dashboardWorker.hpp"
+#include "fair/DeviceNameHelper.hpp"
 #include "gnuradio/GnuRadioAcquisitionWorker.hpp"
 #include "gnuradio/GnuRadioFlowgraphWorker.hpp"
 
@@ -92,7 +92,7 @@ void registerDefaultThreadPool() {
     Manager::instance().replacePool(std::string(kDefaultCpuPoolId), std::make_shared<ThreadPoolWrapper>(std::make_unique<BasicThreadPool>(std::string(kDefaultCpuPoolId), TaskType::CPU_BOUND, 2U, 2U), "CPU"));
 }
 
-std::unique_ptr<Broker<>> setupBroker(const Digitizer::Settings& settings) {
+std::unique_ptr<Broker<>> setupBroker(const digitizer::Settings& settings) {
     auto broker = std::make_unique<Broker<>>("/PrimaryBroker");
 
     const auto wasmServeDir = !settings.wasmServeDir.empty() ? settings.wasmServeDir : SERVING_DIR;
@@ -186,7 +186,7 @@ int main(int argc, char** argv) {
     if (argc > 1 && strcmp(argv[1], "--list-registered-blocks") == 0) {
         gr::BlockRegistry registry;
         registerTestBlocks(registry);
-        const auto       pluginPaths = Digitizer::resolvePluginSearchPaths();
+        const auto       pluginPaths = digitizer::resolvePluginSearchPaths();
         gr::PluginLoader pluginLoader(registry, gr::globalSchedulerRegistry(), std::span<const std::string>(pluginPaths));
 
         std::print("Plugin search paths:\n");
@@ -243,7 +243,7 @@ connections:
         grc = grcBuffer.str();
     }
 
-    Digitizer::Settings& settings = Digitizer::Settings::instance();
+    digitizer::Settings& settings = digitizer::Settings::instance();
 
     registerDefaultThreadPool();
     auto broker = setupBroker(settings);
@@ -252,8 +252,8 @@ connections:
     }
     std::jthread brokerThread([&broker] { broker->run(); });
 
-    dns::DnsWorkerType dns_worker{*broker, dns::DnsHandler{}};
-    std::jthread       dnsThread([&dns_worker] { dns_worker.run(); });
+    dns::DnsWorkerType dnsWorker{*broker, dns::DnsHandler{}};
+    std::jthread       dnsThread([&dnsWorker] { dnsWorker.run(); });
 
     // dashboard worker (mock)
     using DsWorker = DashboardWorker<"/dashboards", description<"Provides R/W access to the dashboard as a yaml serialized string">>;
@@ -282,7 +282,7 @@ connections:
     gr::BlockRegistry registry;
     registerTestBlocks(registry);
 
-    auto             pluginPaths = Digitizer::resolvePluginSearchPaths();
+    auto             pluginPaths = digitizer::resolvePluginSearchPaths();
     gr::PluginLoader pluginLoader(registry, gr::globalSchedulerRegistry(), pluginPaths);
     GrAcqWorker      grAcqWorker(*broker, &pluginLoader, 50ms);
     GrFgWorker       grFgWorker(*broker, &pluginLoader, opendigitizer::flowgraph::Flowgraph{grc, {}}, grAcqWorker);
@@ -295,26 +295,26 @@ connections:
     const opencmw::zmq::Context                               zctx{};
     std::vector<std::unique_ptr<opencmw::client::ClientBase>> clients;
     clients.emplace_back(std::make_unique<opencmw::client::MDClientCtx>(zctx, 20ms, ""));
-    clients.emplace_back(std::make_unique<opencmw::client::RestClient>(opencmw::client::VerifyServerCertificates(Digitizer::Settings::instance().checkCertificates), opencmw::client::DefaultContentTypeHeader(opencmw::MIME::BINARY)));
+    clients.emplace_back(std::make_unique<opencmw::client::RestClient>(opencmw::client::VerifyServerCertificates(digitizer::Settings::instance().checkCertificates), opencmw::client::DefaultContentTypeHeader(opencmw::MIME::BINARY)));
     opencmw::client::ClientContext client{std::move(clients)};
 
-    dns::DnsClient dns_client{client, settings.serviceUrl().path("/dns").build()};
+    dns::DnsClient dnsClient{client, settings.serviceUrl().path("/dns").build()};
 
     const auto restUrl = settings.serviceUrl().build();
 
     std::vector<SignalEntry> registeredSignals;
-    grAcqWorker.setUpdateSignalEntriesCallback([&registeredSignals, &dns_client, &restUrl](std::vector<SignalEntry> signals) {
+    grAcqWorker.setUpdateSignalEntriesCallback([&registeredSignals, &dnsClient, &restUrl](std::vector<SignalEntry> signals) {
         if (::getenv("OPENDIGITIZER_LOAD_TEST_SIGNALS")) {
             size_t x = 0;
-            for (auto& i : fair::testDeviceNames) {
+            for (auto& i : fair::kTestDeviceNames) {
                 if (x >= 12) {
                     break;
                 }
                 const auto  info = fair::getDeviceInfo(i);
                 SignalEntry entry;
-                entry.name        = info.name;
-                entry.sample_rate = 1.f;
-                entry.unit        = "TEST unit";
+                entry.name       = info.name;
+                entry.sampleRate = 1.f;
+                entry.unit       = "TEST unit";
                 signals.push_back(entry);
                 x++;
             }
@@ -331,7 +331,7 @@ connections:
             // TODO mdp not functional (not implemented in worker)
             const auto type = entry.type == SignalType::Plain ? "STREAMING" : "DATASET";
             return std::vector{
-                dns::Entry{*restUrl.scheme(), *restUrl.hostName(), *restUrl.port(), "/GnuRadio/Acquisition", "", entry.name, entry.unit, entry.sample_rate.value_or(0.f), type},
+                dns::Entry{*restUrl.scheme(), *restUrl.hostName(), *restUrl.port(), "/GnuRadio/Acquisition", "", entry.name, entry.unit, entry.sampleRate.value_or(0.f), type},
                 // dns::Entry{"mdp", *restUrl.hostName(), 12345, "/GnuRadio/Acquisition", "", entry.name, entry.unit, entry.sample_rate, "STREAMING"},
                 // dns::Entry{"mds", *restUrl.hostName(), 12345, "/GnuRadio/Acquisition", "", entry.name, entry.unit, entry.sample_rate, "STREAMING"}
             };
@@ -342,7 +342,7 @@ connections:
             toUnregisterEntries.insert(toUnregisterEntries.end(), dns.begin(), dns.end());
         }
         if (!toUnregisterEntries.empty()) {
-            dns_client.unregisterSignals(std::move(toUnregisterEntries));
+            dnsClient.unregisterSignals(std::move(toUnregisterEntries));
         }
 
         std::vector<dns::Entry> toRegisterEntries;
@@ -351,7 +351,7 @@ connections:
             toRegisterEntries.insert(toRegisterEntries.end(), dns.begin(), dns.end());
         }
         if (!toRegisterEntries.empty()) {
-            dns_client.registerSignals(std::move(toRegisterEntries));
+            dnsClient.registerSignals(std::move(toRegisterEntries));
         }
         registeredSignals = std::move(signals);
     });

@@ -20,7 +20,7 @@
 #include <SDL3/SDL.h>
 
 #include "../common/LookAndFeel.hpp"
-#include "conversion.hpp"
+#include "stdex/cast.hpp"
 
 namespace gr::od {
 

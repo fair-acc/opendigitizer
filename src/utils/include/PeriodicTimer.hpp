@@ -29,7 +29,7 @@ namespace detail {
 struct Stats {
     std::uint64_t            count{0};
     std::chrono::nanoseconds sum{0};
-    double                   sum_sq{0.0}; // sum of squares in ms² for RMS
+    double                   sumSq{0.0}; // sum of squares in ms² for RMS
     std::chrono::nanoseconds min{std::chrono::nanoseconds::max()};
     std::chrono::nanoseconds max{std::chrono::nanoseconds::min()};
 
@@ -37,7 +37,7 @@ struct Stats {
         ++count;
         sum += d;
         const double ms = std::chrono::duration<double, std::milli>(d).count();
-        sum_sq += ms * ms;
+        sumSq += ms * ms;
         if (d < min) {
             min = d;
         }
@@ -48,27 +48,27 @@ struct Stats {
 
     constexpr void reset() noexcept { *this = Stats{}; }
 
-    [[nodiscard]] double avg_ms() const noexcept { return count > 0 ? std::chrono::duration<double, std::milli>(sum / count).count() : 0.0; }
+    [[nodiscard]] double avgMs() const noexcept { return count > 0 ? std::chrono::duration<double, std::milli>(sum / count).count() : 0.0; }
 
-    [[nodiscard]] double rms_ms() const noexcept {
+    [[nodiscard]] double rmsMs() const noexcept {
         if (count < 2) {
             return 0.0;
         }
-        const double avg      = avg_ms();
-        const double variance = (sum_sq / static_cast<double>(count)) - (avg * avg);
+        const double avg      = avgMs();
+        const double variance = (sumSq / static_cast<double>(count)) - (avg * avg);
         return variance > 0.0 ? std::sqrt(variance) : 0.0;
     }
 
-    [[nodiscard]] double min_ms() const noexcept { return count > 0 ? std::chrono::duration<double, std::milli>(min).count() : 0.0; }
+    [[nodiscard]] double minMs() const noexcept { return count > 0 ? std::chrono::duration<double, std::milli>(min).count() : 0.0; }
 
-    [[nodiscard]] double max_ms() const noexcept { return count > 0 ? std::chrono::duration<double, std::milli>(max).count() : 0.0; }
+    [[nodiscard]] double maxMs() const noexcept { return count > 0 ? std::chrono::duration<double, std::milli>(max).count() : 0.0; }
 };
 
 template<typename T>
 struct MetricStats {
     std::uint64_t count{0};
     T             sum{};
-    double        sum_sq{0.0};
+    double        sumSq{0.0};
     T             min{std::numeric_limits<T>::max()};
     T             max{std::numeric_limits<T>::lowest()};
 
@@ -76,7 +76,7 @@ struct MetricStats {
         ++count;
         sum += v;
         const auto vd = static_cast<double>(v);
-        sum_sq += vd * vd;
+        sumSq += vd * vd;
         if (v < min) {
             min = v;
         }
@@ -94,7 +94,7 @@ struct MetricStats {
             return 0.0;
         }
         const double a        = avg();
-        const double variance = (sum_sq / static_cast<double>(count)) - (a * a);
+        const double variance = (sumSq / static_cast<double>(count)) - (a * a);
         return variance > 0.0 ? std::sqrt(variance) : 0.0;
     }
 };
@@ -143,7 +143,7 @@ struct PeriodicTimer {
     using time_point = Clock::time_point;
     using duration   = Clock::duration;
 
-    static constexpr bool enabled =
+    static constexpr bool kEnabled =
 #if defined(NDEBUG) && !defined(FORCE_PERIODIC_TIMERS)
         false;
 #else
@@ -198,7 +198,7 @@ struct PeriodicTimer {
     requires ProfilerHandlerLike<Handler*>
     PeriodicTimer(Handler* handler, std::string_view name, std::string_view categories, std::chrono::nanoseconds interval, bool printToStderr = false, std::source_location loc = std::source_location::current()) noexcept //
         : _name(name), _categories(categories), _interval(interval), _printToConsole(printToStderr), _loc(loc) {
-        if constexpr (enabled) {
+        if constexpr (kEnabled) {
             _handler     = handler;
             _counter_fn  = +[](void* h, std::string_view n, std::string_view c, std::initializer_list<arg_value> a) { static_cast<Handler*>(h)->counterEvent(n, c, a); };
             _instant_fn  = +[](void* h, std::string_view n, std::string_view c, std::initializer_list<arg_value> a) { static_cast<Handler*>(h)->instantEvent(n, c, a); };
@@ -207,7 +207,7 @@ struct PeriodicTimer {
     }
 
     void begin() noexcept {
-        if constexpr (enabled) {
+        if constexpr (kEnabled) {
             if (!_handler) {
                 return;
             }
@@ -228,28 +228,28 @@ struct PeriodicTimer {
 
     // Snapshot with auto-incrementing segment index, relative to previous timestamp
     void snapshot() noexcept {
-        if constexpr (enabled) {
+        if constexpr (kEnabled) {
             snapshotImpl("", _next_seg_idx, kPrevious, nullptr);
         }
     }
 
     // Snapshot with explicit reference index
     void snapshot(std::size_t refIdx) noexcept {
-        if constexpr (enabled) {
+        if constexpr (kEnabled) {
             snapshotImpl("", _next_seg_idx, refIdx, nullptr);
         }
     }
 
     // Snapshot with label, relative to previous timestamp
     void snapshot(std::string_view label) noexcept {
-        if constexpr (enabled) {
+        if constexpr (kEnabled) {
             snapshotImpl(label, _next_seg_idx, kPrevious, nullptr);
         }
     }
 
     // Snapshot with label and explicit reference index
     void snapshot(std::string_view label, std::size_t refIdx) noexcept {
-        if constexpr (enabled) {
+        if constexpr (kEnabled) {
             snapshotImpl(label, _next_seg_idx, refIdx, nullptr);
         }
     }
@@ -258,7 +258,7 @@ struct PeriodicTimer {
     template<typename Pred>
     requires std::is_invocable_r_v<bool, Pred, std::chrono::nanoseconds>
     void snapshot(std::string_view label, std::size_t refIdx, Pred&& predicate) noexcept {
-        if constexpr (enabled) {
+        if constexpr (kEnabled) {
             snapshotImpl(label, _next_seg_idx, refIdx, std::forward<Pred>(predicate));
         }
     }
@@ -267,7 +267,7 @@ struct PeriodicTimer {
     template<typename T>
     requires std::is_arithmetic_v<T>
     void metric(std::string_view label, T value) noexcept {
-        if constexpr (enabled) {
+        if constexpr (kEnabled) {
             metricImpl(label, value, nullptr);
         }
     }
@@ -276,14 +276,14 @@ struct PeriodicTimer {
     template<typename T, typename Pred>
     requires std::is_arithmetic_v<T> && std::is_invocable_r_v<bool, Pred, T>
     void metric(std::string_view label, T value, Pred&& predicate) noexcept {
-        if constexpr (enabled) {
+        if constexpr (kEnabled) {
             metricImpl(label, value, std::forward<Pred>(predicate));
         }
     }
 
     // Force flush of accumulated statistics
     void flush() noexcept {
-        if constexpr (enabled) {
+        if constexpr (kEnabled) {
             if (_handler && _period.count > 0) {
                 doFlush(Clock::now());
             }
@@ -294,7 +294,7 @@ struct PeriodicTimer {
     template<typename Pred>
     requires std::is_invocable_r_v<bool, Pred, std::chrono::nanoseconds>
     void setPeriodThreshold(Pred&& predicate) noexcept {
-        if constexpr (enabled) {
+        if constexpr (kEnabled) {
             _period_predicate = [p = std::forward<Pred>(predicate)](std::chrono::nanoseconds d) mutable { return p(d); };
         }
     }
@@ -406,10 +406,10 @@ private:
         args.emplace_back("line", static_cast<int>(_loc.line()));
 
         // Period stats
-        args.emplace_back("p_avg_ms", _period.avg_ms());
-        args.emplace_back("p_rms_ms", _period.rms_ms());
-        args.emplace_back("p_min_ms", _period.min_ms());
-        args.emplace_back("p_max_ms", _period.max_ms());
+        args.emplace_back("p_avg_ms", _period.avgMs());
+        args.emplace_back("p_rms_ms", _period.rmsMs());
+        args.emplace_back("p_min_ms", _period.minMs());
+        args.emplace_back("p_max_ms", _period.maxMs());
         args.emplace_back("p_n", static_cast<int>(_period.count));
 
         // Segment stats (only used ones)
@@ -420,10 +420,10 @@ private:
             }
 
             const std::string prefix = seg.label.empty() ? std::format("s{}", i) : seg.label;
-            args.emplace_back(std::format("{}_avg_ms", prefix), seg.stats.avg_ms());
-            args.emplace_back(std::format("{}_rms_ms", prefix), seg.stats.rms_ms());
-            args.emplace_back(std::format("{}_min_ms", prefix), seg.stats.min_ms());
-            args.emplace_back(std::format("{}_max_ms", prefix), seg.stats.max_ms());
+            args.emplace_back(std::format("{}_avg_ms", prefix), seg.stats.avgMs());
+            args.emplace_back(std::format("{}_rms_ms", prefix), seg.stats.rmsMs());
+            args.emplace_back(std::format("{}_min_ms", prefix), seg.stats.minMs());
+            args.emplace_back(std::format("{}_max_ms", prefix), seg.stats.maxMs());
             args.emplace_back(std::format("{}_n", prefix), static_cast<int>(seg.stats.count));
         }
 
@@ -469,16 +469,16 @@ private:
                 return 0.0;
             }
             if (std::string_view(suffix) == "avg") {
-                return seg.stats.avg_ms();
+                return seg.stats.avgMs();
             }
             if (std::string_view(suffix) == "rms") {
-                return seg.stats.rms_ms();
+                return seg.stats.rmsMs();
             }
             if (std::string_view(suffix) == "min") {
-                return seg.stats.min_ms();
+                return seg.stats.minMs();
             }
             if (std::string_view(suffix) == "max") {
-                return seg.stats.max_ms();
+                return seg.stats.maxMs();
             }
             return 0.0;
         };
@@ -497,10 +497,10 @@ private:
                 {"file", file},
                 {"line", static_cast<int>(_loc.line())},
 
-                {"p_avg_ms", _period.avg_ms()},
-                {"p_rms_ms", _period.rms_ms()},
-                {"p_min_ms", _period.min_ms()},
-                {"p_max_ms", _period.max_ms()},
+                {"p_avg_ms", _period.avgMs()},
+                {"p_rms_ms", _period.rmsMs()},
+                {"p_min_ms", _period.minMs()},
+                {"p_max_ms", _period.maxMs()},
                 {"p_n", static_cast<int>(_period.count)},
 
                 {"s0_label", getSegLabel(0)},
@@ -556,7 +556,7 @@ private:
 
     void printStats() const noexcept {
         // format: [name] period: avg±rms [min,max] (N) | label: avg±rms [min,max] | ...
-        std::print("[{}] period: {:.2f}±{:.2f}ms [{:.2f},{:.2f}] ({})", _name, _period.avg_ms(), _period.rms_ms(), _period.min_ms(), _period.max_ms(), _period.count);
+        std::print("[{}] period: {:.2f}±{:.2f}ms [{:.2f},{:.2f}] ({})", _name, _period.avgMs(), _period.rmsMs(), _period.minMs(), _period.maxMs(), _period.count);
 
         for (std::size_t i = 0; i < kMaxSegments; ++i) {
             const auto& seg = _segments[i];
@@ -566,7 +566,7 @@ private:
 
             const std::string label = seg.label.empty() ? std::format("s{}", i) : seg.label;
 
-            std::print(" | {}: {:.2f}±{:.2f}ms [{:.2f},{:.2f}]", label, seg.stats.avg_ms(), seg.stats.rms_ms(), seg.stats.min_ms(), seg.stats.max_ms());
+            std::print(" | {}: {:.2f}±{:.2f}ms [{:.2f},{:.2f}]", label, seg.stats.avgMs(), seg.stats.rmsMs(), seg.stats.minMs(), seg.stats.maxMs());
         }
 
         for (std::size_t i = 0; i < kMaxMetrics; ++i) {

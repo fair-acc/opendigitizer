@@ -131,7 +131,7 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    Digitizer::Settings::instance();
+    digitizer::Settings::instance();
     initialise();
 
     registerAppBlocks(*grGlobalBlockRegistry());

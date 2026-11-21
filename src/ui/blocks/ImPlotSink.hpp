@@ -36,7 +36,7 @@
 
 #include <implot.h>
 
-#include "conversion.hpp"
+#include "stdex/cast.hpp"
 #include <PluginPaths.hpp>
 
 #include "../charts/Chart.hpp"
@@ -547,7 +547,7 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
             ImPlot::SetAxis(kYAxes[std::clamp(getValueOrDefault<std::size_t>(config, "yAxisID", 0UZ), 0UZ, 2UZ)]);
         }
         std::string     scaleStr  = config.contains("scale") ? config.find_value("scale").value_or(gr::pmt::Value{}).value_or(std::string{"Linear"}) : std::string{"Linear"};
-        const AxisScale axisScale = gr::meta::parseEnum<AxisScale>(Digitizer::trimWhitespace(scaleStr)).value_or(AxisScale::Linear);
+        const AxisScale axisScale = gr::meta::parseEnum<AxisScale>(digitizer::trimWhitespace(scaleStr)).value_or(AxisScale::Linear);
         const char*     label     = signal_name.value.empty() ? this->name.value.c_str() : signal_name.value.c_str();
         if (_yValues.empty()) {
             // plot one single dummy value so that the sink shows up in the plot legend
