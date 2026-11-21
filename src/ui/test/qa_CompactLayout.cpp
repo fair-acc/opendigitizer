@@ -1,11 +1,10 @@
+#include "App.hpp"
 #include "ImGuiTestApp.hpp"
 #include "TestDashboardRunner.hpp"
 
 #include <boost/ut.hpp>
 
 #include <gnuradio-4.0/BlockRegistry.hpp>
-#include <gnuradio-4.0/GrBasicBlocks.hpp>
-#include <gnuradio-4.0/GrTestingBlocks.hpp>
 
 #include "../common/LookAndFeel.hpp"
 #include <Dashboard.hpp>
@@ -192,8 +191,7 @@ int main(int argc, char* argv[]) {
     state.header.loadAssets();
 
     auto& registry = gr::globalBlockRegistry();
-    gr::blocklib::initGrBasicBlocks(registry);
-    gr::blocklib::initGrTestingBlocks(registry);
+    registerAppBlocks(registry);
 
     state.reload(cmrc::ui_test_assets::get_filesystem(), "examples/qa_layout.grc", "CompactLayoutDashboard");
     state.page = std::make_unique<DashboardPage>();

@@ -54,7 +54,7 @@ struct GainEnvelope : gr::Block<GainEnvelope<T>> {
             if (!_hasSeenMaxAmplitudeSincePressed) { // attack
                 _currentVolumeFraction           = std::min(1., _currentVolumeFraction + changeNeededInVolumeFractionPerSample(1., attack));
                 _hasSeenMaxAmplitudeSincePressed = _currentVolumeFraction == 1.;
-            } else { // decay and sustain
+            } else {
                 const double decayDelta = changeNeededInVolumeFractionPerSample(1. - sustain_fraction, decay);
                 if (_currentVolumeFraction > sustain_fraction) {
                     _currentVolumeFraction = std::max(static_cast<double>(sustain_fraction), _currentVolumeFraction - decayDelta);

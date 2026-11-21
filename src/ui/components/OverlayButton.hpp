@@ -36,7 +36,6 @@ inline ImRect nodeMenuButtonRect(ImVec2 nodeTopRight) {
     return ImRect{ImVec2{topRight.x - sideLength, topRight.y}, ImVec2{topRight.x, topRight.y + sideLength}};
 }
 
-/// an OverlayButton with a three-vertical-dots icon over `rect`
 inline OverlayButtonState drawMenuButton(const char* strId, const ImRect& rect) {
     using namespace std::string_view_literals;
     static constexpr auto kVerticalEllipsisIcon = "\u{f142}"sv;

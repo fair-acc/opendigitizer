@@ -175,7 +175,6 @@ ScrollableListSelectionPopupResult ScrollableListSelectionPopup::draw(const std:
     if (!std::exchange(_opened, true)) {
         ImGui::OpenPopup(_name.c_str());
     }
-    _enabledItems.clear();
     std::optional<std::size_t> hoveredItem;
     bool                       confirmed = false;
 
@@ -189,9 +188,7 @@ ScrollableListSelectionPopupResult ScrollableListSelectionPopup::draw(const std:
             imw::Child list("##items", LookAndFeel::instance().selectionPopupListSize, true, 0);
             for (std::size_t index = 0UZ; index < _items.size(); ++index) {
                 imw::Disabled incompatible(isItemEnabled && !isItemEnabled(index));
-                if (_items[index].draw()) {
-                    _enabledItems.push_back(index);
-                }
+                _items[index].draw();
                 if (ImGui::IsItemHovered()) {
                     hoveredItem = index;
                 }
@@ -212,7 +209,7 @@ ScrollableListSelectionPopupResult ScrollableListSelectionPopup::draw(const std:
 
     const SelectionPopupState unconfirmedState = ImGui::IsPopupOpen(_name.c_str()) ? SelectionPopupState::InProgress : SelectionPopupState::Cancelled;
     const SelectionPopupState state            = confirmed ? SelectionPopupState::Confirmed : unconfirmedState;
-    return {.enabledItems = _enabledItems, .currentState = state, .hoveredItem = hoveredItem};
+    return {.currentState = state, .hoveredItem = hoveredItem};
 }
 
 std::optional<std::string_view> UiControlMultiSelectPopup::hoveredProperty() const {

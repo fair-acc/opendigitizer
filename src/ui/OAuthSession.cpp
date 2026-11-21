@@ -55,8 +55,6 @@ void OAuthSession::signIn(const std::string& scope, const std::string& clientid,
 
 const std::string& OAuthSession::availableRoles() const { return _roles; }
 
-void OAuthSession::sign(opencmw::mdp::Message& msg) { opencmw::majordomo::cryptography::sign(msg, _privateKey, _publicHash); }
-
 } // namespace gr::od
 
 #endif

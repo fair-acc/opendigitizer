@@ -548,7 +548,6 @@ inline void RenderNotifications() {
 namespace gr::od::components {
 
 struct Notification {
-    inline static void success(const std::string& text, std::chrono::milliseconds dismissTime = LookAndFeel::instance().notificationDismissTime) { post(ImGuiToastType::Success, dismissTime, text); }
     inline static void warning(const std::string& text, std::chrono::milliseconds dismissTime = LookAndFeel::instance().notificationDismissTime) { post(ImGuiToastType::Warning, dismissTime, text); }
     inline static void error(const std::string& text, std::chrono::milliseconds dismissTime = LookAndFeel::instance().notificationErrorDismissTime) { post(ImGuiToastType::Error, dismissTime, text); }
     inline static void info(const std::string& text, std::chrono::milliseconds dismissTime = LookAndFeel::instance().notificationDismissTime) { post(ImGuiToastType::Info, dismissTime, text); }

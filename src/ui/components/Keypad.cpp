@@ -16,6 +16,7 @@
 #include <cstdlib>
 #include <format>
 #include <unordered_map>
+#include <utility>
 
 namespace gr::od::components {
 
@@ -26,7 +27,7 @@ std::vector<Token> tokenize(std::string_view text) {
     std::vector<Token> tokens;
     std::size_t        pos  = 0UZ;
     const auto         emit = [&tokens, &pos, text](TType type, std::size_t first, std::size_t last) {
-        tokens.push_back({type, text.substr(first, last - first)});
+        tokens.emplace_back(type, text.substr(first, last - first));
         pos = last;
     };
     const auto emitBinary = [&emit, &pos, text](TType type) {
@@ -66,7 +67,7 @@ std::vector<Token> tokenize(std::string_view text) {
         }
         emit(TType::None, pos, pos + 1UZ);
     }
-    tokens.push_back({TType::End, text.substr(text.size())});
+    tokens.emplace_back(TType::End, text.substr(text.size()));
     return tokens;
 }
 
@@ -208,7 +209,7 @@ std::optional<float> evaluate(std::string_view text) {
         case Action::S:
             if (incoming.type == TType::Const) {
                 const std::optional<float> number = parseNumber(incoming.range);
-                if (!number) {
+                if (!number.has_value()) {
                     return std::nullopt;
                 }
                 context.push_back({TType::Expr, *number});
@@ -267,9 +268,6 @@ struct KeypadState {
     static inline constexpr const char* kKeypadName          = "KeypadX";
     static constexpr const char*        kDecrementButtonIcon = "\u{f146}";
     static constexpr const char*        kIncrementButtonIcon = "\u{f0fe}";
-    template<typename...>
-    constexpr static bool always_true = true;
-
     enum class ReturnState { None, Change, Accept, Discard };
 
     enum class Button {
@@ -342,7 +340,6 @@ struct KeypadState {
     std::string _editBuffer;
     std::any    _prevValue;
 
-    template<typename T = void>
     [[nodiscard]] consteval static const char* toString(Button button) noexcept {
         using enum Button;
         switch (button) {
@@ -395,7 +392,7 @@ struct KeypadState {
         case Ln: return "Ln";
         case Pow10: return "10^";
         case PowE: return "e^";
-        default: static_assert(always_true<T>, "not all possible Button enum values are mapped");
+        default: std::unreachable();
         }
     }
 
@@ -936,7 +933,7 @@ struct KeypadState {
                 return ReturnState::Accept;
             }
             auto result = evaluate(_editBuffer);
-            if (!result) {
+            if (!result.has_value()) {
                 return ReturnState::None;
             }
             _editBuffer = std::format("{}", result.value());
@@ -1001,7 +998,7 @@ struct KeypadState {
             }
             {
                 const std::optional<float> number = parseNumber(last.range);
-                if (!number) {
+                if (!number.has_value()) {
                     return ReturnState::None;
                 }
                 const float f = *number;
@@ -1018,7 +1015,7 @@ struct KeypadState {
             }
             {
                 const std::optional<float> number = parseNumber(last.range);
-                if (!number) {
+                if (!number.has_value()) {
                     return ReturnState::None;
                 }
                 const float f = *number;
@@ -1035,7 +1032,7 @@ struct KeypadState {
             }
             {
                 const std::optional<float> number = parseNumber(last.range);
-                if (!number) {
+                if (!number.has_value()) {
                     return ReturnState::None;
                 }
                 const float f = *number;
@@ -1047,13 +1044,13 @@ struct KeypadState {
             }
             return ReturnState::Change;
         case Period:
-            if (last.type != TType::Const || last.range.find('.') != std::string_view::npos) {
+            if (last.type != TType::Const || last.range.contains('.')) {
                 break;
             }
             _editBuffer.push_back('.');
             return ReturnState::Change;
         case EScientific:
-            if (last.type != TType::Const || last.range.find('.') != std::string_view::npos) {
+            if (last.type != TType::Const || last.range.contains('.')) {
                 break;
             }
             _editBuffer.push_back('e');
@@ -1067,12 +1064,12 @@ struct KeypadState {
                 return ReturnState::None;
             }
             if (last.isOperator()) {
-                _editBuffer.replace(static_cast<std::size_t>(last.range.data() - _editBuffer.data()), last.range.size(), std::string{' ', char(key), ' '});
+                _editBuffer.replace(static_cast<std::size_t>(last.range.data() - _editBuffer.data()), last.range.size(), std::string{' ', static_cast<char>(std::to_underlying(key)), ' '});
                 return ReturnState::Change;
             }
 
             _editBuffer.push_back(' ');
-            _editBuffer.push_back(char(key));
+            _editBuffer.push_back(static_cast<char>(std::to_underlying(key)));
             _editBuffer.push_back(' ');
             return ReturnState::Change;
         case POpen:
@@ -1081,7 +1078,7 @@ struct KeypadState {
             }
 
             _parentheses++;
-            _editBuffer.push_back(char(key));
+            _editBuffer.push_back(static_cast<char>(std::to_underlying(key)));
             return ReturnState::Change;
         case PClose:
             if (!last.isValid() || last.isPOpen() || last.isOperator() || !_parentheses) {
@@ -1089,7 +1086,7 @@ struct KeypadState {
             }
 
             _parentheses--;
-            _editBuffer.push_back(char(key));
+            _editBuffer.push_back(static_cast<char>(std::to_underlying(key)));
             return ReturnState::Change;
         case Sin:
             if (last.isValid() && (!last.isPOpen() && !last.isOperator())) {
@@ -1176,14 +1173,14 @@ struct KeypadState {
             _parentheses++;
             return ReturnState::Change;
         default:
-            if (!isdigit(char(key)) || last.type == TType::PClose) {
+            if (!isdigit(static_cast<char>(std::to_underlying(key))) || last.type == TType::PClose) {
                 return ReturnState::None;
             }
             if (_firstUpdate) {
                 _editBuffer.clear();
                 _firstUpdate = false;
             }
-            _editBuffer.push_back(char(key));
+            _editBuffer.push_back(static_cast<char>(std::to_underlying(key)));
             return ReturnState::Change;
         }
         return ReturnState::None;

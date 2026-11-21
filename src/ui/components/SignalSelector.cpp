@@ -52,7 +52,7 @@ void QueryFilters::draw() {
             removed = index;
         }
     }
-    if (removed) {
+    if (removed.has_value()) {
         elements.erase(elements.begin() + static_cast<std::ptrdiff_t>(*removed));
         changed();
     }
@@ -187,8 +187,8 @@ void SignalSelector::startSearching(const std::string& searchString, std::vector
 }
 
 bool SignalSelector::signalMatchesSearchString(const SignalData& signal) const {
-    return signal.signalName.find(_searchString) != std::string::npos || //
-           signal.comment.find(_searchString) != std::string::npos;
+    return signal.signalName.contains(_searchString) || //
+           signal.comment.contains(_searchString);
 }
 
 bool SignalSelector::signalMatchesActiveFilters(const SignalData& signal) const {
@@ -225,7 +225,7 @@ std::vector<SignalData> SignalSelector::drawSignalSelector() {
         if (wasActive) {
             _selectedFilters.removeLabel(item);
         } else {
-            _selectedFilters.labels.push_back({item->title, item, colorForCategory(item->category)});
+            _selectedFilters.labels.emplace_back(item->title, item, colorForCategory(item->category));
         }
         filtersChanged = true;
     }

@@ -19,7 +19,7 @@ struct TestApp : public test::ImGuiTestApp {
         t->SetVarsDataType<TestState>();
 
         t->GuiFunc = [](ImGuiTestContext* ctx) {
-            ImGui::Begin("Test Window", NULL, ImGuiWindowFlags_NoSavedSettings);
+            ImGui::Begin("Test Window", nullptr, ImGuiWindowFlags_NoSavedSettings);
             ImGui::SetWindowSize(ImVec2(300, 350));
 
             const std::vector<FilterTag> items = {

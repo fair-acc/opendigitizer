@@ -477,7 +477,6 @@ struct RemoteStreamSource : RemoteSourceBase, RemoteSourceCommon<RemoteStreamSou
                 if (yamlMap) {
                     const gr::property_map& rootMap = yamlMap.value();
                     map.insert(rootMap.begin(), rootMap.end()); // duplicates ignored, not overwritten
-                } else {
                 }
                 if (verbose_console) {
                     const auto tagTime = std::chrono::system_clock::time_point() + std::chrono::nanoseconds(timestamp);

@@ -77,7 +77,7 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
     static constexpr bool kIsTensor    = gr::TensorLike<T>;
     static constexpr bool kIsEvents    = std::is_same_v<T, gr::property_map>;
 
-    static constexpr SignalKind kSignalKind = []() consteval -> SignalKind {
+    static constexpr SignalKind kSignalKind = []() consteval {
         if constexpr (kIsEvents) {
             return SignalKind::Events;
         } else if constexpr (kIsTensor) {
@@ -147,8 +147,7 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
 
     CapacityRequests _capacityRequests{.minimum = gr::DataSetLike<T> ? charts::Chart::kDefaultDataSetHistorySize : 2048UZ};
 
-    // DataSet cache for float conversion
-    mutable std::vector<gr::DataSet<float>> _dsCache;
+    mutable std::vector<gr::DataSet<float>> _floatConvertedDataSets;
 
     std::deque<std::conditional_t<kIsTensor, T, std::monostate>> _frames;               // Tensor<T> sinks: the newest max_backlog + 1 frames
     std::uint64_t                                                _frameGeneration = 0U; // of _frames.back(), counting every received frame
@@ -324,7 +323,7 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
             if constexpr (std::is_same_v<T, gr::DataSet<float>>) {
                 return span;
             } else {
-                _dsCache.clear();
+                _floatConvertedDataSets.clear();
                 for (const auto& ds : span) {
                     gr::DataSet<float> converted;
                     converted.timestamp    = ds.timestamp;
@@ -337,9 +336,9 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
                     for (const auto& av : ds.axis_values) {
                         converted.axis_values.emplace_back(av.begin(), av.end());
                     }
-                    _dsCache.push_back(std::move(converted));
+                    _floatConvertedDataSets.push_back(std::move(converted));
                 }
-                return _dsCache;
+                return _floatConvertedDataSets;
             }
         }
         return {};

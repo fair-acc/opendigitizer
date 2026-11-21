@@ -112,8 +112,6 @@ struct OpenDashboardPage {
     struct ViewResult {
         std::shared_ptr<DashboardDescription> dashboardToLoad;
         DashboardAction                       dashboardAction = DashboardAction::none;
-        // an overlay and an input blocker cover the table or tree content, but not the table's header row
-        float contentAreaVerticalOffset = 0.f;
     };
 
     enum class ListViewMode {

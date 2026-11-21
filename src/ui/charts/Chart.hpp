@@ -255,9 +255,8 @@ enum class ConstrainedWhen : std::uint8_t { autoScaled, always };
 struct AxisCategory {
     std::string   quantity;
     std::string   unit;
-    std::uint32_t color    = 0xFFFFFFFF; // of the axis labels and ticks
-    AxisScale     scale    = AxisScale::Linear;
-    bool          plotTags = true;
+    std::uint32_t color = 0xFFFFFFFF; // of the axis labels and ticks
+    AxisScale     scale = AxisScale::Linear;
 
     [[nodiscard]] bool matches(std::string_view q, std::string_view u) const noexcept { return quantity == q && unit == u; }
 
@@ -2122,7 +2121,7 @@ struct Chart {
                 scheduleResize();
             });
         };
-        const auto formatTimeStop = [](double seconds) -> std::string {
+        const auto formatTimeStop = [](double seconds) {
             if (seconds >= 60.0) {
                 return std::format("{:.0f} min", seconds / 60.0);
             }

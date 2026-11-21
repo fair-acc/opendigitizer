@@ -541,14 +541,14 @@ void OpenDashboardPage::drawFavoritesFilter() {
 
 void OpenDashboardPage::drawTagFilter() {
     if (auto tag = _tagFilterRow.draw("tagFilterRow", "Tag: ")) {
-        _filters.push_back({TagFilter{std::move(*tag)}});
+        _filters.emplace_back(TagFilter{std::move(*tag)});
         forceRecalculateSortingAndFilteringOfListModel();
     }
 }
 
 void OpenDashboardPage::drawKeyValueFilter() {
     if (auto committed = _keyValueFilterRow.draw("keyValueFilterRow")) {
-        _filters.push_back({KeyValueFilter{std::move(committed->key), std::move(committed->value)}});
+        _filters.emplace_back(KeyValueFilter{std::move(committed->key), std::move(committed->value)});
         forceRecalculateSortingAndFilteringOfListModel();
     }
 }
@@ -759,8 +759,6 @@ OpenDashboardPage::ViewResult OpenDashboardPage::drawDashboardTable(const Dashbo
         },
         ImVec2{0.f, size.y});
 
-    result.contentAreaVerticalOffset = table.columnHeaderRowHeight;
-
     while (auto visibleRange = table.step()) {
         for (std::size_t row = visibleRange->first; row < visibleRange->second; ++row) {
             const auto& description = dashboardAt(shownItems[row]);
@@ -951,7 +949,7 @@ OpenDashboardPage::ViewResult OpenDashboardPage::drawDashboardFileTree(ImVec2 si
 }
 
 void OpenDashboardPage::drawMatchAnyOrAllFiltersCombo() {
-    if (const auto matchAllFilters = components::drawMatchAnyOrAllFiltersCombo("##matchModeCombo", _requireAllFilters)) {
+    if (const auto matchAllFilters = components::drawMatchAnyOrAllFiltersCombo("##matchModeCombo", _requireAllFilters); matchAllFilters.has_value()) {
         _requireAllFilters = *matchAllFilters;
         forceRecalculateSortingAndFilteringOfListModel();
     }

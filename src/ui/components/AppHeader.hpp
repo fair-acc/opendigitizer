@@ -69,7 +69,7 @@ inline bool loadTextureFromFile(const char* filename, GLuint* outTexture, ImVec2
     auto file = fs.open(filename);
 
     unsigned char* imageData = stbi_load_from_memory(reinterpret_cast<const unsigned char*>(file.begin()), static_cast<int>(file.size()), &imageWidth, &imageHeight, nullptr, 4);
-    if (imageData == NULL) {
+    if (imageData == nullptr) {
         return false;
     }
 

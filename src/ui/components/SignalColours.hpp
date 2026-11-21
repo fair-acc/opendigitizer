@@ -7,6 +7,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <utility>
 #include <vector>
 
 namespace gr::od {
@@ -27,8 +28,8 @@ struct SignalColours {
         return colours;
     }
 
-    [[nodiscard]] std::vector<std::uint32_t>&       palette() { return palettes[static_cast<std::size_t>(style)]; }
-    [[nodiscard]] const std::vector<std::uint32_t>& palette() const { return palettes[static_cast<std::size_t>(style)]; }
+    [[nodiscard]] std::vector<std::uint32_t>&       palette() { return palettes[static_cast<std::size_t>(std::to_underlying(style))]; }
+    [[nodiscard]] const std::vector<std::uint32_t>& palette() const { return palettes[static_cast<std::size_t>(std::to_underlying(style))]; }
 
     [[nodiscard]] bool isUsed(std::uint32_t colour) const { return std::ranges::contains(_used, colour); }
 

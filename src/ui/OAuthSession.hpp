@@ -29,7 +29,6 @@ struct OAuthSession {
     static OAuthSession& instance();
     void                 signIn(const std::string& scope, const std::string& clientid, const std::string& endpoint);
     const std::string&   availableRoles() const;
-    void                 sign(opencmw::mdp::Message& msg);
 };
 } // namespace gr::od
 

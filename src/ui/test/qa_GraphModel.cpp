@@ -1,3 +1,4 @@
+#include "App.hpp"
 #include "ImGuiTestApp.hpp"
 #include "TestDashboardRunner.hpp"
 
@@ -12,9 +13,6 @@
 #include <blocks/TestSpectrumGenerator.hpp>
 
 #include <gnuradio-4.0/AtomicRef.hpp>
-#include <gnuradio-4.0/GrBasicBlocks.hpp>
-#include <gnuradio-4.0/GrFourierBlocks.hpp>
-#include <gnuradio-4.0/GrTestingBlocks.hpp>
 #include <gnuradio-4.0/Scheduler.hpp>
 #include <gnuradio-4.0/testing/NullSources.hpp>
 
@@ -746,9 +744,7 @@ int main(int argc, char* argv[]) {
     gr::BlockRegistry&     registry          = gr::globalBlockRegistry();
     gr::SchedulerRegistry& schedulerRegistry = gr::globalSchedulerRegistry();
 
-    gr::blocklib::initGrBasicBlocks(registry);
-    gr::blocklib::initGrFourierBlocks(registry);
-    gr::blocklib::initGrTestingBlocks(registry);
+    registerAppBlocks(registry);
     registerTestBlocks(registry);
 
     // qa_subgraph.grc uses the singlethreaded simple scheduler

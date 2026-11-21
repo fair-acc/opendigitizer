@@ -126,10 +126,7 @@ struct SignalSelector {
     SelectedLabelsView _selectedFilters;
     FilterComboBoxes   _filterCombos;
 
-    bool        _forceRefresh = false;
-    std::string _addRemoteSignalUri;
-
-    opencmw::service::dns::QueryEntry _queryFilter;
+    bool _forceRefresh = false;
 
     std::vector<SignalData> _signals;
 

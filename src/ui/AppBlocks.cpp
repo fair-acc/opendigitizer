@@ -37,35 +37,35 @@
 namespace gr::od {
 
 // on WASM dynload the Gr* blocklibs arrive as SIDE_MODULE plugins; natively and WASM-static they are linked in and registered here
-void registerAppBlocks(gr::BlockRegistry& registry) {
+void registerAppBlocks(gr::BlockRegistry& blockRegistry) {
 #if !defined(__EMSCRIPTEN__) || defined(OD_WASM_STATIC_BLOCKLIBS)
-    gr::blocklib::initGrBasicBlocks(registry);
-    gr::blocklib::initGrElectricalBlocks(registry);
-    gr::blocklib::initGrFileIoBlocks(registry);
-    gr::blocklib::initGrFilterBlocks(registry);
-    gr::blocklib::initGrFourierBlocks(registry);
-    gr::blocklib::initGrHttpBlocks(registry);
-    gr::blocklib::initGrMathBlocks(registry);
-    gr::blocklib::initGrTestingBlocks(registry);
-    gr::blocklib::initGrAnalogBlocks(registry);
-    gr::blocklib::initGrAudioBlocks(registry);
-    gr::blocklib::initGrDigitalBlocks(registry);
-    charts::registerChart<charts::RDSView>(registry);
-    registerWithIdPrefix<ImControlRTL2832Connect>(registry, kDigitizerUiIdPrefix);
-    gr::registerBlock<gr::blocks::sdr::RTL2832Source<std::complex<float>>, "">(registry);
+    gr::blocklib::initGrBasicBlocks(blockRegistry);
+    gr::blocklib::initGrElectricalBlocks(blockRegistry);
+    gr::blocklib::initGrFileIoBlocks(blockRegistry);
+    gr::blocklib::initGrFilterBlocks(blockRegistry);
+    gr::blocklib::initGrFourierBlocks(blockRegistry);
+    gr::blocklib::initGrHttpBlocks(blockRegistry);
+    gr::blocklib::initGrMathBlocks(blockRegistry);
+    gr::blocklib::initGrTestingBlocks(blockRegistry);
+    gr::blocklib::initGrAnalogBlocks(blockRegistry);
+    gr::blocklib::initGrAudioBlocks(blockRegistry);
+    gr::blocklib::initGrDigitalBlocks(blockRegistry);
+    charts::registerChart<charts::RDSView>(blockRegistry);
+    registerWithIdPrefix<ImControlRTL2832Connect>(blockRegistry, kDigitizerUiIdPrefix);
+    gr::registerBlock<gr::blocks::sdr::RTL2832Source<std::complex<float>>, "">(blockRegistry);
 #endif
 #if defined(OD_ACOUSTIC_CAMERA)
-    gr::blocklib::initGrLocalisationBlocks(registry);
+    gr::blocklib::initGrLocalisationBlocks(blockRegistry);
 #endif
 
     // decimating BasicFilterProto variants: the ratio is the Resampling<in,out> template integers, and the gr::filter blocklib registers only the <1,1> identity (used by PulsedPowerDemo.grc)
-    gr::registerBlock<gr::filter::BasicFilterProto<float, gr::Resampling<100UZ, 1UZ, false>>, "gr::filter::BasicFilterProto<float32, gr::Resampling<100, 1, false>>">(registry);
-    gr::registerBlock<gr::filter::BasicFilterProto<float, gr::Resampling<40UZ, 1UZ, false>>, "gr::filter::BasicFilterProto<float32, gr::Resampling<40, 1, false>>">(registry);
-    gr::registerBlock<gr::filter::BasicFilterProto<float, gr::Resampling<1UZ, 1UZ, false>>, "gr::filter::BasicFilterProto<float32, gr::Resampling<1, 1, false>>">(registry);
+    gr::registerBlock<gr::filter::BasicFilterProto<float, gr::Resampling<100UZ, 1UZ, false>>, "gr::filter::BasicFilterProto<float32, gr::Resampling<100, 1, false>>">(blockRegistry);
+    gr::registerBlock<gr::filter::BasicFilterProto<float, gr::Resampling<40UZ, 1UZ, false>>, "gr::filter::BasicFilterProto<float32, gr::Resampling<40, 1, false>>">(blockRegistry);
+    gr::registerBlock<gr::filter::BasicFilterProto<float, gr::Resampling<1UZ, 1UZ, false>>, "gr::filter::BasicFilterProto<float32, gr::Resampling<1, 1, false>>">(blockRegistry);
 
 #ifndef __EMSCRIPTEN__
-    gr::registerBlock<fair::picoscope::Picoscope<float, fair::picoscope::Picoscope4000a>, "">(registry);
-    gr::registerBlock<fair::picoscope::Picoscope<gr::DataSet<float>, fair::picoscope::Picoscope4000a>, "">(registry);
+    gr::registerBlock<fair::picoscope::Picoscope<float, fair::picoscope::Picoscope4000a>, "">(blockRegistry);
+    gr::registerBlock<fair::picoscope::Picoscope<gr::DataSet<float>, fair::picoscope::Picoscope4000a>, "">(blockRegistry);
 #endif
 }
 

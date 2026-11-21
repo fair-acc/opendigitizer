@@ -1,3 +1,4 @@
+#include "App.hpp"
 #include "ImGuiTestApp.hpp"
 #include "StandaloneUiControl.hpp"
 #include "TestDashboardRunner.hpp"
@@ -7,8 +8,6 @@
 #include <boost/ut.hpp>
 
 #include <gnuradio-4.0/BlockRegistry.hpp>
-#include <gnuradio-4.0/GrBasicBlocks.hpp>
-#include <gnuradio-4.0/GrTestingBlocks.hpp>
 
 #include <Dashboard.hpp>
 #include <ToolbarView.hpp>
@@ -627,8 +626,7 @@ int main(int argc, char* argv[]) {
     gState = std::addressof(state);
 
     auto& registry = gr::globalBlockRegistry();
-    gr::blocklib::initGrBasicBlocks(registry);
-    gr::blocklib::initGrTestingBlocks(registry);
+    registerAppBlocks(registry);
     registerWithIdPrefix<test::UiControlCompatibilityTarget>(registry, kOpendigitizerIdPrefix);
     registerWithIdPrefix<test::UiControlDeviceTarget>(registry, kOpendigitizerIdPrefix);
     state.toggle  = std::make_unique<StandaloneControl<ImControlToggle>>(gr::property_map{{"name", "standalone_toggle"}, {"label", "Enabled"}, {"value", false}, {"target_map", "TargetA,TargetB:enabled"}});

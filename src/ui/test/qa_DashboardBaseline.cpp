@@ -1,3 +1,4 @@
+#include "App.hpp"
 #include "ImGuiTestApp.hpp"
 #include "TestDashboardRunner.hpp"
 
@@ -6,9 +7,6 @@
 
 #include <gnuradio-4.0/BlockRegistry.hpp>
 #include <gnuradio-4.0/Scheduler.hpp>
-
-#include <gnuradio-4.0/GrBasicBlocks.hpp>
-#include <gnuradio-4.0/GrTestingBlocks.hpp>
 
 #include <Dashboard.hpp>
 #include <DashboardPage.hpp>
@@ -194,8 +192,7 @@ int main(int argc, char* argv[]) {
     gState = std::addressof(state);
 
     auto& registry = gr::globalBlockRegistry();
-    gr::blocklib::initGrBasicBlocks(registry);
-    gr::blocklib::initGrTestingBlocks(registry);
+    registerAppBlocks(registry);
 
     state.reload(cmrc::ui_test_assets::get_filesystem(), "examples/qa_layout.grc");
 

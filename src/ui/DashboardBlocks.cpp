@@ -31,40 +31,40 @@
 
 namespace gr::od {
 
-void registerDashboardBlocks(gr::BlockRegistry& registry) {
+void registerDashboardBlocks(gr::BlockRegistry& blockRegistry) {
     using namespace charts;
-    registerChart<XYChart>(registry);
-    registerChart<YYChart>(registry);
-    registerChart<SpectrumPlot>(registry);
-    registerChart<SpectrumView>(registry);
-    registerChart<SpectrumDensity>(registry);
-    registerChart<WaterfallPlot>(registry);
-    registerChart<SurfacePlot>(registry);
-    registerChart<ImageChart>(registry);
-    registerChart<TensorRowsChart>(registry);
-    registerChart<LocalisationChart>(registry);
-    registerVideoBlocks(registry);
-    registerLocalisationBlocks(registry);
-    registerPlotSinks<float, double, gr::DataSet<float>, gr::DataSet<double>, gr::UncertainValue<float>, gr::Tensor<float>, gr::Tensor<double>, gr::Tensor<std::uint32_t>, gr::property_map>(registry);
-    registerWithIdPrefix<TagSink, std::uint8_t, float>(registry, kOpendigitizerIdPrefix);
-    registerWithIdPrefix<ImControlNumber>(registry, kDigitizerUiIdPrefix);
-    registerWithIdPrefix<ImControlToggle>(registry, kDigitizerUiIdPrefix);
-    registerWithIdPrefix<ImControlTrigger>(registry, kDigitizerUiIdPrefix);
-    registerWithIdPrefix<ImControlText>(registry, kDigitizerUiIdPrefix);
-    registerWithIdPrefix<ImControlValue, float, double>(registry, kOpendigitizerIdPrefix);
-    registerWithIdPrefix<ValueSource, float, double>(registry, kOpendigitizerIdPrefix);
-    registerWithIdPrefix<ImControlCamera>(registry, kDigitizerUiIdPrefix);
-    registerWithIdPrefix<ImControlDevice>(registry, kDigitizerUiIdPrefix);
-    registerWithIdPrefix<ImControlChoice>(registry, kDigitizerUiIdPrefix);
-    registerWithIdPrefix<ImControlColor>(registry, kDigitizerUiIdPrefix);
-    registerWithIdPrefix<ImPropertyReadout>(registry, kDigitizerUiIdPrefix);
-    registerWithIdPrefix<SchedulerStateIndicator>(registry, kDigitizerUiIdPrefix);
-    registerWithIdPrefix<GainEnvelope, float, int16_t>(registry, kOpendigitizerIdPrefix);
-    registerWithIdPrefix<LowPassFilter, float>(registry, kOpendigitizerIdPrefix);
-    registerWithIdPrefix<PianoControl>(registry, kOpendigitizerIdPrefix);
-    registerWithIdPrefix<SineOscillator, float>(registry, kOpendigitizerIdPrefix);
-    registerSignalBlocks(registry);
-    gr::blocklib::initGrAudioBlocks(registry);
+    registerChart<XYChart>(blockRegistry);
+    registerChart<YYChart>(blockRegistry);
+    registerChart<SpectrumPlot>(blockRegistry);
+    registerChart<SpectrumView>(blockRegistry);
+    registerChart<SpectrumDensity>(blockRegistry);
+    registerChart<WaterfallPlot>(blockRegistry);
+    registerChart<SurfacePlot>(blockRegistry);
+    registerChart<ImageChart>(blockRegistry);
+    registerChart<TensorRowsChart>(blockRegistry);
+    registerChart<LocalisationChart>(blockRegistry);
+    registerVideoBlocks(blockRegistry);
+    registerLocalisationBlocks(blockRegistry);
+    registerPlotSinks<float, double, gr::DataSet<float>, gr::DataSet<double>, gr::UncertainValue<float>, gr::Tensor<float>, gr::Tensor<double>, gr::Tensor<std::uint32_t>, gr::property_map>(blockRegistry);
+    registerWithIdPrefix<TagSink, std::uint8_t, float>(blockRegistry, kOpendigitizerIdPrefix);
+    registerWithIdPrefix<ImControlNumber>(blockRegistry, kDigitizerUiIdPrefix);
+    registerWithIdPrefix<ImControlToggle>(blockRegistry, kDigitizerUiIdPrefix);
+    registerWithIdPrefix<ImControlTrigger>(blockRegistry, kDigitizerUiIdPrefix);
+    registerWithIdPrefix<ImControlText>(blockRegistry, kDigitizerUiIdPrefix);
+    registerWithIdPrefix<ImControlValue, float, double>(blockRegistry, kOpendigitizerIdPrefix);
+    registerWithIdPrefix<ValueSource, float, double>(blockRegistry, kOpendigitizerIdPrefix);
+    registerWithIdPrefix<ImControlCamera>(blockRegistry, kDigitizerUiIdPrefix);
+    registerWithIdPrefix<ImControlDevice>(blockRegistry, kDigitizerUiIdPrefix);
+    registerWithIdPrefix<ImControlChoice>(blockRegistry, kDigitizerUiIdPrefix);
+    registerWithIdPrefix<ImControlColor>(blockRegistry, kDigitizerUiIdPrefix);
+    registerWithIdPrefix<ImPropertyReadout>(blockRegistry, kDigitizerUiIdPrefix);
+    registerWithIdPrefix<SchedulerStateIndicator>(blockRegistry, kDigitizerUiIdPrefix);
+    registerWithIdPrefix<GainEnvelope, float, int16_t>(blockRegistry, kOpendigitizerIdPrefix);
+    registerWithIdPrefix<LowPassFilter, float>(blockRegistry, kOpendigitizerIdPrefix);
+    registerWithIdPrefix<PianoControl>(blockRegistry, kOpendigitizerIdPrefix);
+    registerWithIdPrefix<SineOscillator, float>(blockRegistry, kOpendigitizerIdPrefix);
+    registerSignalBlocks(blockRegistry);
+    gr::blocklib::initGrAudioBlocks(blockRegistry);
 }
 
 void applyStyle(LookAndFeel::Style style) {
