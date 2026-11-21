@@ -10,7 +10,7 @@
 #include <string>
 #include <string_view>
 
-namespace DigitizerUi {
+namespace gr::od {
 
 struct DataTypeStyle {
     std::uint32_t     colorARGB;
@@ -31,6 +31,6 @@ struct DataTypeStyle {
 void drawPinForNodeEditor(ImDrawList* drawList, const ImVec2& min, const ImVec2& max, float alpha, void* userData);
 void drawHoveredPinForNodeEditor(ImDrawList* drawList, const ImVec2& min, const ImVec2& max, float alpha, void* userData);
 
-} // namespace DigitizerUi
+} // namespace gr::od
 
 #endif // OPENDIGITIZER_COMPONENTS_DATATYPESTYLE_HPP

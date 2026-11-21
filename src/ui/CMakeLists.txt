@@ -281,22 +281,19 @@ else() # native build
     target_link_options(${target_name} PRIVATE -fsanitize=address)
   endif()
 endif()
-if(OD_ACOUSTIC_CAMERA)
-  target_link_libraries(${target_name} PRIVATE gnuradio4::GrAudioBlocksShared gnuradio4::GrLocalisationBlocksShared)
-  target_compile_definitions(${target_name} PRIVATE OD_ACOUSTIC_CAMERA)
-endif()
 
 # each layer links only the one below; consumers pick the lowest layer they need via the opendigitizer:: aliases
 add_library(
   opendigitizer-ui-common STATIC
-  common/AppDefinitions.hpp
+  common/ViewMode.hpp
+  common/AppState.hpp
   common/Events.hpp
   common/FramePacer.hpp
-  common/ImguiWrap.cpp
-  common/ImguiWrap.hpp
+  common/Imw.cpp
+  common/Imw.hpp
   common/LookAndFeel.hpp
   common/TouchHandler.hpp
-  utils/EmscriptenHelper.hpp
+  utils/Browser.hpp
   utils/TransparentStringHash.hpp)
 target_include_directories(opendigitizer-ui-common PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>)
 target_link_libraries(
@@ -316,12 +313,10 @@ add_library(
   components/Dialog.hpp
   components/EditableStringList.hpp
   components/FilterComboBoxes.hpp
-  components/FilterTagBar.hpp
-  components/FilterTagBar.cpp
   components/ImGuiNotify.hpp
   components/InputTextCompletion.hpp
+  components/Keypad.cpp
   components/Keypad.hpp
-  components/ListBox.hpp
   components/PopupMenu.hpp
   components/SearchAndFilterComponents.cpp
   components/SearchAndFilterComponents.hpp
@@ -331,8 +326,8 @@ add_library(
   components/SortFilterTreeModel.hpp
   components/Splitter.cpp
   components/Splitter.hpp
-  components/StyledStandardWidgets.cpp
-  components/StyledStandardWidgets.hpp
+  components/StyledWidgets.cpp
+  components/StyledWidgets.hpp
   components/VirtualScrollTable.hpp
   components/ViewModeBlocker.hpp
   components/YesNoPopup.hpp)
@@ -364,7 +359,7 @@ target_sources(
             charts/WaterfallPlot.hpp
             charts/XYChart.hpp
             charts/YYChart.hpp
-            components/ColourManager.hpp
+            components/SignalColours.hpp
             utils/ShaderHelper.hpp)
 target_link_libraries(
   opendigitizer-charts
@@ -433,21 +428,20 @@ add_library(
   DashboardPage.hpp
   DashboardView.cpp
   DashboardView.hpp
-  DashboardsCollection.hpp
   GraphModel.cpp
   GraphModel.hpp
+  GraphSession.cpp
   GraphSession.hpp
   LogHistory.cpp
   LogHistory.hpp
   MapUtils.hpp
   PaneBlocks.cpp
   PaneBlocks.hpp
-  RemoteSignalSources.cpp
-  RemoteSignalSources.hpp
-  Setup.cpp
-  Setup.hpp
-  SetupLocalisationBlocks.cpp
-  SetupVideoBlocks.cpp
+  DashboardBlocks.cpp
+  DashboardBlocks.hpp
+  DashboardBlocksLocalisation.cpp
+  DashboardBlocksSignal.cpp
+  DashboardBlocksVideo.cpp
   StatusBarView.cpp
   StatusBarView.hpp
   ToolbarView.cpp
@@ -455,7 +449,7 @@ add_library(
   UniqueNameRegistry.hpp
   blocks/Arithmetic.hpp
   blocks/RemoteSource.hpp
-  blocks/StatusBarBlock.hpp
+  blocks/SchedulerStateIndicator.hpp
   blocks/StridedWindow.hpp
   blocks/TagToSample.hpp
   blocks/TestSpectrumGenerator.hpp
@@ -479,7 +473,6 @@ add_library(
   blocks/PianoControl.hpp
   blocks/SineOscillator.hpp
   blocks/ValueSource.hpp
-  blocks/meta.hpp
   charts/RDSView.hpp
   components/Block.cpp
   components/Block.hpp
@@ -497,8 +490,7 @@ add_library(
   components/SignalSelector.cpp
   components/SignalSelector.hpp
   utils/ImGuiDockSpaceState.cpp
-  utils/ImGuiDockSpaceState.hpp
-  utils/emscripten_compat.hpp)
+  utils/ImGuiDockSpaceState.hpp)
 target_link_libraries(
   opendigitizer-dashboard
   PRIVATE opendigitizer-options gnuradio4::GrAudioBlocksShared
@@ -507,7 +499,6 @@ target_link_libraries(
          services
          core
          client
-         plf_colony
          digitizer_settings)
 if(OD_DISABLE_DEMO_FLOWGRAPHS)
   target_compile_definitions(opendigitizer-dashboard PUBLIC OD_DISABLE_DEMO_FLOWGRAPHS)
@@ -536,6 +527,7 @@ target_link_libraries(
 add_library(
   ${target_name}lib STATIC
   App.hpp
+  AppBlocks.cpp
   OAuthSession.cpp
   OAuthSession.hpp
   OpenDashboardPage.cpp
@@ -557,6 +549,10 @@ if(NOT EMSCRIPTEN OR OD_WASM_STATIC_BLOCKLIBS)
   if(TARGET gr-sdr)
     target_link_libraries(${target_name}lib PUBLIC gr-sdr)
   endif()
+endif()
+if(OD_ACOUSTIC_CAMERA)
+  target_link_libraries(${target_name}lib PUBLIC gnuradio4::GrAudioBlocksShared gnuradio4::GrLocalisationBlocksShared)
+  target_compile_definitions(${target_name}lib PRIVATE OD_ACOUSTIC_CAMERA)
 endif()
 
 foreach(
@@ -670,11 +666,11 @@ if(EMSCRIPTEN)
 #include <array>
 #include <string_view>
 
-namespace Digitizer {
+namespace gr::od {
 // Generated from GNURADIO4_WASM_PLUGIN_FILES (Audio excluded), sorted smallest-first.
 inline constexpr std::array<std::string_view, ${_od_plugin_count}> kPluginWasmNames{
 ${_od_plugin_names_code}};
-} // namespace Digitizer
+} // namespace gr::od
 ")
     target_include_directories(opendigitizer-dashboard PUBLIC "${CMAKE_CURRENT_BINARY_DIR}/include")
     message(STATUS "Using gnuradio4 SIDE_MODULE plugins: ${_od_plugin_name_list}")

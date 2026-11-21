@@ -4,7 +4,7 @@
 #include <gnuradio-4.0/Block.hpp>
 #include <gnuradio-4.0/PmtTypeHelpers.hpp>
 
-namespace opendigitizer {
+namespace gr::od {
 
 template<typename T>
 struct TagToSample : public gr::Block<TagToSample<T>> {
@@ -13,9 +13,9 @@ struct TagToSample : public gr::Block<TagToSample<T>> {
 
     std::string key_filter = "tag_id";
 
-    T _currentValue = T(0);
-
     GR_MAKE_REFLECTABLE(TagToSample, in, out, key_filter);
+
+    T _currentValue = T(0);
 
     T processOne(T) noexcept {
         if (this->inputTagsPresent()) {
@@ -30,8 +30,6 @@ struct TagToSample : public gr::Block<TagToSample<T>> {
     }
 };
 
-} // namespace opendigitizer
-
-auto registerTagToSample = gr::registerBlock<opendigitizer::TagToSample, float>(gr::globalBlockRegistry());
+} // namespace gr::od
 
 #endif

@@ -26,7 +26,7 @@
 #include <string_view>
 #include <utility>
 
-#include <conversion.hpp>
+#include <stdex/cast.hpp>
 
 namespace opendigitizer::gnuradio {
 
@@ -127,11 +127,11 @@ enum class AcquisitionMode { Continuous, Triggered, Multiplexed, Snapshot, DataS
 
 struct PollerKey {
     AcquisitionMode          mode;
-    std::string              signal_name;
-    std::size_t              pre_samples         = 0;   // Trigger
-    std::size_t              post_samples        = 0;   // Trigger
-    std::size_t              maximum_window_size = 0;   // Multiplexed
-    std::chrono::nanoseconds snapshot_delay      = 0ns; // Snapshot
+    std::string              signalName;
+    std::size_t              preSamples        = 0;   // Trigger
+    std::size_t              postSamples       = 0;   // Trigger
+    std::size_t              maximumWindowSize = 0;   // Multiplexed
+    std::chrono::nanoseconds snapshotDelay     = 0ns; // Snapshot
 
     auto operator<=>(const PollerKey&) const noexcept = default;
 };
@@ -145,16 +145,16 @@ struct SignalEntry {
     std::string          name;
     std::string          quantity;
     std::string          unit;
-    std::optional<float> sample_rate;
-    std::optional<float> signal_min;
-    std::optional<float> signal_max;
+    std::optional<float> sampleRate;
+    std::optional<float> signalMin;
+    std::optional<float> signalMax;
     SignalType           type = SignalType::Plain;
 
     auto operator<=>(const SignalEntry&) const noexcept = default;
 };
 
 struct TimingEventState {
-    static constexpr int CmdBpStartEventNumber = 256; // CMD_BP_START
+    static constexpr int kCmdBpStartEventNumber = 256; // CMD_BP_START
 
     bool         valid              = false;
     int          processIndex       = 0;
@@ -228,7 +228,7 @@ private:
         eventStamp       = newTriggerTime;
         eventNumber      = *newEventNumber;
 
-        if (*newEventNumber != CmdBpStartEventNumber) {
+        if (*newEventNumber != kCmdBpStartEventNumber) {
             return;
         }
 
@@ -259,15 +259,15 @@ private:
 };
 
 struct StreamingPollerEntry {
-    using SampleType                                      = float;
-    bool                                           in_use = true;
+    using SampleType                                     = float;
+    bool                                           inUse = true;
     std::shared_ptr<gr::basic::Poller<SampleType>> poller;
-    std::optional<std::string>                     signal_name;
-    std::optional<std::string>                     signal_unit;
-    std::optional<std::string>                     signal_quantity;
-    std::optional<float>                           sample_rate;
-    std::optional<float>                           signal_min;
-    std::optional<float>                           signal_max;
+    std::optional<std::string>                     signalName;
+    std::optional<std::string>                     signalUnit;
+    std::optional<std::string>                     signalQuantity;
+    std::optional<float>                           sampleRate;
+    std::optional<float>                           signalMin;
+    std::optional<float>                           signalMax;
     TimingEventState                               timingEventState;
     std::optional<std::int64_t>                    _lastRefTimestampFromTag;
     std::optional<float>                           _sampleRateForLastRefTimestamp;
@@ -283,12 +283,12 @@ struct StreamingPollerEntry {
                 target = value;
             }
         };
-        unlessFromTags(tag::kSignalName, signal_name, std::optional(entry.name));
-        unlessFromTags(tag::kSignalUnit, signal_unit, std::optional(entry.unit));
-        unlessFromTags(tag::kSignalQuantity, signal_quantity, std::optional(entry.quantity));
-        unlessFromTags(tag::kSampleRate, sample_rate, entry.sample_rate);
-        unlessFromTags(tag::kSignalMin, signal_min, entry.signal_min);
-        unlessFromTags(tag::kSignalMax, signal_max, entry.signal_max);
+        unlessFromTags(tag::kSignalName, signalName, std::optional(entry.name));
+        unlessFromTags(tag::kSignalUnit, signalUnit, std::optional(entry.unit));
+        unlessFromTags(tag::kSignalQuantity, signalQuantity, std::optional(entry.quantity));
+        unlessFromTags(tag::kSampleRate, sampleRate, entry.sampleRate);
+        unlessFromTags(tag::kSignalMin, signalMin, entry.signalMin);
+        unlessFromTags(tag::kSignalMax, signalMax, entry.signalMax);
     }
 
     std::vector<std::string> populateFromTags(std::span<const gr::Tag>& tags) {
@@ -308,12 +308,12 @@ struct StreamingPollerEntry {
         };
 
         for (const auto& tag : tags) {
-            update(tag.map, tag::kSignalName, signal_name);
-            update(tag.map, tag::kSignalUnit, signal_unit);
-            update(tag.map, tag::kSignalQuantity, signal_quantity);
-            update(tag.map, tag::kSampleRate, sample_rate);
-            update(tag.map, tag::kSignalMin, signal_min);
-            update(tag.map, tag::kSignalMax, signal_max);
+            update(tag.map, tag::kSignalName, signalName);
+            update(tag.map, tag::kSignalUnit, signalUnit);
+            update(tag.map, tag::kSignalQuantity, signalQuantity);
+            update(tag.map, tag::kSampleRate, sampleRate);
+            update(tag.map, tag::kSignalMin, signalMin);
+            update(tag.map, tag::kSignalMax, signalMax);
         }
         return errors;
     }
@@ -323,13 +323,13 @@ struct StreamingPollerEntry {
         reply.acqLocalTimeStamp = 0;
         reply.refTriggerName    = "NO_REF_TRIGGER";
 
-        if (sample_rate != _sampleRateForLastRefTimestamp) {
+        if (sampleRate != _sampleRateForLastRefTimestamp) {
             _lastRefTimestampFromTag.reset();
             _sampleCountFromLastRefTimestamp = 0;
         }
 
-        if (sample_rate.has_value() && std::isfinite(*sample_rate) && *sample_rate > 0.f) {
-            const auto elapsedNanoseconds = [rate = *sample_rate](std::uint64_t samples) -> std::optional<std::int64_t> {
+        if (sampleRate.has_value() && std::isfinite(*sampleRate) && *sampleRate > 0.f) {
+            const auto elapsedNanoseconds = [rate = *sampleRate](std::uint64_t samples) -> std::optional<std::int64_t> {
                 const double duration = std::round(static_cast<double>(samples) * 1'000'000'000. / static_cast<double>(rate));
                 if (!std::isfinite(duration) || duration >= static_cast<double>(std::numeric_limits<std::int64_t>::max())) {
                     return {};
@@ -352,7 +352,7 @@ struct StreamingPollerEntry {
                 }
                 refTimestamp                     = *time - *offset;
                 _lastRefTimestampFromTag         = refTimestamp;
-                _sampleRateForLastRefTimestamp   = sample_rate;
+                _sampleRateForLastRefTimestamp   = sampleRate;
                 _sampleCountFromLastRefTimestamp = 0;
                 _lastTriggerNameFromTag          = name;
                 break;
@@ -392,7 +392,7 @@ inline const SignalEntry* findSignalEntryByName(const std::map<std::string, Sign
 struct DataSetPollerEntry {
     using SampleType = float;
     std::shared_ptr<gr::basic::Poller<gr::DataSet<SampleType>>> poller;
-    bool                                                        in_use = true;
+    bool                                                        inUse = true;
 };
 
 template<units::basic_fixed_string serviceName, typename... Meta>
@@ -511,8 +511,8 @@ private:
                                 entry.name        = *signalName;
                                 signalInfoChanged = true;
                             }
-                            if (sampleRate && entry.sample_rate != std::optional<float>{*sampleRate}) {
-                                entry.sample_rate = *sampleRate;
+                            if (sampleRate && entry.sampleRate != std::optional<float>{*sampleRate}) {
+                                entry.sampleRate  = *sampleRate;
                                 signalInfoChanged = true;
                             }
                             if (entry.type != SignalType::DataSet) {
@@ -527,13 +527,13 @@ private:
                                     signalInfoChanged = true;
                                 }
                                 const auto signalMin = detail::get<float>(*settings, "signal_min");
-                                if (signalMin && entry.signal_min != std::optional<float>{*signalMin}) {
-                                    entry.signal_min  = *signalMin;
+                                if (signalMin && entry.signalMin != std::optional<float>{*signalMin}) {
+                                    entry.signalMin   = *signalMin;
                                     signalInfoChanged = true;
                                 }
                                 const auto signalMax = detail::get<float>(*settings, "signal_max");
-                                if (signalMax && entry.signal_max != std::optional<float>{*signalMax}) {
-                                    entry.signal_max  = *signalMax;
+                                if (signalMax && entry.signalMax != std::optional<float>{*signalMax}) {
+                                    entry.signalMax   = *signalMax;
                                     signalInfoChanged = true;
                                 }
                             }
@@ -578,16 +578,16 @@ private:
                             SignalEntry& entry = signalEntryBySink[std::string(block->uniqueName())];
                             entry.type         = SignalType::DataSet;
                             entry.name         = detail::getSetting<std::pmr::string>(block, "signal_name").value_or("");
-                            entry.sample_rate  = detail::getSetting<float>(block, "sample_rate");
+                            entry.sampleRate   = detail::getSetting<float>(block, "sample_rate");
                         } else if (typeName.starts_with("gr::basic::DataSink<")) {
                             SignalEntry& entry = signalEntryBySink[std::string(block->uniqueName())];
                             entry.type         = SignalType::Plain;
                             entry.name         = detail::getSetting<std::pmr::string>(block, "signal_name").value_or("");
                             entry.quantity     = detail::getSetting<std::pmr::string>(block, "signal_quantity").value_or("");
                             entry.unit         = detail::getSetting<std::pmr::string>(block, "signal_unit").value_or("");
-                            entry.sample_rate  = detail::getSetting<float>(block, "sample_rate");
-                            entry.signal_min   = detail::getSetting<float>(block, "signal_min");
-                            entry.signal_max   = detail::getSetting<float>(block, "signal_max");
+                            entry.sampleRate   = detail::getSetting<float>(block, "sample_rate");
+                            entry.signalMin    = detail::getSetting<float>(block, "signal_min");
+                            entry.signalMax    = detail::getSetting<float>(block, "signal_max");
                         }
                     });
                     if (_updateSignalEntriesCallback) {
@@ -625,22 +625,22 @@ private:
                     }
                 }
 
-                const auto next_update = update + rate;
-                const auto now         = std::chrono::system_clock::now();
-                if (now < next_update) {
-                    std::this_thread::sleep_for(next_update - now);
+                const auto nextUpdate = update + rate;
+                const auto now        = std::chrono::system_clock::now();
+                if (now < nextUpdate) {
+                    std::this_thread::sleep_for(nextUpdate - now);
                 }
-                update = next_update;
+                update = nextUpdate;
             }
         });
     }
 
     bool handleSubscriptions(std::map<PollerKey, StreamingPollerEntry>& streamingPollers, std::map<PollerKey, DataSetPollerEntry>& dataSetPollers, const std::map<std::string, SignalEntry>& signalEntryBySink) {
         for (auto& entry : streamingPollers | std::views::values) {
-            entry.in_use = false;
+            entry.inUse = false;
         }
         for (auto& entry : dataSetPollers | std::views::values) {
-            entry.in_use = false;
+            entry.inUse = false;
         }
         bool pollersFinished = true;
         for (const auto& subscription : super_t::activeSubscriptions()) {
@@ -662,13 +662,13 @@ private:
                 std::println(std::cerr, "Could not handle subscription {}: {}", subscription.toZmqTopic(), e.what());
             }
         }
-        std::erase_if(streamingPollers, [](const auto& item) { return !item.second.in_use; });
-        std::erase_if(dataSetPollers, [](const auto& item) { return !item.second.in_use; });
+        std::erase_if(streamingPollers, [](const auto& item) { return !item.second.inUse; });
+        std::erase_if(dataSetPollers, [](const auto& item) { return !item.second.inUse; });
         return pollersFinished;
     }
 
     auto getStreamingPoller(std::map<PollerKey, StreamingPollerEntry>& pollers, std::string_view signalName) {
-        const auto key = PollerKey{.mode = AcquisitionMode::Continuous, .signal_name = std::string(signalName)};
+        const auto key = PollerKey{.mode = AcquisitionMode::Continuous, .signalName = std::string(signalName)};
 
         auto pollerIt = pollers.find(key);
         if (pollerIt == pollers.end()) {
@@ -683,7 +683,7 @@ private:
         if (pollerIt == pollers.end()) { // flushing, do not create new pollers
             return true;
         }
-        pollerIt->second.in_use = true;
+        pollerIt->second.inUse = true;
 
         auto& pollerEntry = pollerIt->second;
         if (const auto* entry = detail::findSignalEntryByName(signalEntryBySink, signalName, SignalType::Plain)) {
@@ -699,19 +699,19 @@ private:
             std::vector<std::string> errors = pollerEntry.populateFromTags(tags);
             pollerEntry.updateTimestamp(reply, tags, data.size());
             pollerEntry.timingEventState.updateFromTags(tags);
-            reply.channelNames      = {pollerEntry.signal_name.value_or(std::string(signalName))};
-            reply.channelUnits      = {pollerEntry.signal_unit.value_or("N/A")};
-            reply.channelQuantities = {pollerEntry.signal_quantity.value_or("N/A")};
-            reply.channelRangeMin   = {pollerEntry.signal_min ? static_cast<float>(*pollerEntry.signal_min) : std::numeric_limits<float>::lowest()};
-            reply.channelRangeMax   = {pollerEntry.signal_max ? static_cast<float>(*pollerEntry.signal_max) : std::numeric_limits<float>::max()};
+            reply.channelNames      = {pollerEntry.signalName.value_or(std::string(signalName))};
+            reply.channelUnits      = {pollerEntry.signalUnit.value_or("N/A")};
+            reply.channelQuantities = {pollerEntry.signalQuantity.value_or("N/A")};
+            reply.channelRangeMin   = {pollerEntry.signalMin ? static_cast<float>(*pollerEntry.signalMin) : std::numeric_limits<float>::lowest()};
+            reply.channelRangeMax   = {pollerEntry.signalMax ? static_cast<float>(*pollerEntry.signalMax) : std::numeric_limits<float>::max()};
             pollerEntry.timingEventState.applyToReply(reply);
 
             const auto nSamples = static_cast<uint32_t>(data.size());
             reply.channelValues = opencmw::MultiArray<float, 2>(std::vector<float>(data.begin(), data.end()), std::array<uint32_t, 2>{1U, nSamples});
             reply.channelErrors = opencmw::MultiArray<float, 2>(std::vector<float>(nSamples, 0.f), std::array<uint32_t, 2>{1U, nSamples});
             reply.channelTimeSinceRefTrigger.resize(nSamples);
-            if (pollerEntry.sample_rate.has_value() && std::isfinite(*pollerEntry.sample_rate) && *pollerEntry.sample_rate > 0.f) {
-                const float ts = 1.f / *pollerEntry.sample_rate;
+            if (pollerEntry.sampleRate.has_value() && std::isfinite(*pollerEntry.sampleRate) && *pollerEntry.sampleRate > 0.f) {
+                const float ts = 1.f / *pollerEntry.sampleRate;
                 for (uint32_t i = 0; i < nSamples; ++i) {
                     reply.channelTimeSinceRefTrigger[i] = static_cast<float>(i) * ts;
                 }
@@ -756,7 +756,7 @@ private:
     }
 
     auto getDataSetPoller(std::map<PollerKey, DataSetPollerEntry>& pollers, const TimeDomainContext& context, AcquisitionMode mode, std::string_view signalName) {
-        const auto key      = PollerKey{.mode = mode, .signal_name = std::string(signalName), .pre_samples = static_cast<std::size_t>(context.preSamples), .post_samples = static_cast<std::size_t>(context.postSamples), .maximum_window_size = static_cast<std::size_t>(context.maximumWindowSize), .snapshot_delay = std::chrono::nanoseconds(context.snapshotDelay)};
+        const auto key      = PollerKey{.mode = mode, .signalName = std::string(signalName), .preSamples = static_cast<std::size_t>(context.preSamples), .postSamples = static_cast<std::size_t>(context.postSamples), .maximumWindowSize = static_cast<std::size_t>(context.maximumWindowSize), .snapshotDelay = std::chrono::nanoseconds(context.snapshotDelay)};
         auto       pollerIt = pollers.find(key);
         if (pollerIt == pollers.end()) {
             using SampleType = DataSetPollerEntry::SampleType;
@@ -766,12 +766,12 @@ private:
             if (mode == AcquisitionMode::Triggered) {
                 // clang-format off
                 pollerIt = pollers.emplace(key, basic::globalDataSinkRegistry().getPoller<SampleType>(query, basic::CaptureMode::Trigger, detail::Matcher{.filterDefinition = context.triggerNameFilter}, //
-                                                    {.preSamples = key.pre_samples, .postSamples = key.post_samples, })).first; //
+                                                    {.preSamples = key.preSamples, .postSamples = key.postSamples, })).first; //
                 // clang-format on
             } else if (mode == AcquisitionMode::Snapshot) {
-                pollerIt = pollers.emplace(key, basic::globalDataSinkRegistry().getPoller<SampleType>(query, basic::CaptureMode::Snapshot, detail::Matcher{.filterDefinition = context.triggerNameFilter}, {.delay = key.snapshot_delay})).first;
+                pollerIt = pollers.emplace(key, basic::globalDataSinkRegistry().getPoller<SampleType>(query, basic::CaptureMode::Snapshot, detail::Matcher{.filterDefinition = context.triggerNameFilter}, {.delay = key.snapshotDelay})).first;
             } else if (mode == AcquisitionMode::Multiplexed) {
-                pollerIt = pollers.emplace(key, basic::globalDataSinkRegistry().getPoller<SampleType>(query, basic::CaptureMode::Multiplexed, detail::Matcher{.filterDefinition = context.triggerNameFilter}, {.maximumWindowSize = key.maximum_window_size})).first;
+                pollerIt = pollers.emplace(key, basic::globalDataSinkRegistry().getPoller<SampleType>(query, basic::CaptureMode::Multiplexed, detail::Matcher{.filterDefinition = context.triggerNameFilter}, {.maximumWindowSize = key.maximumWindowSize})).first;
             } else if (mode == AcquisitionMode::DataSet) {
                 pollerIt = pollers.emplace(key, basic::globalDataSinkRegistry().getPoller<gr::DataSet<SampleType>>(query)).first;
             }
@@ -798,13 +798,13 @@ private:
         return result;
     }
 
-    bool handleDataSetSubscription(std::map<PollerKey, DataSetPollerEntry>& pollers, const TimeDomainContext& context, AcquisitionMode mode, std::string_view signalName_) {
-        const std::string signalName(signalName_);
+    bool handleDataSetSubscription(std::map<PollerKey, DataSetPollerEntry>& pollers, const TimeDomainContext& context, AcquisitionMode mode, std::string_view signalNameView) {
+        const std::string signalName(signalNameView);
         auto              pollerIt = getDataSetPoller(pollers, context, mode, signalName);
         if (pollerIt == pollers.end()) { // flushing, do not create new pollers
             return true;
         }
-        pollerIt->second.in_use = true;
+        pollerIt->second.inUse = true;
 
         auto& pollerEntry = pollerIt->second;
 

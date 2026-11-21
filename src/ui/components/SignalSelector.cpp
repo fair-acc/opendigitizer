@@ -4,17 +4,95 @@
 #include <gnuradio-4.0/Message.hpp>
 
 #include "../blocks/RemoteSource.hpp"
-#include "FAIR/DeviceNameHelper.hpp"
-#include "StyledStandardWidgets.hpp"
+#include "StyledWidgets.hpp"
+#include "fair/DeviceNameHelper.hpp"
+
+#include <charconv>
+#include <cstdlib>
+#include <iostream>
+#include <optional>
 
 using namespace std::string_literals;
 
-namespace DigitizerUi {
+namespace gr::od {
+
+void QueryFilters::draw() {
+    std::optional<std::size_t> removed;
+    for (std::size_t index = 0UZ; index < elements.size(); ++index) {
+        QueryFilter& filter = elements[index];
+        ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x / 3);
+        if (auto combo = ComboBox(filter.keyId.c_str(), QueryFilter::kFieldNames[filter.selectedIndex], 0)) {
+            for (std::size_t i = 0; i < QueryFilter::kFieldNames.size(); i++) {
+                const bool isSelected = filter.selectedIndex == i;
+                if (selectable(QueryFilter::kFieldNames[i], isSelected)) {
+                    if (std::ranges::any_of(elements, [&i, &filter](const QueryFilter& other) { return other.keyId != filter.keyId && other.selectedIndex == i; })) {
+                        if (auto popup = imw::ModalPopup("Wrong Entry", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+                            ImGui::Text("Key already selected. Please select a different one");
+                            if (textButton("Ok")) {
+                                ImGui::CloseCurrentPopup();
+                            }
+                        }
+                    } else {
+                        filter.selectedIndex = i;
+                        changed();
+                    }
+                }
+                if (isSelected) {
+                    ImGui::SetItemDefaultFocus();
+                }
+            }
+        }
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x / 2);
+        if (ImGui::InputText(filter.valueId.c_str(), &filter.filterText)) {
+            changed();
+        }
+        ImGui::SameLine(ImGui::GetContentRegionAvail().x - ImGui::GetFontSize() - ImGui::GetStyle().FramePadding.x * 2);
+        if (button(filter.deleteButtonId.c_str())) {
+            removed = index;
+        }
+    }
+    if (removed.has_value()) {
+        elements.erase(elements.begin() + static_cast<std::ptrdiff_t>(*removed));
+        changed();
+    }
+}
+
+void SignalList::update() {
+    opencmw::service::dns::QueryEntry queryEntry;
+    ::refl::util::for_each(::refl::reflect(queryEntry).members, [&](auto member) {
+        auto it = std::ranges::find_if(_filters.elements, [&member](const QueryFilter& f) { return f.selectedField() == ::refl::descriptor::get_display_name(member); });
+        if (it != _filters.elements.end() && !it->filterText.empty()) {
+            using TField         = std::remove_cvref_t<decltype(member(queryEntry))>;
+            const auto& strValue = it->filterText;
+            if constexpr (std::is_integral_v<TField>) {
+                TField val{};
+                std::from_chars(strValue.data(), strValue.data() + strValue.size(), val);
+                member(queryEntry) = val;
+            } else if constexpr (std::is_floating_point_v<TField>) {
+                member(queryEntry) = static_cast<TField>(std::strtod(strValue.c_str(), nullptr));
+            } else {
+                member(queryEntry) = strValue;
+            }
+        }
+    });
+    try {
+        std::unique_lock l{_signalsMutex};
+        _dnsClient.querySignalsAsync([this](const std::vector<opencmw::service::dns::Entry>& entries) {
+            _signals = entries;
+            if (updateSignalsCallback) {
+                updateSignalsCallback(_signals);
+            }
+        });
+    } catch (const std::exception& e) {
+        std::cerr << "Error loading signals: " << e.what() << std::endl;
+    }
+}
 
 SignalSelector::SignalSelector(UiGraphModel& graphModel) {
-    m_graphModel = std::addressof(graphModel);
+    _graphModel = std::addressof(graphModel);
 
-    m_signalList.updateSignalsCallback = [&](const std::vector<opencmw::service::dns::Entry>& signals) {
+    _signalList.updateSignalsCallback = [&](const std::vector<opencmw::service::dns::Entry>& signals) {
         for (const auto& s : signals) {
             SignalData sig;
             sig.signalName  = s.signal_name;
@@ -40,7 +118,7 @@ SignalSelector::SignalSelector(UiGraphModel& graphModel) {
                     SignalData internal = sig;
                     internal.signalName = "test";
                     internal.device     = "internal " + internal.device;
-                    m_signals.push_back(internal);
+                    _signals.push_back(internal);
                 }
 
                 for (auto i = 0; i < 8000; ++i) {
@@ -48,30 +126,30 @@ SignalSelector::SignalSelector(UiGraphModel& graphModel) {
                     SignalData dup  = sig;
                     dup.signalName  = "TEST signal" + std::to_string(i);
                     dup.accelerator = "TEST accelerator" + std::to_string(i % 10);
-                    m_signals.push_back(dup);
+                    _signals.push_back(dup);
                 }
             }
 
-            m_signals.push_back(sig);
+            _signals.push_back(sig);
         }
 
-        m_forceRefresh = true;
+        _forceRefresh = true;
         buildIndex();
     };
 
     buildIndex();
-    m_signalList.update();
+    _signalList.update();
 }
 
 void SignalSelector::drawElement(const SignalData& entry, std::size_t idx, const ImGuiSelectionBasicStorage& selection) {
-    IMW::ChangeId rowId{int(idx)};
+    imw::ChangeId rowId{int(idx)};
 
     ImGui::TableNextRow();
     ImGui::TableNextColumn();
     const bool itemSelected = selection.Contains(static_cast<ImGuiID>(idx));
     ImGui::SetNextItemSelectionUserData(static_cast<ImGuiSelectionUserData>(idx));
-    DigitizerUi::Selectable(entry.device.c_str(), itemSelected, ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowOverlap);
-    IMW::StyleColor rowText(ImGuiCol_Text, SelectableTextColor(itemSelected));
+    selectable(entry.device.c_str(), itemSelected, ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowOverlap);
+    imw::StyleColor rowText(ImGuiCol_Text, selectableTextColor(itemSelected));
     ImGui::TableNextColumn();
     ImGui::TextUnformatted(entry.signalName.c_str());
     ImGui::TableNextColumn();
@@ -84,49 +162,49 @@ void SignalSelector::drawElement(const SignalData& entry, std::size_t idx, const
     ImGui::TextUnformatted(entry.comment.c_str());
 }
 
-void SignalSelector::startSearching(const std::string& _searchString, std::vector<FilterData*> _filters) {
-    m_filteredItems.clear();
-    m_searchString     = _searchString;
-    m_nextItemToFilter = 0UZ;
+void SignalSelector::startSearching(const std::string& searchString, std::vector<FilterTag*> filters) {
+    _filteredItems.clear();
+    _searchString     = searchString;
+    _nextItemToFilter = 0UZ;
 
-    if (!_filters.empty()) {
-        m_categorySearch          = CategorySearch{};
-        m_categorySearch->filters = std::move(_filters);
+    if (!filters.empty()) {
+        _categorySearch          = CategorySearch{};
+        _categorySearch->filters = std::move(filters);
 
-        std::ranges::sort(m_categorySearch->filters, [](const auto* left, const auto* right) { return *left < *right; });
-        auto mainCategory      = m_categorySearch->filters.front()->category;
-        auto mainCategoryIndex = categoryIndices[+mainCategory];
+        std::ranges::sort(_categorySearch->filters, [](const auto* left, const auto* right) { return *left < *right; });
+        auto mainCategory      = _categorySearch->filters.front()->category;
+        auto mainCategoryIndex = _categoryIndices[mainCategory];
 
-        for (const auto& filter : m_categorySearch->filters) {
+        for (const auto& filter : _categorySearch->filters) {
             if (filter->category != mainCategory) {
                 break;
             }
-            m_categorySearch->signalsToProcess.push_back((*mainCategoryIndex)[filter->title]);
+            _categorySearch->signalsToProcess.push_back((*mainCategoryIndex)[filter->title]);
         }
     } else {
-        m_categorySearch.reset();
+        _categorySearch.reset();
     }
 }
 
 bool SignalSelector::signalMatchesSearchString(const SignalData& signal) const {
-    return signal.signalName.find(m_searchString) != std::string::npos || //
-           signal.comment.find(m_searchString) != std::string::npos;
+    return signal.signalName.contains(_searchString) || //
+           signal.comment.contains(_searchString);
 }
 
 bool SignalSelector::signalMatchesActiveFilters(const SignalData& signal) const {
-    assert(m_categorySearch.has_value());
+    assert(_categorySearch.has_value());
     enum MatchState { Unspecified = 0, NoMatches = 1, HasMatches = 2 };
-    std::array<MatchState, CategoriesCount> stateMatches{};
+    std::array<MatchState, kCategoriesCount> stateMatches{};
     std::ranges::fill(stateMatches, Unspecified);
 
-    for (const auto filter : m_categorySearch->filters) {
-        if (stateMatches[+filter->category] == Unspecified) {
-            stateMatches[+filter->category] = NoMatches;
+    for (const auto filter : _categorySearch->filters) {
+        if (stateMatches[filter->category] == Unspecified) {
+            stateMatches[filter->category] = NoMatches;
         }
 
-        if (stateMatches[+filter->category] == NoMatches) {
+        if (stateMatches[filter->category] == NoMatches) {
             if (filter->title == categoryFieldForSignal(filter->category, signal)) {
-                stateMatches[+filter->category] = HasMatches;
+                stateMatches[filter->category] = HasMatches;
             }
         }
     }
@@ -135,39 +213,38 @@ bool SignalSelector::signalMatchesActiveFilters(const SignalData& signal) const 
 }
 
 std::vector<SignalData> SignalSelector::drawSignalSelector() {
-    m_querySignalFilters.drawFilters();
+    _querySignalFilters.draw();
 
-    bool filtersChanged = m_forceRefresh;
-    m_forceRefresh      = false;
+    bool filtersChanged = _forceRefresh;
+    _forceRefresh       = false;
 
-    if (auto comboSelectedItem = m_filterCombos.draw()) {
-        auto* item      = *comboSelectedItem;
-        bool  wasActive = item->isActive;
-        item->isActive  = !wasActive;
+    if (FilterTag* item = _filterCombos.draw()) {
+        bool wasActive = item->isActive;
+        item->isActive = !wasActive;
 
         if (wasActive) {
-            m_selectedFilters.removeLabel(item);
+            _selectedFilters.removeLabel(item);
         } else {
-            m_selectedFilters.addLabel({item->title, item, colorForCategory(item->category)});
+            _selectedFilters.labels.emplace_back(item->title, item, colorForCategory(item->category));
         }
         filtersChanged = true;
     }
 
     ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
 
-    ImGui::InputText("##textFilter", &m_shownSearchString);
-    if (m_shownSearchString != m_searchString) {
+    ImGui::InputText("##textFilter", &_shownSearchString);
+    if (_shownSearchString != _searchString) {
         filtersChanged = true;
     }
 
-    if (auto removedLabel = m_selectedFilters.draw()) {
-        (*removedLabel)->isActive = false;
-        filtersChanged            = true;
+    if (FilterTag* removedLabel = _selectedFilters.draw()) {
+        removedLabel->isActive = false;
+        filtersChanged         = true;
     }
 
     if (filtersChanged) {
-        auto filters = m_selectedFilters.labels() | std::views::transform([](const auto& filter) { return filter.data; }) | std::ranges::to<std::vector>();
-        startSearching(m_shownSearchString, std::move(filters));
+        auto filters = _selectedFilters.labels | std::views::transform([](const auto& filter) { return filter.data; }) | std::ranges::to<std::vector>();
+        startSearching(_shownSearchString, std::move(filters));
         while (loadMoreItems()) {
         }
     }
@@ -175,12 +252,11 @@ std::vector<SignalData> SignalSelector::drawSignalSelector() {
     ImGui::SetNextWindowSize(ImGui::GetContentRegionAvail(), ImGuiCond_Once);
     static ImGuiSelectionBasicStorage selection;
     {
-        IMW::Child signals("Signals", ImVec2(0, -ImGui::GetTextLineHeightWithSpacing()), 0, 0);
-        if (auto table = DigitizerUi::IMW::Table("Signals", 6, static_cast<ImGuiTableFlags>(ImGuiTableFlags_BordersInnerV), ImVec2(0.0f, 0.0f), 0.0f)) {
-            // allow multi-selection
+        imw::Child signals("Signals", ImVec2(0, -ImGui::GetTextLineHeightWithSpacing()), 0, 0);
+        if (auto table = imw::Table("Signals", 6, static_cast<ImGuiTableFlags>(ImGuiTableFlags_BordersInnerV), ImVec2(0.0f, 0.0f), 0.0f)) {
             ImGuiMultiSelectFlags flags = ImGuiMultiSelectFlags_ClearOnEscape | ImGuiMultiSelectFlags_BoxSelect1d | ImGuiMultiSelectFlags_ClearOnClickVoid;
-            auto*                 ms_io = ImGui::BeginMultiSelect(flags, selection.Size, static_cast<int>(m_filteredItems.size()));
-            selection.ApplyRequests(ms_io);
+            auto*                 io    = ImGui::BeginMultiSelect(flags, selection.Size, static_cast<int>(_filteredItems.size()));
+            selection.ApplyRequests(io);
 
             ImGui::TableHeader("SignalsHeader");
             ImGui::TableSetupColumn("Device");
@@ -191,38 +267,37 @@ std::vector<SignalData> SignalSelector::drawSignalSelector() {
             ImGui::TableSetupColumn("Comment");
             ImGui::TableHeadersRow();
 
-            // clip list for better performance
             ImGuiListClipper clipper;
-            clipper.Begin(static_cast<int>(m_filteredItems.size()));
-            if (ms_io->RangeSrcItem != -1) {
-                clipper.IncludeItemByIndex(static_cast<int>(ms_io->RangeSrcItem)); // do not clip RangeSrcItem
+            clipper.Begin(static_cast<int>(_filteredItems.size()));
+            if (io->RangeSrcItem != -1) {
+                clipper.IncludeItemByIndex(static_cast<int>(io->RangeSrcItem)); // do not clip RangeSrcItem
             }
 
             while (clipper.Step()) {
                 for (std::size_t n = static_cast<std::size_t>(clipper.DisplayStart); n < static_cast<std::size_t>(clipper.DisplayEnd); ++n) {
-                    drawElement(*m_filteredItems[n], n, selection);
+                    drawElement(*_filteredItems[n], n, selection);
                 }
             }
 
-            ms_io = ImGui::EndMultiSelect();
-            selection.ApplyRequests(ms_io);
+            io = ImGui::EndMultiSelect();
+            selection.ApplyRequests(io);
         }
     }
 
-    if (DigitizerUi::TextButton("Add Signal")) {
+    if (textButton("Add Signal")) {
         std::vector<SignalData> selectedEntries;
         void*                   it = nullptr;
         ImGuiID                 id = 0;
         while (selection.GetNextSelectedItem(&it, &id)) {
-            selectedEntries.push_back(*m_filteredItems[id]);
+            selectedEntries.push_back(*_filteredItems[id]);
         }
 
         close();
         return selectedEntries;
     }
     ImGui::SameLine();
-    if (DigitizerUi::TextButton("Refresh")) {
-        m_signalList.update();
+    if (textButton("Refresh")) {
+        _signalList.update();
     }
 
     return {};
@@ -235,11 +310,11 @@ std::vector<SignalData> SignalSelector::drawAndReturnSelected() {
     auto x = ImGui::GetCursorPosX();
     ImGui::SetCursorPosX(x + 32);
 
-    if (auto menu = IMW::ModalPopup(m_windowName.c_str(), nullptr, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse)) {
+    if (auto menu = imw::ModalPopup(_windowName.c_str(), nullptr, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse)) {
         float windowWidth = ImGui::GetWindowWidth();
         float buttonPosX  = windowWidth - 2 * ImGui::GetStyle().ItemSpacing.x - ImGui::GetStyle().FramePadding.x - ImGui::CalcTextSize("Close").x;
         ImGui::SetCursorPosX(buttonPosX);
-        if (DigitizerUi::TextButton("Close") || ImGui::IsKeyPressed(ImGuiKey_Escape)) {
+        if (textButton("Close") || ImGui::IsKeyPressed(ImGuiKey_Escape)) {
             ImGui::CloseCurrentPopup();
             return {};
         }
@@ -251,83 +326,79 @@ std::vector<SignalData> SignalSelector::drawAndReturnSelected() {
 }
 
 void SignalSelector::buildIndex() {
-    m_nextItemToFilter = 0UZ;
-    m_searchString.clear();
-    m_filteredItems.clear();
-    m_categorySearch.reset();
+    _nextItemToFilter = 0UZ;
+    _searchString.clear();
+    _filteredItems.clear();
+    _categorySearch.reset();
 
-    for (SignalData& signal : m_signals) {
+    for (SignalData& signal : _signals) {
         auto* signalPtr = std::addressof(signal);
-        deviceIndex[signal.device].push_back(signalPtr);
-        frontendIndex[signal.frontend].push_back(signalPtr);
-        signalNameIndex[signal.signalName].push_back(signalPtr);
-        subDevicePropertyIndex[signal.subDeviceProperty].push_back(signalPtr);
-        quantityIndex[signal.quantity].push_back(signalPtr);
-        sampleRateIndex[signal.sampleRate].push_back(signalPtr);
-        unitIndex[signal.unit].push_back(signalPtr);
-        acceleratorIndex[signal.accelerator].push_back(signalPtr);
-        deviceClassIndex[signal.deviceClass].push_back(signalPtr);
+        _deviceIndex[signal.device].push_back(signalPtr);
+        _frontendIndex[signal.frontend].push_back(signalPtr);
+        _signalNameIndex[signal.signalName].push_back(signalPtr);
+        _subDevicePropertyIndex[signal.subDeviceProperty].push_back(signalPtr);
+        _quantityIndex[signal.quantity].push_back(signalPtr);
+        _sampleRateIndex[signal.sampleRate].push_back(signalPtr);
+        _unitIndex[signal.unit].push_back(signalPtr);
+        _acceleratorIndex[signal.accelerator].push_back(signalPtr);
+        _deviceClassIndex[signal.deviceClass].push_back(signalPtr);
     }
 
     auto itemsForIndex = [this](Category category) {
-        const auto&             index = *categoryIndices[+category];
-        std::vector<FilterData> result;
+        const auto&            index = *_categoryIndices[+category];
+        std::vector<FilterTag> result;
         result.resize(index.size());
-        std::ranges::transform(index, result.begin(), [category](const auto& kvp) { return FilterData{category, kvp.first, false}; });
+        std::ranges::transform(index, result.begin(), [category](const auto& kvp) { return FilterTag{+category, kvp.first, false}; });
         return result;
     };
 
-    m_filterCombos.setData({
-        {"##comboDomain", "Domain", colorForCategory(Category::Domain), itemsForIndex(Category::Domain)},                //
-        {"##comboDeviceType", "Dev. type", colorForCategory(Category::DeviceType), itemsForIndex(Category::DeviceType)}, //
-        {"##comboDAQ", "DAQ-M.", colorForCategory(Category::DAQ_M), {}},                                                 //
-        {"##comboStatus", "Status", colorForCategory(Category::Status), {}},                                             //
-        {"##comboQuantity", "Quantity", colorForCategory(Category::Quantity), itemsForIndex(Category::Quantity)}         //
-    });
+    _filterCombos.combos = {
+        {"##comboDomain", "Domain", colorForCategory(+Category::Domain), itemsForIndex(Category::Domain)},                //
+        {"##comboDeviceType", "Dev. type", colorForCategory(+Category::DeviceType), itemsForIndex(Category::DeviceType)}, //
+        {"##comboDAQ", "DAQ-M.", colorForCategory(+Category::DaqM), {}},                                                  //
+        {"##comboStatus", "Status", colorForCategory(+Category::Status), {}},                                             //
+        {"##comboQuantity", "Quantity", colorForCategory(+Category::Quantity), itemsForIndex(Category::Quantity)}         //
+    };
 }
 
 bool SignalSelector::loadMoreItems() {
-    if (m_categorySearch) {
-        if (m_categorySearch->signalsToProcess.empty()) {
+    if (_categorySearch) {
+        if (_categorySearch->signalsToProcess.empty()) {
             return false;
         }
 
-        const auto& currentList = m_categorySearch->signalsToProcess.front();
-        if (m_nextItemToFilter >= currentList.size()) {
-            // Current list done, removing it and moving to the next one
-            m_categorySearch->signalsToProcess.pop_front();
-            m_nextItemToFilter = 0UZ;
+        const auto& currentList = _categorySearch->signalsToProcess.front();
+        if (_nextItemToFilter >= currentList.size()) {
+            _categorySearch->signalsToProcess.pop_front();
+            _nextItemToFilter = 0UZ;
             return true;
         }
 
-        const auto& signal = *currentList[m_nextItemToFilter];
+        const auto& signal = *currentList[_nextItemToFilter];
         if (signalMatchesSearchString(signal) && signalMatchesActiveFilters(signal)) {
-            m_filteredItems.push_back(currentList[m_nextItemToFilter]);
+            _filteredItems.push_back(currentList[_nextItemToFilter]);
         }
 
-        m_nextItemToFilter++;
+        _nextItemToFilter++;
         return true;
 
-    } else if (!m_searchString.empty()) {
-        // We list everything that matches the search string,
-        // no extra filters have been defined
-        if (m_nextItemToFilter >= m_signals.size()) {
+    } else if (!_searchString.empty()) {
+        if (_nextItemToFilter >= _signals.size()) {
             return false;
         }
 
-        if (signalMatchesSearchString(m_signals[m_nextItemToFilter])) {
-            m_filteredItems.push_back(&m_signals[m_nextItemToFilter]);
+        if (signalMatchesSearchString(_signals[_nextItemToFilter])) {
+            _filteredItems.push_back(&_signals[_nextItemToFilter]);
         }
 
-        m_nextItemToFilter++;
+        _nextItemToFilter++;
         return true;
     } else {
-        // just show everything, no need for loadMoreItems()
-        for (size_t i = 0; i < m_signals.size(); ++i) {
-            m_filteredItems.push_back(&m_signals[i]);
+        for (size_t i = 0; i < _signals.size(); ++i) {
+            _filteredItems.push_back(&_signals[i]);
         }
         return false;
     }
 }
 
-} // namespace DigitizerUi
+} // namespace gr::od

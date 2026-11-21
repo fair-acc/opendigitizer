@@ -6,7 +6,7 @@
 #include <cstdint>
 #include <limits>
 
-namespace opendigitizer::test {
+namespace gr::od::test {
 
 struct DoubleToNumericLimitTarget : gr::Block<DoubleToNumericLimitTarget> {
     using Description = gr::Doc<"block to test having extremely large numerical limits for doubles">;
@@ -60,6 +60,6 @@ struct UnlimitedDoubleTarget : gr::Block<UnlimitedDoubleTarget> {
     [[nodiscard]] constexpr float processOne(float input) const noexcept { return input; }
 };
 
-} // namespace opendigitizer::test
+} // namespace gr::od::test
 
 #endif

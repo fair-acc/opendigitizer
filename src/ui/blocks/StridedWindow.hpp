@@ -7,15 +7,11 @@
 #include <gnuradio-4.0/Block.hpp>
 #include <gnuradio-4.0/BlockRegistry.hpp>
 
-namespace opendigitizer {
+namespace gr::od {
 
-/**
- * @brief Forwards a contiguous window of `input_chunk_size` samples, then skips ahead by `stride` samples.
- *
- * With `stride` larger than the window it takes one window every `stride` input samples (the gr4 FFT block has
- * no `Stride<>`, so this provides the strided windowing in front of it). Skipped samples are consumed
- * incrementally, so it drains a fast stream cheaply — e.g. one 2^19-sample window per second of a 4 MS/s signal.
- */
+// forwards a contiguous window of `input_chunk_size` samples, then skips ahead by `stride` samples:
+// the strided windowing in front of the gr4 FFT block, which has no `Stride<>`.
+// Skipped samples are consumed incrementally, so a fast stream drains cheaply, e.g. one 2^19-sample window per second of a 4 MS/s signal.
 template<typename T>
 struct StridedWindow : gr::Block<StridedWindow<T>, gr::Resampling<1U, 1U, false>, gr::Stride<0U, false>> {
     gr::PortIn<T>  in;
@@ -29,6 +25,6 @@ struct StridedWindow : gr::Block<StridedWindow<T>, gr::Resampling<1U, 1U, false>
     }
 };
 
-} // namespace opendigitizer
+} // namespace gr::od
 
 #endif // OPENDIGITIZER_BLOCKS_STRIDEDWINDOW_HPP

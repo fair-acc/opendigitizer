@@ -8,7 +8,7 @@
 #include <gnuradio-4.0/BlockRegistry.hpp>
 #include <gnuradio-4.0/digital/RDSDecoder.hpp>
 
-#include "../common/ImguiWrap.hpp"
+#include "../common/Imw.hpp"
 #include "../common/LookAndFeel.hpp"
 #include <imgui.h>
 
@@ -31,7 +31,7 @@
 #include <utility>
 #include <vector>
 
-namespace opendigitizer::charts {
+namespace gr::od::charts {
 
 struct RDSView : gr::Block<RDSView, gr::Drawable<gr::UICategory::Content, "ImGui">>, Chart {
     using Description = gr::Doc<R""(@brief Radio panel for the Radio Data System (RDS): station, now playing, earlier songs, alternative frequencies, traffic messages and reception quality.
@@ -40,9 +40,24 @@ Its signal is a TagSink after an RDSDecoder.
 With `tuner` set, e.g. to "RTLSDR:frequency", the panel also tunes the radio: the tuner gets the station frequency minus `channel_frequency`.)"">;
 
     using RDSDecoder  = gr::digital::RDSDecoder;
-    using LookAndFeel = DigitizerUi::LookAndFeel;
-    using FontScope   = DigitizerUi::IMW::FontWithSize;
+    using LookAndFeel = gr::od::LookAndFeel;
+    using FontScope   = imw::FontWithSize;
     using FontFace    = ImFont* (LookAndFeel::*)() const;
+    template<typename T, gr::meta::fixed_string description = "", typename... Arguments>
+    using A = gr::Annotated<T, description, Arguments...>;
+
+    static constexpr std::array<std::string_view, 32UZ> kProgrammeTypeNames{"no programme type", "news", "current affairs", "information", "sport", "education", "drama", "culture", "science", "varied", "pop music", "rock music", "easy listening", "light classical", "serious classical", "other music", "weather", "finance", "children's programmes", "social affairs", "religion", "phone-in", "travel", "leisure", "jazz music", "country music", "national music", "oldies music", "folk music", "documentary", "alarm test", "alarm"};
+    static constexpr std::array<std::string_view, 6UZ>  kTrafficColumns{"RECEIVED", "EVENT", "LOCATION", "EXTENT", "DIRECTION", "DURATION"};
+    static constexpr double                             kBitRateInterval     = 1.0;
+    static constexpr double                             kRetuneSettleSeconds = 1.0;
+    static constexpr std::string_view                   kSeparator           = " · ";
+    static constexpr std::string_view                   kMissingShown        = "·";
+    static constexpr std::string_view                   kNoName              = "--------";
+    static constexpr double                             kBandLow             = 87.5e6;
+    static constexpr double                             kBandHigh            = 108e6;
+    static constexpr int                                kMajorTickMHz        = 5;
+    static constexpr SignalKind                         kSupportedSignals    = SignalKind::Streaming;
+    static constexpr std::string_view                   kChartTypeName       = "RDSView";
 
     struct TrafficEntry {
         double                     utcSeconds{};
@@ -275,28 +290,6 @@ With `tuner` set, e.g. to "RTLSDR:frequency", the panel also tunes the radio: th
         std::string   name;
     };
 
-    static constexpr std::array<std::string_view, 32UZ> kProgrammeTypeNames{"no programme type", "news", "current affairs", "information", "sport", "education", "drama", "culture", "science", "varied", "pop music", "rock music", "easy listening", "light classical", "serious classical", "other music", "weather", "finance", "children's programmes", "social affairs", "religion", "phone-in", "travel", "leisure", "jazz music", "country music", "national music", "oldies music", "folk music", "documentary", "alarm test", "alarm"};
-    static constexpr std::array<std::string_view, 6UZ>  kTrafficColumns{"RECEIVED", "EVENT", "LOCATION", "EXTENT", "DIRECTION", "DURATION"};
-    static constexpr double                             kBitRateInterval     = 1.0;
-    static constexpr double                             kRetuneSettleSeconds = 1.0;
-    static constexpr std::string_view                   kSeparator           = " · ";
-    static constexpr std::string_view                   kMissingShown        = "·";
-    static constexpr std::string_view                   kNoName              = "--------";
-    static constexpr float                              kRounding            = 6.f;
-    static constexpr ImVec2                             kPillPadding         = {8.f, 2.f};
-    static constexpr float                              kTint                = .15f;
-    static constexpr float                              kSubtle              = .06f;
-    static constexpr float                              kDotRadius           = 4.f;
-    static constexpr float                              kLineWidth           = 2.f;
-    static constexpr float                              kGraphLines          = 3.f;
-    static constexpr float                              kSingleColumnWidth   = 640.f;
-    static constexpr double                             kBandLow             = 87.5e6;
-    static constexpr double                             kBandHigh            = 108e6;
-    static constexpr int                                kMajorTickMHz        = 5;
-
-    template<typename T, gr::meta::fixed_string description = "", typename... Arguments>
-    using A = gr::Annotated<T, description, Arguments...>;
-
     A<std::string, "chart name", gr::Visible>                                                                                                          chart_name;
     A<std::string, "chart title">                                                                                                                      chart_title;
     A<std::vector<std::string>, "data sinks", gr::Visible>                                                                                             data_sinks     = {};
@@ -305,8 +298,6 @@ With `tuner` set, e.g. to "RTLSDR:frequency", the panel also tunes the radio: th
     A<double, "station frequency", gr::Unit<"Hz">, gr::Visible, gr::Doc<"station tuned when the panel starts">>                                        station_frequency = 0.0;
     A<double, "channel frequency", gr::Unit<"Hz">, gr::Doc<"shift of the channel from the tuner centre, e.g. a FrequencyXlatingFilter's 'frequency'">> channel_frequency = 0.0;
     A<double, "tuning step", gr::Unit<"Hz">, gr::Doc<"step of the tuning buttons and the band dial">>                                                  tuning_step       = 100'000.0;
-
-    static constexpr SignalKind supportedSignals = SignalKind::Streaming;
 
     GR_MAKE_REFLECTABLE(RDSView, chart_name, chart_title, data_sinks, history_length, tuner, station_frequency, channel_frequency, tuning_step);
 
@@ -321,15 +312,10 @@ With `tuner` set, e.g. to "RTLSDR:frequency", the panel also tunes the radio: th
     std::map<std::int64_t, HeardStation> _heardStationsByKilohertz;
     Colours                              _colours{};
 
-    static constexpr std::string_view kChartTypeName = "RDSView";
-
-    [[nodiscard]] static constexpr std::string_view chartTypeName() noexcept { return kChartTypeName; }
-    [[nodiscard]] std::string_view                  uniqueId() const noexcept { return this->unique_name; }
-
     gr::work::Result work(std::size_t = std::numeric_limits<std::size_t>::max(), gr::device::DeviceContext& = gr::device::hostBackend()) noexcept { return {0UZ, 0UZ, gr::work::Status::OK}; }
 
     void settingsChanged(const gr::property_map& oldSettings, const gr::property_map& newSettings) {
-        handleSettingsChanged(newSettings);
+        applyChartSettings(newSettings);
         const auto changeOf = [&oldSettings](std::string_view key, double value) { return value - oldSettings.value_or<double>(key, value); };
         if (changeOf("station_frequency", station_frequency.value) != 0.0) {
             _tunedFrequency = station_frequency.value;
@@ -337,6 +323,8 @@ With `tuner` set, e.g. to "RTLSDR:frequency", the panel also tunes the radio: th
             changeStation(_tunedFrequency + channelMove);
         }
     }
+
+    [[nodiscard]] static const ChartStyle& look() { return LookAndFeel::instance().chartStyle; }
 
     gr::work::Status draw(const gr::property_map& config = {}) {
         [[maybe_unused]] auto [plotFlags, plotSize, showLegend, chartMode, showGrid, chartStyle] = prepareDrawPrologue(config);
@@ -360,10 +348,10 @@ With `tuner` set, e.g. to "RTLSDR:frequency", the panel also tunes the radio: th
         updateBitRate(bitCount);
         rememberStation();
 
-        _colours                    = coloursOf();
-        const double            now = utcNow();
-        DigitizerUi::IMW::Child panel("##rdsPanel", plotSize, false, ImGuiWindowFlags_NoScrollbar);
-        float                   statusHeight = 0.f;
+        _colours         = coloursOf();
+        const double now = utcNow();
+        imw::Child   panel("##rdsPanel", plotSize, false, ImGuiWindowFlags_NoScrollbar);
+        float        statusHeight = 0.f;
         {
             FontScope fontScope = font(&LookAndFeel::fontSmall);
             statusHeight        = ImGui::GetTextLineHeight() + ImGui::GetStyle().ItemSpacing.y;
@@ -525,7 +513,7 @@ With `tuner` set, e.g. to "RTLSDR:frequency", the panel also tunes the radio: th
             .success   = ImGui::GetColorU32(palette.successColor),
             .warning   = ImGui::GetColorU32(palette.warningColor),
             .error     = ImGui::GetColorU32(palette.errorColor),
-            .subtle    = withAlpha(textColour, kSubtle),
+            .subtle    = withAlpha(textColour, look().rdsUnlitAlpha),
             .border    = ImGui::GetColorU32(ImGuiCol_Border),
         };
     }
@@ -548,7 +536,7 @@ With `tuner` set, e.g. to "RTLSDR:frequency", the panel also tunes the radio: th
         if (value.empty()) {
             return;
         }
-        DigitizerUi::IMW::StyleNamedColor scoped(ImGuiCol_Text, colour);
+        imw::StyleNamedColor scoped(ImGuiCol_Text, colour);
         ImGui::TextUnformatted(value.data(), value.data() + value.size());
     }
 
@@ -583,7 +571,7 @@ With `tuner` set, e.g. to "RTLSDR:frequency", the panel also tunes the radio: th
         ImGui::PopTextWrapPos();
         ImGui::EndGroup();
         const ImVec2 max(min.x + width, ImGui::GetItemRectMax().y + padding.y);
-        ImGui::GetWindowDrawList()->AddRect(min, max, _colours.border, kRounding);
+        ImGui::GetWindowDrawList()->AddRect(min, max, _colours.border, look().rdsRounding);
         ImGui::SetCursorScreenPos(min);
         ImGui::Dummy(max - min);
     }
@@ -602,13 +590,13 @@ With `tuner` set, e.g. to "RTLSDR:frequency", the panel also tunes the radio: th
         text(value, _colours.secondary);
     }
 
-    [[nodiscard]] static ImVec2 pillSize(std::string_view label) { return textSize(label) + kPillPadding * 2.f; }
+    [[nodiscard]] static ImVec2 pillSize(std::string_view label) { return textSize(label) + look().rdsPillPadding * 2.f; }
 
     bool pill(std::string_view label, ImU32 colour, bool on, bool clickable = false) const {
         const ImVec2  min = ImGui::GetCursorScreenPos();
         const ImRect  box(min, min + pillSize(label));
         const ImGuiID id = clickable ? ImGui::GetID(label.data(), label.data() + label.size()) : 0U;
-        ImGui::ItemSize(box.GetSize(), kPillPadding.y);
+        ImGui::ItemSize(box.GetSize(), look().rdsPillPadding.y);
         if (!ImGui::ItemAdd(box, id)) {
             return false;
         }
@@ -620,21 +608,21 @@ With `tuner` set, e.g. to "RTLSDR:frequency", the panel also tunes the radio: th
         }
         ImDrawList* drawList = ImGui::GetWindowDrawList();
         const float rounding = .5f * box.GetHeight();
-        drawList->AddRectFilled(box.Min, box.Max, on ? withAlpha(colour, kTint) : _colours.subtle, rounding);
+        drawList->AddRectFilled(box.Min, box.Max, on ? withAlpha(colour, look().rdsLitAlpha) : _colours.subtle, rounding);
         drawList->AddRect(box.Min, box.Max, (hovered || on) ? colour : _colours.border, rounding);
-        textAt(min + kPillPadding, on ? colour : _colours.secondary, label);
+        textAt(min + look().rdsPillPadding, on ? colour : _colours.secondary, label);
         return pressed;
     }
 
     std::optional<std::size_t> pillFlow(const Area& area, const std::vector<Pill>& pills, bool clickable, const char* id) const {
-        FontScope                     fontScope = font(&LookAndFeel::fontSmall);
-        DigitizerUi::IMW::ChangeStrId flowScope(id);
-        std::optional<std::size_t>    clicked;
+        FontScope                  fontScope = font(&LookAndFeel::fontSmall);
+        imw::ChangeStrId           flowScope(id);
+        std::optional<std::size_t> clicked;
         for (std::size_t i = 0UZ; i < pills.size(); ++i) {
             if (i > 0UZ) {
                 flowNext(area.right, pillSize(pills[i].label).x);
             }
-            DigitizerUi::IMW::ChangeId pillScope(static_cast<int>(i));
+            imw::ChangeId pillScope(static_cast<int>(i));
             if (pill(pills[i].label, pills[i].colour, pills[i].on, clickable)) {
                 clicked = i;
             }
@@ -644,8 +632,8 @@ With `tuner` set, e.g. to "RTLSDR:frequency", the panel also tunes the radio: th
 
     static void alignTextToPills() {
         ImGuiWindow* window               = ImGui::GetCurrentWindow();
-        window->DC.CurrLineSize.y         = std::max(window->DC.CurrLineSize.y, ImGui::GetTextLineHeight() + 2.f * kPillPadding.y);
-        window->DC.CurrLineTextBaseOffset = std::max(window->DC.CurrLineTextBaseOffset, kPillPadding.y);
+        window->DC.CurrLineSize.y         = std::max(window->DC.CurrLineSize.y, ImGui::GetTextLineHeight() + 2.f * look().rdsPillPadding.y);
+        window->DC.CurrLineTextBaseOffset = std::max(window->DC.CurrLineTextBaseOffset, look().rdsPillPadding.y);
     }
 
     void drawStation(const Area& area, double now) const {
@@ -757,9 +745,9 @@ With `tuner` set, e.g. to "RTLSDR:frequency", the panel also tunes the radio: th
         }
         {
             FontScope      fontScope = font(&LookAndFeel::fontTiny);
-            constexpr auto hint      = std::string_view("click, drag or scroll the band to tune");
-            alignRight(area.right, textSize(hint).x);
-            text(hint, _colours.secondary);
+            constexpr auto kHint     = std::string_view("click, drag or scroll the band to tune");
+            alignRight(area.right, textSize(kHint).x);
+            text(kHint, _colours.secondary);
         }
         drawDial(area);
         drawHeardStations(area);
@@ -770,7 +758,7 @@ With `tuner` set, e.g. to "RTLSDR:frequency", the panel also tunes the radio: th
         ImDrawList*  drawList  = ImGui::GetWindowDrawList();
         const float  line      = ImGui::GetTextLineHeight();
         const ImVec2 top       = ImGui::GetCursorScreenPos();
-        const float  axisY     = top.y + kGraphLines * line;
+        const float  axisY     = top.y + look().rdsGraphHeightLines * line;
         const auto   xOf       = [&area](double frequency) { return area.left + static_cast<float>((frequency - kBandLow) / (kBandHigh - kBandLow)) * area.width(); };
 
         ImGui::InvisibleButton("##rdsDial", ImVec2(std::max(1.f, area.width()), axisY + line - top.y));
@@ -784,7 +772,7 @@ With `tuner` set, e.g. to "RTLSDR:frequency", the panel also tunes the radio: th
             _tuneRequest = _tunedFrequency + (wheel > 0.f ? tuning_step.value : -tuning_step.value);
         }
 
-        drawList->AddLine(ImVec2(area.left, axisY), ImVec2(area.right, axisY), _colours.border, kLineWidth);
+        drawList->AddLine(ImVec2(area.left, axisY), ImVec2(area.right, axisY), _colours.border, look().rdsLineWidth);
         const auto label = [&](double frequency, float anchor) {
             const std::string value = std::format("{:g}", frequency / 1e6);
             textAt(ImVec2(xOf(frequency) - anchor * textSize(value).x, axisY), _colours.secondary, value);
@@ -801,16 +789,16 @@ With `tuner` set, e.g. to "RTLSDR:frequency", the panel also tunes the radio: th
         label(kBandHigh, 1.f);
 
         for (const HeardStation& heard : _heardStationsByKilohertz | std::views::values) {
-            drawList->AddCircleFilled(ImVec2(xOf(heard.frequency), axisY), kDotRadius, _colours.secondary);
+            drawList->AddCircleFilled(ImVec2(xOf(heard.frequency), axisY), look().rdsDotRadius, _colours.secondary);
         }
         if (hovered && !active) {
             const float x = xOf(pointed);
-            drawList->AddLine(ImVec2(x, top.y), ImVec2(x, axisY), _colours.secondary, kLineWidth);
+            drawList->AddLine(ImVec2(x, top.y), ImVec2(x, axisY), _colours.secondary, look().rdsLineWidth);
             ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
         }
-        const ImVec2 needleHead(xOf(active ? pointed : _tunedFrequency), top.y + kDotRadius);
-        drawList->AddLine(needleHead, ImVec2(needleHead.x, axisY), _colours.accent, kLineWidth);
-        drawList->AddCircleFilled(needleHead, kDotRadius, _colours.accent);
+        const ImVec2 needleHead(xOf(active ? pointed : _tunedFrequency), top.y + look().rdsDotRadius);
+        drawList->AddLine(needleHead, ImVec2(needleHead.x, axisY), _colours.accent, look().rdsLineWidth);
+        drawList->AddCircleFilled(needleHead, look().rdsDotRadius, _colours.accent);
         if (hovered || active) {
             const auto        known   = _heardStationsByKilohertz.find(std::llround(pointed / 1e3));
             const std::string tooltip = known == _heardStationsByKilohertz.end() ? std::format("{:.1f} MHz", pointed / 1e6) : std::format("{:.1f} MHz{}{}", pointed / 1e6, kSeparator, known->second.name);
@@ -869,11 +857,11 @@ With `tuner` set, e.g. to "RTLSDR:frequency", the panel also tunes the radio: th
             const std::string networkName = network.programmeServiceName.empty() ? std::string(kNoName) : network.programmeServiceName;
             ImGui::TableNextRow();
             if (announcing) {
-                ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg1, withAlpha(_colours.warning, kTint));
+                ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg1, withAlpha(_colours.warning, look().rdsLitAlpha));
             }
             ImGui::TableNextColumn();
             if (tunable && !network.alternativeFrequencies.empty()) {
-                DigitizerUi::IMW::ChangeId rowScope(programmeIdentification);
+                imw::ChangeId rowScope(programmeIdentification);
                 if (ImGui::Selectable(networkName.c_str(), false, ImGuiSelectableFlags_SpanAllColumns)) {
                     _tuneRequest = hertzOf(network.alternativeFrequencies.front());
                 }
@@ -958,7 +946,7 @@ With `tuner` set, e.g. to "RTLSDR:frequency", the panel also tunes the radio: th
             return;
         }
         const ImVec2        min = ImGui::GetCursorScreenPos();
-        const ImVec2        max(area.right, min.y + kGraphLines * ImGui::GetTextLineHeight());
+        const ImVec2        max(area.right, min.y + look().rdsGraphHeightLines * ImGui::GetTextLineHeight());
         const float         lowest = std::min(90.f, std::ranges::min(quality, {}, &QualitySample::errorFreePercent).errorFreePercent);
         std::vector<ImVec2> points;
         points.reserve(quality.size());
@@ -966,7 +954,7 @@ With `tuner` set, e.g. to "RTLSDR:frequency", the panel also tunes the radio: th
             const float x = min.x + (max.x - min.x) * static_cast<float>(i) / static_cast<float>(quality.size() - 1UZ);
             points.emplace_back(x, max.y - (quality[i].errorFreePercent - lowest) / (100.f - lowest) * (max.y - min.y));
         }
-        ImGui::GetWindowDrawList()->AddPolyline(points.data(), static_cast<int>(points.size()), _colours.success, ImDrawFlags_None, kLineWidth);
+        ImGui::GetWindowDrawList()->AddPolyline(points.data(), static_cast<int>(points.size()), _colours.success, ImDrawFlags_None, look().rdsLineWidth);
         ImGui::Dummy(max - min);
         text(std::format("error-free blocks, last {}", durationText(now - quality.front().utcSeconds)), _colours.secondary);
     }
@@ -989,7 +977,7 @@ With `tuner` set, e.g. to "RTLSDR:frequency", the panel also tunes the radio: th
             const std::uint32_t largest  = std::ranges::max(groups | std::views::values);
             const float         line     = ImGui::GetTextLineHeight();
             const ImVec2        top      = ImGui::GetCursorScreenPos();
-            const float         bottom   = top.y + 2.f * kGraphLines * line;
+            const float         bottom   = top.y + 2.f * look().rdsGraphHeightLines * line;
             const float         slot     = area.width() / static_cast<float>(groups.size());
             const float         barWidth = std::min(slot - ImGui::GetStyle().ItemSpacing.x, 2.f * line);
             ImDrawList*         drawList = ImGui::GetWindowDrawList();
@@ -997,7 +985,7 @@ With `tuner` set, e.g. to "RTLSDR:frequency", the panel also tunes the radio: th
                 const auto& [code, groupCount] = groups[i];
                 const float       left         = area.left + static_cast<float>(i) * slot;
                 const float       barLeft      = left + .5f * (slot - barWidth);
-                const float       barHeight    = std::max(kLineWidth, (bottom - top.y) * static_cast<float>(groupCount) / static_cast<float>(largest));
+                const float       barHeight    = std::max(look().rdsLineWidth, (bottom - top.y) * static_cast<float>(groupCount) / static_cast<float>(largest));
                 const std::string groupLabel   = groupName(code);
                 const float       labelWidth   = textSize(groupLabel).x;
                 drawList->AddRectFilled(ImVec2(barLeft, bottom - barHeight), ImVec2(barLeft + barWidth, bottom), _colours.accent);
@@ -1017,10 +1005,10 @@ With `tuner` set, e.g. to "RTLSDR:frequency", the panel also tunes the radio: th
 
     void drawBody(float statusHeight, double now) {
         const float width = ImGui::GetContentRegionAvail().x;
-        const bool  wide  = width >= kSingleColumnWidth;
+        const bool  wide  = width >= look().rdsTwoColumnMinWidth;
         card(width, [this, now](const Area& area) { drawStation(area, now); });
         card(width, [this, now](const Area& area) { drawNowPlaying(area, now); });
-        DigitizerUi::IMW::Child sections("##rdsSections", ImVec2(0.f, std::max(0.f, ImGui::GetContentRegionAvail().y - statusHeight)), ImGuiChildFlags_None, ImGuiWindowFlags_None);
+        imw::Child sections("##rdsSections", ImVec2(0.f, std::max(0.f, ImGui::GetContentRegionAvail().y - statusHeight)), ImGuiChildFlags_None, ImGuiWindowFlags_None);
         drawSections(wide, now);
     }
 
@@ -1055,13 +1043,13 @@ With `tuner` set, e.g. to "RTLSDR:frequency", the panel also tunes the radio: th
     void drawWaiting(float height) const {
         const ImVec2      top      = ImGui::GetCursorScreenPos();
         const float       width    = ImGui::GetContentRegionAvail().x;
-        constexpr auto    title    = std::string_view("Waiting for RDS station data");
+        constexpr auto    kTitle   = std::string_view("Waiting for RDS station data");
         const std::string subtitle = _bitRate > 0.0 ? std::format("RDS bits arrive at {:.0f} bit/s", _bitRate) : std::string("no RDS bits yet");
         ImGui::SetCursorScreenPos(ImVec2(top.x, top.y + .4f * height));
         {
             FontScope fontScope = font(&LookAndFeel::fontBig);
-            ImGui::SetCursorPosX(ImGui::GetCursorPosX() + .5f * (width - textSize(title).x));
-            text(title, _colours.text);
+            ImGui::SetCursorPosX(ImGui::GetCursorPosX() + .5f * (width - textSize(kTitle).x));
+            text(kTitle, _colours.text);
         }
         {
             FontScope fontScope = font(&LookAndFeel::fontSmall);
@@ -1080,7 +1068,7 @@ With `tuner` set, e.g. to "RTLSDR:frequency", the panel also tunes the radio: th
         const float  right     = top.x + ImGui::GetContentRegionAvail().x;
         const float  gap       = ImGui::GetStyle().ItemSpacing.x;
         const bool   receiving = _bitRate > 0.0;
-        ImGui::GetWindowDrawList()->AddCircleFilled(ImVec2(top.x + kDotRadius, top.y + .5f * height), kDotRadius, receiving ? _colours.success : _colours.secondary);
+        ImGui::GetWindowDrawList()->AddCircleFilled(ImVec2(top.x + look().rdsDotRadius, top.y + .5f * height), look().rdsDotRadius, receiving ? _colours.success : _colours.secondary);
         std::string status = receiving ? std::format("{:.0f} bit/s", _bitRate) : std::string("no RDS bits");
         if (_reception.blockCounts.size() == 3UZ) {
             const std::uint32_t blocks = _reception.blockCounts[0] + _reception.blockCounts[1] + _reception.blockCounts[2];
@@ -1094,7 +1082,7 @@ With `tuner` set, e.g. to "RTLSDR:frequency", the panel also tunes the radio: th
         } else {
             status += std::format("RDS sync lost{}data {}", kSeparator, ageText(now - _reception.lastUpdateUtcSeconds));
         }
-        ImGui::SetCursorScreenPos(ImVec2(top.x + 2.f * kDotRadius + gap, top.y));
+        ImGui::SetCursorScreenPos(ImVec2(top.x + 2.f * look().rdsDotRadius + gap, top.y));
         text(status, _colours.secondary);
         if (_reception.lastUpdateUtcSeconds == 0.0) {
             return;
@@ -1114,8 +1102,6 @@ With `tuner` set, e.g. to "RTLSDR:frequency", the panel also tunes the radio: th
     [[nodiscard]] static double utcNow() { return std::chrono::duration<double>(std::chrono::system_clock::now().time_since_epoch()).count(); }
 };
 
-} // namespace opendigitizer::charts
-
-inline auto registerRDSViewCompatibilities = opendigitizer::charts::registerChartSignalCompatibility<opendigitizer::charts::RDSView>();
+} // namespace gr::od::charts
 
 #endif // OPENDIGITIZER_CHARTS_RDSVIEW_HPP

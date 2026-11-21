@@ -4,11 +4,9 @@
 #include "Chart.hpp"
 #include "SignalSink.hpp"
 
-#include <algorithm>
 #include <cstddef>
 #include <format>
 #include <limits>
-#include <ranges>
 #include <span>
 #include <string>
 #include <variant>
@@ -19,14 +17,9 @@
 
 #include <implot.h>
 
-namespace opendigitizer::charts {
+namespace gr::od::charts {
 
-[[nodiscard]] inline std::string axisTitle(const ImageAxis& axis, std::string_view fallback) {
-    if (axis.name.empty()) {
-        return std::string(fallback);
-    }
-    return axis.unit.empty() ? axis.name : std::format("{} [{}]", axis.name, axis.unit);
-}
+[[nodiscard]] inline std::string axisTitle(const ImageAxis& axis, std::string_view fallback) { return axis.name.empty() ? std::string(fallback) : labelWithUnit(axis.name, axis.unit); }
 
 [[nodiscard]] inline std::string rowLabel(const ImageAxis& axis, std::size_t row) { return std::format("{} {:g}", axis.name.empty() ? std::string_view("row") : std::string_view(axis.name), axisCoordinate(axis, row)); }
 
@@ -40,7 +33,8 @@ The x axis and the trace names are the frame's gr:axis_* coordinates, else the x
     template<typename T, gr::meta::fixed_string description = "", typename... Arguments>
     using A = gr::Annotated<T, description, Arguments...>;
 
-    static constexpr std::string_view kChartTypeName = "TensorRowsChart";
+    static constexpr std::string_view kChartTypeName    = "TensorRowsChart";
+    static constexpr SignalKind       kSupportedSignals = SignalKind::Image2D;
 
     A<std::string, "chart name", gr::Visible>                                                                        chart_name;
     A<std::string, "chart title">                                                                                    chart_title;
@@ -51,15 +45,11 @@ The x axis and the trace names are the frame's gr:axis_* coordinates, else the x
     A<bool, "Y auto-scale">                                                                                          y_auto_scale = true;
     A<bool, "lag columns", gr::Doc<"columns are lags, lag 0 in the middle, drawn in s from the sink's sample rate">> lag_columns  = false;
 
-    static constexpr SignalKind supportedSignals = SignalKind::Image2D;
-
     GR_MAKE_REFLECTABLE(TensorRowsChart, chart_name, chart_title, data_sinks, show_legend, show_grid, x_auto_scale, y_auto_scale, lag_columns);
 
     std::size_t _drawnTraces = 0UZ;
 
-    [[nodiscard]] static constexpr std::string_view chartTypeName() noexcept { return kChartTypeName; }
-    [[nodiscard]] std::string_view                  uniqueId() const noexcept { return this->unique_name; }
-    [[nodiscard]] std::size_t                       drawnTraces() const noexcept { return _drawnTraces; }
+    [[nodiscard]] std::size_t drawnTraces() const noexcept { return _drawnTraces; }
 
     void reset() { requestRenderReset(); }
 
@@ -70,7 +60,7 @@ The x axis and the trace names are the frame's gr:axis_* coordinates, else the x
 
     gr::work::Result work(std::size_t = std::numeric_limits<std::size_t>::max(), gr::device::DeviceContext& = gr::device::hostBackend()) noexcept { return {0UZ, 0UZ, gr::work::Status::OK}; }
 
-    void settingsChanged(const gr::property_map& /*oldSettings*/, const gr::property_map& newSettings) { handleSettingsChanged(newSettings); }
+    void settingsChanged(const gr::property_map& /*oldSettings*/, const gr::property_map& newSettings) { applyChartSettings(newSettings); }
 
     gr::work::Status draw(const gr::property_map& config = {}) {
         [[maybe_unused]] auto [plotFlags, plotSize, showLegend, chartMode, showGrid, chartStyle] = prepareDrawPrologue(config);
@@ -78,18 +68,11 @@ The x axis and the trace names are the frame's gr:axis_* coordinates, else the x
             drawEmptyPlot("No signals", plotFlags, plotSize, chartMode);
             return gr::work::Status::OK;
         }
-        if (!DigitizerUi::TouchHandler<>::BeginZoomablePlot(chart_name.value, plotSize, plotFlags)) {
+        if (!TouchHandler<>::beginZoomablePlot(chart_name.value, plotSize, plotFlags)) {
             return gr::work::Status::OK;
         }
-        std::vector<const SignalSink*> distinct = _signalSinks | std::views::transform([](const auto& sink) { return static_cast<const SignalSink*>(sink.get()); }) | std::ranges::to<std::vector>();
-        std::ranges::sort(distinct); // each sink's mutex once, in one order
-        distinct.erase(std::ranges::unique(distinct).begin(), distinct.end());
-        std::vector<DataGuard> guards; // the frames' pixels are the sinks' storage
-        guards.reserve(distinct.size());
-        for (const SignalSink* sink : distinct) {
-            guards.push_back(sink->dataGuard());
-        }
-        std::vector<ImageFrame> frames;
+        const std::vector<DataGuard> guards = lockAll(_signalSinks); // the frames' pixels are the sinks' storage
+        std::vector<ImageFrame>      frames;
         frames.reserve(_signalSinks.size());
         for (const auto& sink : _signalSinks) {
             frames.push_back(sink->imageFrame());
@@ -113,8 +96,8 @@ The x axis and the trace names are the frame's gr:axis_* coordinates, else the x
         }
 
         tooltip::showPlotMouseTooltip();
-        handleCommonInteractions(chartMode);
-        DigitizerUi::TouchHandler<>::EndZoomablePlot();
+        updateInteractions(chartMode);
+        TouchHandler<>::endZoomablePlot();
         return gr::work::Status::OK;
     }
 
@@ -140,8 +123,6 @@ The x axis and the trace names are the frame's gr:axis_* coordinates, else the x
     }
 };
 
-} // namespace opendigitizer::charts
-
-inline auto registerTensorRowsChartCompatibilities = opendigitizer::charts::registerChartSignalCompatibility<opendigitizer::charts::TensorRowsChart>();
+} // namespace gr::od::charts
 
 #endif // OPENDIGITIZER_CHARTS_TENSORROWSCHART_HPP

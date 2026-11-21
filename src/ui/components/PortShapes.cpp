@@ -15,7 +15,7 @@
 #include <utility>
 #include <vector>
 
-namespace DigitizerUi {
+namespace gr::od {
 
 namespace {
 
@@ -69,8 +69,7 @@ struct DotPair {
     return {.centers = {center - ImVec2{centerOffset, 0.f}, center + ImVec2{centerOffset, 0.f}}, .diameter = diameter};
 }
 
-// some datatype icons like DataSet<T> draw an icon for DataSet with the type for <T> in the bottom right corner. this is
-// a description of where to draw things for such icons
+// where a DataSet<T> icon draws the icon of its <T> in the bottom-right corner
 struct CornerRingLayout {
     ImVec2 iconMin;
     ImVec2 iconMax;
@@ -267,4 +266,4 @@ void drawSolidCornerRingPort(ImDrawList* drawList, ImVec2 center, float size, Im
     drawList->PathFillConcave(color);
 }
 
-} // namespace DigitizerUi
+} // namespace gr::od

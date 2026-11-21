@@ -2,46 +2,62 @@
 #define OPENDIGITIZER_UI_COMPONENTS_FILTER_COMBO_BOXES_HPP_
 
 #include <algorithm>
+#include <array>
+#include <compare>
+#include <cstddef>
 #include <string>
 #include <vector>
 
-#include "../common/ImguiWrap.hpp"
+#include "../common/Imw.hpp"
 #include "../common/LookAndFeel.hpp"
-#include "StyledStandardWidgets.hpp"
+#include "StyledWidgets.hpp"
 
-namespace DigitizerUi {
+namespace gr::od {
 
-inline auto ColorComboBoxExpectedWidth(const std::string& label) {
+inline auto colorComboBoxExpectedWidth(const std::string& label) {
     const auto padding  = GImGui->Style.FramePadding.x;
-    ImVec2     textSize = ImGui::CalcTextSize(label.c_str(), NULL, true);
+    ImVec2     textSize = ImGui::CalcTextSize(label.c_str(), nullptr, true);
 
-    // Space for the main title, plus the arrow and some extra spacetitle
-    auto comboWidth = 1.3f * textSize.x + textSize.y + 3 * padding;
+    auto comboWidth = LookAndFeel::instance().filterComboTextWidthScale * textSize.x + textSize.y + 3 * padding;
     return comboWidth;
 }
 
-template<typename ComboboxItem>
-inline auto ColorComboBox(char* id, const std::string& label, ImColor color, float comboWidth, std::vector<ComboboxItem>& items) {
-    std::optional<ComboboxItem*> result;
+struct FilterTag {
+    std::size_t category = 0UZ;
+    std::string title;
+    bool        isActive = false;
+
+    auto operator<=>(const FilterTag&) const = default;
+};
+
+struct FilterCombo {
+    std::string            id;
+    std::string            label;
+    std::array<ImColor, 2> color;
+    std::vector<FilterTag> items;
+};
+
+inline FilterTag* colorComboBox(char* id, const std::string& label, ImColor color, float comboWidth, std::vector<FilterTag>& items) {
+    FilterTag* result = nullptr;
 
     ImGui::SetNextItemWidth(comboWidth);
 
-    const bool somethingIsSelected = std::ranges::any_of(items, &ComboboxItem::isActive);
+    const bool somethingIsSelected = std::ranges::any_of(items, &FilterTag::isActive);
     if (!somethingIsSelected) {
         color = ImGuiCol_FrameBg;
     }
 
-    IMW::StyleColor frameBg(ImGuiCol_FrameBg, color);
-    IMW::StyleColor frameBgHovered(ImGuiCol_FrameBgHovered, color);
-    IMW::StyleColor frameBgActive(ImGuiCol_FrameBgActive, color);
-    IMW::StyleColor button(ImGuiCol_Button, color);
-    IMW::StyleColor buttonHovered(ImGuiCol_ButtonHovered, color);
-    IMW::StyleColor buttonActive(ImGuiCol_ButtonActive, color);
+    imw::StyleColor frameBg(ImGuiCol_FrameBg, color);
+    imw::StyleColor frameBgHovered(ImGuiCol_FrameBgHovered, color);
+    imw::StyleColor frameBgActive(ImGuiCol_FrameBgActive, color);
+    imw::StyleColor button(ImGuiCol_Button, color);
+    imw::StyleColor buttonHovered(ImGuiCol_ButtonHovered, color);
+    imw::StyleColor buttonActive(ImGuiCol_ButtonActive, color);
 
-    if (auto combo = DigitizerUi::ComboBox(id, label.c_str(), 0)) {
+    if (auto combo = ComboBox(id, label.c_str(), 0)) {
         for (auto& item : items) {
-            IMW::StyleColor itemBg(ImGuiCol_Header, color);
-            if (DigitizerUi::Selectable(item.title.c_str(), item.isActive)) {
+            imw::StyleColor itemBg(ImGuiCol_Header, color);
+            if (selectable(item.title.c_str(), item.isActive)) {
                 result = std::addressof(item);
             }
         }
@@ -50,34 +66,26 @@ inline auto ColorComboBox(char* id, const std::string& label, ImColor color, flo
     return result;
 }
 
-template<typename ComboboxDefinition>
-class FilterComboBoxes {
-private:
-    std::vector<ComboboxDefinition> m_comboboxes;
+struct FilterComboBoxes {
+    std::vector<FilterCombo> combos;
 
-public:
-    explicit FilterComboBoxes(std::vector<ComboboxDefinition> comboboxes = {}) : m_comboboxes(std::move(comboboxes)) {};
-
-    void setData(std::vector<ComboboxDefinition> comboboxes) { m_comboboxes = std::move(comboboxes); }
-
-    auto draw() {
-        std::optional<std::remove_cvref_t<decltype(*std::declval<ComboboxDefinition>().items.begin())>*> result;
+    [[nodiscard]] FilterTag* draw() {
+        FilterTag* result = nullptr;
 
         auto contentWidth          = ImGui::GetContentRegionAvail().x;
         auto remainingContentWidth = contentWidth;
         bool first                 = true;
 
-        for (ComboboxDefinition& combo : m_comboboxes) {
-            float desiredWidth = ColorComboBoxExpectedWidth(combo.label.c_str());
-            if (!first && remainingContentWidth > desiredWidth * 1.2f) {
+        for (FilterCombo& combo : combos) {
+            float desiredWidth = colorComboBoxExpectedWidth(combo.label);
+            if (!first && remainingContentWidth > desiredWidth * LookAndFeel::instance().filterComboWrapScale) {
                 ImGui::SameLine();
             } else {
                 remainingContentWidth = contentWidth;
             }
-            remainingContentWidth -= desiredWidth * 1.2f;
+            remainingContentWidth -= desiredWidth * LookAndFeel::instance().filterComboWrapScale;
 
-            auto currentResult = ColorComboBox(combo.id.data(), combo.label, combo.color[LookAndFeel::instance().style == LookAndFeel::Style::Light ? 0 : 1], desiredWidth, combo.items);
-            if (currentResult) {
+            if (FilterTag* currentResult = colorComboBox(combo.id.data(), combo.label, combo.color[LookAndFeel::instance().style == LookAndFeel::Style::Light ? 0 : 1], desiredWidth, combo.items)) {
                 result = currentResult;
             }
             first = false;
@@ -87,6 +95,6 @@ public:
     }
 };
 
-} // namespace DigitizerUi
+} // namespace gr::od
 
 #endif

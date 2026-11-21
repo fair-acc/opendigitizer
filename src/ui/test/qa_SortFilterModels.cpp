@@ -15,16 +15,14 @@
 #include <variant>
 #include <vector>
 
+using namespace gr::od;
+
 using namespace boost::ut;
-using DigitizerUi::components::SortFilterModel;
-using DigitizerUi::components::SortFilterModelFilter;
-using DigitizerUi::components::SortFilterModelParams;
-using DigitizerUi::components::SortFilterModelSortByComparisonStrategy;
-using DigitizerUi::components::SortFilterModelSortByScoreStrategy;
-using DigitizerUi::components::SortFilterTreeModel;
-using DigitizerUi::components::SortFilterTreeModelNode;
-using DigitizerUi::components::SortFilterTreeModelParams;
-using DigitizerUi::components::SortFilterTreeModelSortByComparisonStrategy;
+using components::SortFilterModel;
+using components::SortFilterModelParams;
+using components::SortFilterTreeModel;
+using components::SortFilterTreeModelNode;
+using components::SortFilterTreeModelParams;
 
 namespace {
 
@@ -33,11 +31,11 @@ const std::vector<std::string> sampleWords{                                     
     "dipole", "cavity", "kicker", "Spectrum", "orbit", "ramp", "cycle", "archive",   //
     "Cavity", "backup", "storage", "ring", "linac", "dipole", "Dipole"};
 
-struct BadComparator : SortFilterModelSortByComparisonStrategy {
+struct BadComparator {
     const std::vector<std::string>& items;
     explicit BadComparator(const std::vector<std::string>& viewedItems) : items(viewedItems) {}
 
-    bool less(std::size_t lhsIndex, std::size_t rhsIndex) const override {
+    bool operator()(std::size_t lhsIndex, std::size_t rhsIndex) const {
         const std::string& lhs = items[lhsIndex];
         const std::string& rhs = items[rhsIndex];
         if (lhs.size() != rhs.size()) {
@@ -48,11 +46,11 @@ struct BadComparator : SortFilterModelSortByComparisonStrategy {
     }
 };
 
-struct BadSortByScoreStrategy : SortFilterModelSortByScoreStrategy {
+struct BadSortByScoreStrategy {
     const std::vector<std::string>& items;
     explicit BadSortByScoreStrategy(const std::vector<std::string>& viewedItems) : items(viewedItems) {}
 
-    float score(std::size_t itemIndex) const override { return static_cast<float>(items[itemIndex].size()); }
+    float operator()(std::size_t itemIndex) const { return static_cast<float>(items[itemIndex].size()); }
 };
 
 struct CountingSortByScoreStrategy : BadSortByScoreStrategy {
@@ -60,15 +58,13 @@ struct CountingSortByScoreStrategy : BadSortByScoreStrategy {
 
     CountingSortByScoreStrategy(const std::vector<std::string>& viewedItems, std::size_t& evaluationCounter) : BadSortByScoreStrategy(viewedItems), numEvaluations(evaluationCounter) {}
 
-    float score(std::size_t itemIndex) const override {
+    float operator()(std::size_t itemIndex) const {
         ++numEvaluations;
-        return BadSortByScoreStrategy::score(itemIndex);
+        return BadSortByScoreStrategy::operator()(itemIndex);
     }
 };
 
-struct EvenIndexFilter : SortFilterModelFilter {
-    bool matches(std::size_t itemIndex) const override { return itemIndex % 2UZ == 0UZ; }
-};
+constexpr auto isEvenIndex = [](std::size_t itemIndex) { return itemIndex % 2UZ == 0UZ; };
 
 std::vector<std::size_t> stableSortedIndices(std::size_t numItems, const std::function<bool(std::size_t, std::size_t)>& less) {
     std::vector<std::size_t> indices(numItems);
@@ -100,8 +96,9 @@ SortFilterTreeModelParams paramsFor(const PathList& paths) {
     return {
         .numItems            = paths.size(),
         .getItemPathFunction = [&paths](std::size_t index) { return paths[index]; },
-        .filters             = {},
-        .sortStrategy        = {},
+        .filter              = {},
+        .less                = {},
+        .score               = {},
     };
 }
 
@@ -110,12 +107,12 @@ struct TreeChild;
 using TreeChildren = std::vector<TreeChild>;
 struct TreeChild {
     std::string name;
-    // either a leaf's item index, or a branch's children. uses int so it accepts int literals in the initializer
+    // either a leaf's item index, or a branch's children; int, so that it accepts int literals in the initialiser
     std::variant<int, TreeChildren> value;
     bool                            operator==(const TreeChild&) const = default;
 };
 
-/// Convert a SortFilterTreeModel into the TreeChildren above so we can compare it with == to the expected value
+/// a SortFilterTreeModel as TreeChildren, comparable with == to the expected value
 TreeChildren resolveSortingAndReturnTree(SortFilterTreeModel& model) {
     while (!model.isComplete()) {
         model.work();
@@ -138,14 +135,12 @@ TreeChildren resolveSortingAndReturnTree(SortFilterTreeModel& model) {
     return std::move(childrenStack.front());
 }
 
-struct NameComparator : SortFilterTreeModelSortByComparisonStrategy {
-    bool less(const SortFilterTreeModelNode& lhs, const SortFilterTreeModelNode& rhs) const override { return lhs.name < rhs.name; }
-};
+constexpr auto nameLess = [](const SortFilterTreeModelNode& lhs, const SortFilterTreeModelNode& rhs) { return lhs.name < rhs.name; };
 
 template<typename T>
 using OrderedStringMap = std::map<std::string, T, std::less<>>;
 
-struct RejectSomeNamesFromSamplePathsFilter : SortFilterModelFilter {
+struct RejectSomeNamesFromSamplePathsFilter {
     using NameGetter = std::function<std::string(std::size_t)>;
     std::vector<std::string> rejected;
     OrderedStringMap<int>*   invocationCounts = nullptr;
@@ -153,7 +148,7 @@ struct RejectSomeNamesFromSamplePathsFilter : SortFilterModelFilter {
     explicit RejectSomeNamesFromSamplePathsFilter(std::vector<std::string> rejectedNames, OrderedStringMap<int>* counts = nullptr) //
         : rejected(std::move(rejectedNames)), invocationCounts(counts) {}
 
-    bool matches(std::size_t index) const override {
+    bool operator()(std::size_t index) const {
         if (invocationCounts != nullptr) {
             ++(*invocationCounts)[samplePaths.at(index).back()];
         }
@@ -164,32 +159,32 @@ struct RejectSomeNamesFromSamplePathsFilter : SortFilterModelFilter {
 } // namespace
 
 const static boost::ut::suite<"SortFilterModel"> sortFilterModelTests = [] { // NOSONAR (cognitive complexity)
-    constexpr static auto badComparatorFunction = [](std::size_t lhs, std::size_t rhs) { return BadComparator{sampleWords}.less(lhs, rhs); };
+    constexpr static auto badComparatorFunction = [](std::size_t lhs, std::size_t rhs) { return BadComparator{sampleWords}(lhs, rhs); };
 
     "testing sort stability by using sort strategies that say most things are equal"_test = [] {
         "SortFilterModel is a stable sort"_test = [] {
-            SortFilterModel model({.numViewedItems = sampleWords.size(), .filters = {}, .sortStrategy = std::make_unique<BadComparator>(sampleWords)});
+            SortFilterModel model({.numViewedItems = sampleWords.size(), .filter = {}, .less = BadComparator{sampleWords}, .score = {}});
 
             expect(resolveSortFilterOutput(model) == stableSortedIndices(sampleWords.size(), badComparatorFunction));
         };
 
         "SortFilterModel with a small work count"_test = [] {
-            SortFilterModel model({.numViewedItems = sampleWords.size(), .filters = {}, .sortStrategy = std::make_unique<BadComparator>(sampleWords)});
+            SortFilterModel model({.numViewedItems = sampleWords.size(), .filter = {}, .less = BadComparator{sampleWords}, .score = {}});
             model.setMaxWork(1UZ);
 
             expect(resolveSortFilterOutput(model) == stableSortedIndices(sampleWords.size(), badComparatorFunction));
         };
 
-        constexpr static auto badSortByScoreStrategyFunction = [](std::size_t lhs, std::size_t rhs) { return BadSortByScoreStrategy{sampleWords}.score(lhs) > BadSortByScoreStrategy{sampleWords}.score(rhs); };
+        constexpr static auto badSortByScoreStrategyFunction = [](std::size_t lhs, std::size_t rhs) { return BadSortByScoreStrategy{sampleWords}(lhs) > BadSortByScoreStrategy{sampleWords}(rhs); };
 
         "SortFilterModelSortByScoreStrategy is a stable sort"_test = [] {
-            SortFilterModel model({.numViewedItems = sampleWords.size(), .filters = {}, .sortStrategy = std::make_unique<BadSortByScoreStrategy>(sampleWords)});
+            SortFilterModel model({.numViewedItems = sampleWords.size(), .filter = {}, .less = {}, .score = BadSortByScoreStrategy{sampleWords}});
 
             expect(resolveSortFilterOutput(model) == stableSortedIndices(sampleWords.size(), badSortByScoreStrategyFunction));
         };
 
         "SortByScoreStrategy with small work size"_test = [] {
-            SortFilterModel model({.numViewedItems = sampleWords.size(), .filters = {}, .sortStrategy = std::make_unique<BadSortByScoreStrategy>(sampleWords)});
+            SortFilterModel model({.numViewedItems = sampleWords.size(), .filter = {}, .less = {}, .score = BadSortByScoreStrategy{sampleWords}});
             model.setMaxWork(1UZ);
 
             expect(resolveSortFilterOutput(model) == stableSortedIndices(sampleWords.size(), badSortByScoreStrategyFunction));
@@ -198,8 +193,8 @@ const static boost::ut::suite<"SortFilterModel"> sortFilterModelTests = [] { // 
 
     "SortByScoreStrategy is only evaluated once per item"_test = [] {
         std::size_t           numEvaluations = 0UZ;
-        SortFilterModelParams params{.numViewedItems = sampleWords.size(), .filters = {}, .sortStrategy = std::make_unique<CountingSortByScoreStrategy>(sampleWords, numEvaluations)};
-        params.filters.filterObjects.emplace_back(std::make_unique<EvenIndexFilter>());
+        SortFilterModelParams params{.numViewedItems = sampleWords.size(), .filter = isEvenIndex, .less = {}, .score = CountingSortByScoreStrategy{sampleWords, numEvaluations}};
+        params.filter = isEvenIndex;
         SortFilterModel model(std::move(params));
 
         const std::vector<std::size_t> shown = resolveSortFilterOutput(model);
@@ -207,7 +202,7 @@ const static boost::ut::suite<"SortFilterModel"> sortFilterModelTests = [] { // 
     };
 
     "Null sort strategy means items just stay in the same order"_test = [] {
-        SortFilterModel model({.numViewedItems = sampleWords.size(), .filters = {}, .sortStrategy = {}});
+        SortFilterModel model({.numViewedItems = sampleWords.size(), .filter = {}, .less = {}, .score = {}});
 
         std::vector<std::size_t> expected(sampleWords.size());
         std::iota(expected.begin(), expected.end(), 0UZ);
@@ -215,8 +210,8 @@ const static boost::ut::suite<"SortFilterModel"> sortFilterModelTests = [] { // 
     };
 
     "Filtering and sorting together works, and is the same as std::erase_if and std::stable_sort"_test = [] {
-        SortFilterModelParams params{.numViewedItems = sampleWords.size(), .filters = {}, .sortStrategy = std::make_unique<BadComparator>(sampleWords)};
-        params.filters.filterObjects.emplace_back(std::make_unique<EvenIndexFilter>());
+        SortFilterModelParams params{.numViewedItems = sampleWords.size(), .filter = {}, .less = BadComparator{sampleWords}, .score = {}};
+        params.filter = isEvenIndex;
         SortFilterModel model(std::move(params));
 
         auto expected = stableSortedIndices(sampleWords.size(), badComparatorFunction);
@@ -225,11 +220,11 @@ const static boost::ut::suite<"SortFilterModel"> sortFilterModelTests = [] { // 
     };
 
     "Number of work() calls looks like the expected amount"_test = [] {
-        SortFilterModel       model({.numViewedItems = sampleWords.size(), .filters = {}, .sortStrategy = std::make_unique<BadComparator>(sampleWords)});
-        constexpr std::size_t maxWork = 3UZ;
-        model.setMaxWork(maxWork);
+        SortFilterModel       model({.numViewedItems = sampleWords.size(), .filter = {}, .less = BadComparator{sampleWords}, .score = {}});
+        constexpr std::size_t kMaxWork = 3UZ;
+        model.setMaxWork(kMaxWork);
 
-        const std::size_t expectedWorkCalls = (sampleWords.size() + maxWork - 1UZ) / maxWork;
+        const std::size_t expectedWorkCalls = (sampleWords.size() + kMaxWork - 1UZ) / kMaxWork;
         for (std::size_t call = 0UZ; call < expectedWorkCalls; ++call) {
             expect(!model.isComplete()) << "work should not be done after " << call << " calls";
             expect(le(model.progress(), 1.f));
@@ -240,7 +235,7 @@ const static boost::ut::suite<"SortFilterModel"> sortFilterModelTests = [] { // 
     };
 
     "an empty model resolves immediately"_test = [] {
-        SortFilterModel model({.numViewedItems = 0UZ, .filters = {}, .sortStrategy = {}});
+        SortFilterModel model({.numViewedItems = 0UZ, .filter = {}, .less = {}, .score = {}});
         expect(model.isComplete());
         expect(eq(model.items().size(), 0UZ));
         expect(eq(model.progress(), 1.f));
@@ -268,8 +263,8 @@ const static boost::ut::suite<"SortFilterTreeModel"> sortFilterTreeModelTests = 
     };
 
     "comparator orders leaves and branches with a small work size"_test = [] {
-        auto params         = paramsFor(samplePaths);
-        params.sortStrategy = std::make_unique<NameComparator>();
+        auto params = paramsFor(samplePaths);
+        params.less = nameLess;
         SortFilterTreeModel model(std::move(params));
         model.setMaxWork(1UZ);
 
@@ -291,8 +286,8 @@ const static boost::ut::suite<"SortFilterTreeModel"> sortFilterTreeModelTests = 
     };
 
     "score evaluator sibling ordering"_test = [] {
-        auto params         = paramsFor(samplePaths);
-        params.sortStrategy = DigitizerUi::components::makeSimpleSortFilterTreeModelSortByScoreStrategy([](const SortFilterTreeModelNode& node) { return static_cast<float>(node.name.size()); });
+        auto params  = paramsFor(samplePaths);
+        params.score = [](const SortFilterTreeModelNode& node) { return static_cast<float>(node.name.size()); };
         SortFilterTreeModel model(std::move(params));
 
         // longest names first always
@@ -313,8 +308,8 @@ const static boost::ut::suite<"SortFilterTreeModel"> sortFilterTreeModelTests = 
     };
 
     "a filtered leaf is not inserted"_test = [] {
-        auto params = paramsFor(samplePaths);
-        params.filters.filterObjects.emplace_back(std::make_unique<RejectSomeNamesFromSamplePathsFilter>(std::vector<std::string>{"spectrum", "magnet"}));
+        auto params   = paramsFor(samplePaths);
+        params.filter = RejectSomeNamesFromSamplePathsFilter(std::vector<std::string>{"spectrum", "magnet"});
         SortFilterTreeModel model(std::move(params));
 
         const TreeChildren expected{
@@ -326,8 +321,8 @@ const static boost::ut::suite<"SortFilterTreeModel"> sortFilterTreeModelTests = 
     };
 
     "a branch with no leaves is not shown"_test = [] {
-        auto params = paramsFor(samplePaths);
-        params.filters.filterObjects.emplace_back(std::make_unique<RejectSomeNamesFromSamplePathsFilter>(std::vector<std::string>{"vacuum"}));
+        auto params   = paramsFor(samplePaths);
+        params.filter = RejectSomeNamesFromSamplePathsFilter(std::vector<std::string>{"vacuum"});
         SortFilterTreeModel model(std::move(params));
 
         // "remote/cryo" only contained "vacuum" so it must not appear as an empty branch
@@ -356,7 +351,7 @@ const static boost::ut::suite<"SortFilterTreeModel"> sortFilterTreeModelTests = 
     "a branch is not created if all its children are pruned"_test = [] {
         OrderedStringMap<int> invocationCounts;
         auto                  params = paramsFor(samplePaths);
-        params.filters.filterObjects.emplace_back(std::make_unique<RejectSomeNamesFromSamplePathsFilter>(std::vector<std::string>{"orbit", "injection", "extraction"}, &invocationCounts));
+        params.filter                = RejectSomeNamesFromSamplePathsFilter(std::vector<std::string>{"orbit", "injection", "extraction"}, &invocationCounts);
         SortFilterTreeModel model(std::move(params));
 
         const TreeChildren expected{
@@ -373,10 +368,10 @@ const static boost::ut::suite<"SortFilterTreeModel"> sortFilterTreeModelTests = 
 
     "work is spread over the expected number of calls"_test = [] {
         SortFilterTreeModel   model(paramsFor(samplePaths));
-        constexpr std::size_t maxWork = 2UZ;
-        model.setMaxWork(maxWork);
+        constexpr std::size_t kMaxWork = 2UZ;
+        model.setMaxWork(kMaxWork);
 
-        const std::size_t expectedWorkCalls = (samplePaths.size() + maxWork - 1UZ) / maxWork;
+        const std::size_t expectedWorkCalls = (samplePaths.size() + kMaxWork - 1UZ) / kMaxWork;
         for (std::size_t call = 0UZ; call < expectedWorkCalls; ++call) {
             expect(!model.isComplete()) << "work should not be done after " << call << " calls";
             expect(le(model.progress(), 1.f));

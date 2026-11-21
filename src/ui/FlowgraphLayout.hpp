@@ -4,7 +4,7 @@
 #include <span>
 #include <vector>
 
-namespace DigitizerUi::flowgraph_layout {
+namespace gr::od::flowgraph_layout {
 
 struct Size {
     float width  = 0.f;
@@ -20,7 +20,7 @@ struct Edge {
     std::size_t source = 0UZ;
     std::size_t target = 0UZ;
 
-    // Displayed port centres, measured from the top of their nodes.
+    // displayed port centres, from the top of their nodes
     float sourcePortY = 0.f;
     float targetPortY = 0.f;
 };
@@ -41,8 +41,8 @@ struct WrappedRows {
     Size                  containerSize; // total size of the area all the blocks fit into
 };
 
-/// Places some elements into a container, from left to right, spaced by a gap, wrapping to the next line when exceeding preferredWidth.
-/// Items will not wrap and instead grow the container *if* minimumContainerWidth is smaller than the gaps plus the size of the first minimumNodesOnFirstRow nodes
+/// places the nodes left to right in a container, `gap` apart, wrapping beyond preferredWidth;
+/// they grow the container instead of wrapping when minimumContainerWidth is smaller than the gaps plus the first minimumNodesOnFirstRow nodes
 [[nodiscard]] WrappedRows computeFixedBlockWrappingWithGap(std::span<const Size> nodeSizes, float minimumContainerWidth, float gap, std::size_t minimumNodesOnFirstRow);
 
-} // namespace DigitizerUi::flowgraph_layout
+} // namespace gr::od::flowgraph_layout

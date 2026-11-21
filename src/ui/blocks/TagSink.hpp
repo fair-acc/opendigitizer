@@ -18,7 +18,7 @@
 #include <utility>
 #include <vector>
 
-namespace opendigitizer {
+namespace gr::od {
 
 template<typename T>
 struct TagSink : gr::Block<TagSink<T>> {
@@ -101,7 +101,6 @@ Only the newest `n_tag_history` tags are kept.)"">;
     [[nodiscard]] SignalKind                  signalKind() const noexcept { return SignalKind::Streaming; }
     [[nodiscard]] std::shared_ptr<std::mutex> sharedDataMutex() const { return _dataMutex; }
     [[nodiscard]] std::size_t                 totalSampleCount() const noexcept { return _sampleCount; }
-    [[nodiscard]] bool                        hasStreamingTags() const noexcept { return !_tags.empty(); }
 
     void forEachTag(std::function<void(double, const gr::property_map&)> callback) const {
         for (const ReceivedTag& tag : _tags) {
@@ -110,6 +109,6 @@ Only the newest `n_tag_history` tags are kept.)"">;
     }
 };
 
-} // namespace opendigitizer
+} // namespace gr::od
 
 #endif // OPENDIGITIZER_TAGSINK_HPP

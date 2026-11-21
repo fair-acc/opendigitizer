@@ -12,7 +12,7 @@
 #include <string_view>
 #include <vector>
 
-namespace Digitizer {
+namespace digitizer {
 
 inline std::string trimWhitespace(std::string_view text) {
     std::size_t start = 0;
@@ -40,8 +40,8 @@ struct SearchPaths {
         return std::filesystem::path(trimmedPath).lexically_normal().string();
     }
 
-    void append(std::string_view _path) {
-        if (auto path = normalisePath(_path); !path.empty()) {
+    void append(std::string_view rawPath) {
+        if (auto path = normalisePath(rawPath); !path.empty()) {
             paths.push_back(path);
         }
     }
@@ -115,6 +115,6 @@ inline std::vector<std::string> resolvePluginSearchPaths(std::span<const std::st
 #endif
 }
 
-} // namespace Digitizer
+} // namespace digitizer
 
 #endif // OPENDIGITIZER_PLUGIN_PATHS_H

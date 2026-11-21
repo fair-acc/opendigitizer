@@ -21,7 +21,7 @@ inline std::string valueToString(const gr::pmt::Value& val) {
     return out;
 }
 
-inline void pretty_print_map(const gr::property_map& map, std::size_t maxLevel = -1UZ, std::size_t level = 0) {
+inline void printMap(const gr::property_map& map, std::size_t maxLevel = -1UZ, std::size_t level = 0) {
     if (level == maxLevel) {
         return;
     }
@@ -35,7 +35,7 @@ inline void pretty_print_map(const gr::property_map& map, std::size_t maxLevel =
             auto visitorFunction = gr::meta::overloaded(
                 [level, maxLevel](const gr::property_map& sub) {
                     std::println();
-                    pretty_print_map(sub, maxLevel, level + 1);
+                    printMap(sub, maxLevel, level + 1);
                 },
                 [level, maxLevel](const gr::Tensor<gr::pmt::Value>& sub) {
                     std::println("ARRAY");
@@ -45,7 +45,7 @@ inline void pretty_print_map(const gr::property_map& map, std::size_t maxLevel =
                         if (val.is_tensor()) {
                             std::println("{}{}", std::string(5 * level, ' '), val);
                         } else if (const auto optMap = val.get_if<gr::property_map>()) {
-                            pretty_print_map(*optMap, maxLevel, level + 2);
+                            printMap(*optMap, maxLevel, level + 2);
                         }
                     }
                 },
@@ -74,7 +74,7 @@ inline void pretty_print_map(const gr::property_map& map, std::size_t maxLevel =
     }
 }
 
-template<typename T, bool allow_conversion = false>
+template<typename T, bool allowConversion = false>
 inline std::expected<T, gr::Error> getOptionalProperty(const gr::property_map& map, std::string_view propertyName) {
     auto it = map.find(propertyName);
     if (it == map.cend()) {
@@ -103,7 +103,7 @@ inline std::expected<T, gr::Error> getOptionalProperty(const gr::property_map& m
         if (const auto tv = val.get_if<gr::TensorView<typename T::value_type>>()) {
             return tv->owned();
         }
-    } else if constexpr (!allow_conversion) {
+    } else if constexpr (!allowConversion) {
         if constexpr (gr::TensorLike<T> && !gr::TensorViewLike<T>) {
             const gr::pmt::Value value = it->second;
             if (const auto tensor = value.get_if<gr::TensorView<typename T::value_type>>()) {
@@ -124,13 +124,13 @@ inline std::expected<T, gr::Error> getOptionalProperty(const gr::property_map& m
     return std::unexpected(gr::Error(std::format("Field {} has incorrect type; expected {}", propertyName, gr::meta::type_name<T>())));
 }
 
-template<typename T, bool allow_conversion = false>
+template<typename T, bool allowConversion = false>
 inline std::expected<T, gr::Error> getOptionalProperty(const gr::property_map& map, std::string_view propertyName, auto... propertySubNames)
 requires(sizeof...(propertySubNames) > 0)
 {
     static_assert((std::is_convertible_v<decltype(propertySubNames), std::string_view> && ...));
     if (auto innerMap = map.get_if<gr::property_map>(propertyName); innerMap) {
-        return getOptionalProperty<T, allow_conversion>(*innerMap, propertySubNames...);
+        return getOptionalProperty<T, allowConversion>(*innerMap, propertySubNames...);
     }
     return std::unexpected(gr::Error(std::format("Field {} in YAML object is either missing or has an incorrect type (expected gr::property_map)", propertyName)));
 }

@@ -3,17 +3,20 @@
 
 #include <gnuradio-4.0/Tag.hpp>
 
-#include <magic_enum.hpp>
+#include <gnuradio-4.0/meta/reflection.hpp>
 
 #include <algorithm>
+#include <limits>
 #include <optional>
 #include <ranges>
 #include <string>
 #include <vector>
 
-namespace DigitizerUi {
+namespace gr::od {
 
-/// Constraints on the values a block property accepts
+inline constexpr double kImGuiSliderDoubleLimit = std::numeric_limits<double>::max() / 2.; // imgui_widgets.cpp asserts beyond it
+
+/// constraints on the values a block property accepts
 struct BlockPropertyHints {
     // we have no validation to stop min from being greater than max
     std::optional<double>    min     = {};
@@ -24,7 +27,7 @@ struct BlockPropertyHints {
     [[nodiscard]] constexpr explicit operator bool() const { return has_value(); }
     [[nodiscard]] constexpr bool     operator==(const BlockPropertyHints&) const = default;
 
-    /// Returns the hints which satisfy both this and @param other, or nullopt if the ranges or choices do not overlap at all
+    /// the hints satisfying both this and `other`; nullopt when the ranges or choices do not overlap
     [[nodiscard]] constexpr std::optional<BlockPropertyHints> intersection(const BlockPropertyHints& other) const {
         constexpr static auto selectRangeBound = [](std::optional<double> a, std::optional<double> b, auto pick) -> std::optional<double> {
             if (a.has_value() && b.has_value()) {
@@ -94,22 +97,21 @@ struct BlockPropertyHints {
     }
 };
 
-/// DrawableBlockConfig is a strongly typed representation of the values that
-/// opendigitizer will pass to a drawable UI block's draw() function. This
-/// defines the expected schema and parsing rules.
-///
-/// An example config:
+/// the values opendigitizer passes to a drawable UI block's draw(), parsed with strict type checking (max_width a float, min/max hints doubles), e.g.
 /// {"first_controlled_property": {"value": 30.f, "hints": {"min": 10., "max": 100.}}, "aggregate_controlled_property_hints": {"min": 10., "max": 50.}}
-///
-/// Or:
 /// {"max_width": 30.f, show_label: false, "drawing_context": "FlowgraphView", "first_controlled_property": { "value": true } }
-///
-/// Note that parsing uses strict type checking.
-/// max_width must be a float, and min/max hints must be doubles.
 struct DrawableBlockConfig {
     enum class DrawingContext { Toolbar, FlowgraphView };
 
     struct ControlledProperty {
+        gr::pmt::Value     value = {};
+        BlockPropertyHints hints = {};
+        // sometimes empty for testing purposes
+        std::string targetBlockName    = {};
+        std::string targetPropertyName = {};
+        // the target block's settings a control lists in its `target_settings_keys` setting
+        gr::property_map targetSettings = {};
+
         [[nodiscard]] static constexpr ControlledProperty fromMap(const gr::property_map& configMap) {
             ControlledProperty result;
             using namespace std::string_view_literals;
@@ -159,15 +161,13 @@ struct DrawableBlockConfig {
         [[nodiscard]] constexpr bool     has_value() const { return value.has_value(); }
         [[nodiscard]] constexpr explicit operator bool() const { return this->has_value(); }
         [[nodiscard]] constexpr bool     operator==(const ControlledProperty&) const = default;
-
-        gr::pmt::Value     value = {};
-        BlockPropertyHints hints = {};
-        // sometimes empty for testing purposes
-        std::string targetBlockName    = {};
-        std::string targetPropertyName = {};
-        // the target block's settings a control lists in its `target_settings_keys` setting
-        gr::property_map targetSettings = {};
     };
+
+    ControlledProperty            firstControlledProperty          = {};
+    BlockPropertyHints            aggregateControlledPropertyHints = {}; // constraints satisfying every property in the target_map, not just the first
+    std::optional<float>          maxWidth                         = {};
+    std::optional<bool>           showLabel                        = {};
+    std::optional<DrawingContext> drawingContext                   = {};
 
     [[nodiscard]] static constexpr DrawableBlockConfig fromMap(const gr::property_map& configMap) {
         using namespace std::string_view_literals;
@@ -182,7 +182,7 @@ struct DrawableBlockConfig {
             result.showLabel = *showLabel;
         }
         if (auto drawingContext = configMap.get_if<std::string_view>("drawing_context"sv)) {
-            result.drawingContext = magic_enum::enum_cast<DrawingContext>(*drawingContext);
+            result.drawingContext = gr::meta::parseEnum<DrawingContext>(*drawingContext);
         }
         return result;
     }
@@ -208,7 +208,7 @@ struct DrawableBlockConfig {
             map->emplace("show_label"sv, *showLabel);
         }
         if (drawingContext.has_value()) {
-            map->emplace("drawing_context"sv, std::string(magic_enum::enum_name(*drawingContext)));
+            map->emplace("drawing_context"sv, std::string(gr::meta::enumName(*drawingContext).value_or("")));
         }
         return map;
     }
@@ -216,14 +216,8 @@ struct DrawableBlockConfig {
     [[nodiscard]] constexpr bool     has_value() const { return firstControlledProperty || aggregateControlledPropertyHints || maxWidth.has_value() || showLabel.has_value() || drawingContext.has_value(); }
     [[nodiscard]] constexpr explicit operator bool() const { return this->has_value(); }
     [[nodiscard]] constexpr bool     operator==(const DrawableBlockConfig&) const = default;
-
-    ControlledProperty            firstControlledProperty          = {};
-    BlockPropertyHints            aggregateControlledPropertyHints = {}; // constraints satisfying every property in the target_map, not just the first
-    std::optional<float>          maxWidth                         = {};
-    std::optional<bool>           showLabel                        = {};
-    std::optional<DrawingContext> drawingContext                   = {};
 };
 
-} // namespace DigitizerUi
+} // namespace gr::od
 
 #endif

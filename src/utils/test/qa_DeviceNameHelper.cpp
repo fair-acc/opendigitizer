@@ -1,4 +1,4 @@
-#include "../include/FAIR/DeviceNameHelper.hpp"
+#include "../include/fair/DeviceNameHelper.hpp"
 #include <boost/ut.hpp>
 
 #include <format>
@@ -40,11 +40,11 @@ inline std::size_t estimateMinimalMemoryUsage(const std::vector<SignalInfo>& tab
     return std::accumulate(table.begin(), table.end(), std::size_t{0}, [stringMemoryUsage](std::size_t sum, const SignalInfo& info) { return sum + stringMemoryUsage(info.deviceName) + stringMemoryUsage(info.digitizerDevice) + stringMemoryUsage(info.fullSignalName) + stringMemoryUsage(info.quantity) + stringMemoryUsage(info.sampleFrequency) + stringMemoryUsage(info.siUnit) + stringMemoryUsage(info.accelerator) + stringMemoryUsage(info.deviceFunction); });
 }
 
-constexpr std::array<std::string_view, 2>  subDeviceProperties = {"gap", "generator"};
-constexpr std::array<std::string_view, 4>  magnetQuantities    = {"voltage", "current", "voltage_diff", "current_diff"};
-constexpr std::array<std::string_view, 3>  commonQuantities    = {"temperature", "cpu_load", "n_user"};
-constexpr std::array<std::string_view, 3>  rfQuantities        = {"frequency", "phase", "amplitude"};
-constexpr std::array<std::string_view, 15> sampleFrequencies   = {"1Hz", "10Hz", "25Hz", "100Hz", "1kHz", "10kHz", "Injection1", "Injection2", "Injection3", "Injection4", "RampStart", "Extraction", "Diag1", "Diag2", "Diag3"};
+constexpr std::array<std::string_view, 2>  kSubDeviceProperties = {"gap", "generator"};
+constexpr std::array<std::string_view, 4>  kMagnetQuantities    = {"voltage", "current", "voltage_diff", "current_diff"};
+constexpr std::array<std::string_view, 3>  kCommonQuantities    = {"temperature", "cpu_load", "n_user"};
+constexpr std::array<std::string_view, 3>  kRfQuantities        = {"frequency", "phase", "amplitude"};
+constexpr std::array<std::string_view, 15> kSampleFrequencies   = {"1Hz", "10Hz", "25Hz", "100Hz", "1kHz", "10kHz", "Injection1", "Injection2", "Injection3", "Injection4", "RampStart", "Extraction", "Diag1", "Diag2", "Diag3"};
 
 inline std::vector<SignalInfo> generateSignalTable() {
     std::vector<SignalInfo> table;
@@ -53,7 +53,7 @@ inline std::vector<SignalInfo> generateSignalTable() {
         return std::ranges::any_of(keywords, [str](std::string_view keyword) { return str.find(keyword) != std::string_view::npos; });
     };
 
-    for (const auto& name : fair::testDeviceNames) {
+    for (const auto& name : fair::kTestDeviceNames) {
         auto deviceInfo = fair::getDeviceInfo(name);
 
         auto addEntry = [&](std::string_view subDevice, std::string_view quantity, std::string_view frequency, std::string_view unit) {
@@ -67,22 +67,22 @@ inline std::vector<SignalInfo> generateSignalTable() {
             });
         };
 
-        for (const auto& quantity : commonQuantities) {
+        for (const auto& quantity : kCommonQuantities) {
             addEntry("IO", quantity, "1Hz", quantity == "temperature" ? "°C" : (quantity == "cpu_load" ? "%" : "#"));
         }
 
         if (containsAny(deviceInfo.deviceFunction, std::array{"magnet", "dipole", "quad", "sextupole", "octopole", "multipole", "pole", "solenoid", "toroid", "septum", "steerer", "source", "tube", "voltage", "power supply"})) {
-            for (const auto& quantity : magnetQuantities) {
-                for (const auto& frequency : sampleFrequencies) {
+            for (const auto& quantity : kMagnetQuantities) {
+                for (const auto& frequency : kSampleFrequencies) {
                     addEntry("", quantity, frequency, quantity.starts_with("voltage") ? "V" : "A");
                 }
             }
         }
 
         if (containsAny(deviceInfo.deviceFunction, std::array{"RF", "cavity", "Alvarez"})) {
-            for (const auto& subDevice : subDeviceProperties) {
-                for (const auto& quantity : rfQuantities) {
-                    for (const auto& frequency : sampleFrequencies) {
+            for (const auto& subDevice : kSubDeviceProperties) {
+                for (const auto& quantity : kRfQuantities) {
+                    for (const auto& frequency : kSampleFrequencies) {
                         addEntry(subDevice, quantity, frequency, quantity == "frequency" ? "Hz" : (quantity == "phase" ? "degree" : "V"));
                     }
                 }
@@ -94,35 +94,35 @@ inline std::vector<SignalInfo> generateSignalTable() {
 }
 
 void printSignalTable(const std::vector<SignalInfo>& table) {
-    constexpr int deviceNameWidth      = 12;
-    constexpr int digitizerDeviceWidth = 35;
-    constexpr int fullSignalNameWidth  = 70;
-    constexpr int quantityWidth        = 15;
-    constexpr int sampleFrequencyWidth = 15;
-    constexpr int siUnitWidth          = 10;
-    constexpr int acceleratorWidth     = 10;
-    constexpr int deviceFunctionWidth  = 30;
+    constexpr int kDeviceNameWidth      = 12;
+    constexpr int kDigitizerDeviceWidth = 35;
+    constexpr int kFullSignalNameWidth  = 70;
+    constexpr int kQuantityWidth        = 15;
+    constexpr int kSampleFrequencyWidth = 15;
+    constexpr int kSiUnitWidth          = 10;
+    constexpr int kAcceleratorWidth     = 10;
+    constexpr int kDeviceFunctionWidth  = 30;
 
     std::print("{:<{}} {:<{}} {:<{}} {:<{}} {:<{}} {:<{}} {:<{}} {:<{}}\n", //
-        "device", deviceNameWidth,                                          //
-        "digitizer_device", digitizerDeviceWidth,                           //
-        "full_signal_name", fullSignalNameWidth,                            //
-        "quantity", quantityWidth,                                          //
-        "sample_frequency", sampleFrequencyWidth,                           //
-        "SI unit", siUnitWidth,                                             //
-        "accelerator", acceleratorWidth,                                    //
-        "deviceFunction", deviceFunctionWidth);                             //
+        "device", kDeviceNameWidth,                                         //
+        "digitizer_device", kDigitizerDeviceWidth,                          //
+        "full_signal_name", kFullSignalNameWidth,                           //
+        "quantity", kQuantityWidth,                                         //
+        "sample_frequency", kSampleFrequencyWidth,                          //
+        "SI unit", kSiUnitWidth,                                            //
+        "accelerator", kAcceleratorWidth,                                   //
+        "deviceFunction", kDeviceFunctionWidth);                            //
 
     for (const auto& entry : table) {
         std::print("{:<{}} {:<{}} {:<{}} {:<{}} {:<{}} {:<{}} {:<{}} {:<{}}\n", //
-            entry.deviceName, deviceNameWidth,                                  //
-            entry.digitizerDevice, digitizerDeviceWidth,                        //
-            entry.fullSignalName, fullSignalNameWidth,                          //
-            entry.quantity, quantityWidth,                                      //
-            entry.sampleFrequency, sampleFrequencyWidth,                        //
-            entry.siUnit, siUnitWidth,                                          //
-            entry.accelerator, acceleratorWidth,                                //
-            entry.deviceFunction, deviceFunctionWidth);
+            entry.deviceName, kDeviceNameWidth,                                 //
+            entry.digitizerDevice, kDigitizerDeviceWidth,                       //
+            entry.fullSignalName, kFullSignalNameWidth,                         //
+            entry.quantity, kQuantityWidth,                                     //
+            entry.sampleFrequency, kSampleFrequencyWidth,                       //
+            entry.siUnit, kSiUnitWidth,                                         //
+            entry.accelerator, kAcceleratorWidth,                               //
+            entry.deviceFunction, kDeviceFunctionWidth);
     }
     std::print("number of devices: {}\n", table.size());
     std::print("minimum memory usage: {} MB\n", (estimateMinimalMemoryUsage(table) >> 20));
@@ -143,7 +143,7 @@ const static boost::ut::suite<"FAIR Device Name Mapping"> deviceMappingTests = [
     };
 
     "bulk device tests"_test = [] {
-        for (auto& name : fair::testDeviceNames) {
+        for (auto& name : fair::kTestDeviceNames) {
             fair::printDeviceInfo(name);
         }
     };

@@ -2,19 +2,19 @@
 #define OPENDIGITIZER_UI_COMPONENTS_BLOCK_HPP_
 
 #include "../GraphModel.hpp"
-#include "../common/ImguiWrap.hpp"
+#include "../common/Imw.hpp"
 
 #include <gnuradio-4.0/Value.hpp>
 
 #include <chrono>
 #include <functional>
 
-namespace DigitizerUi {
+namespace gr::od {
 struct UiGraphBlock;
-class UiGraphModel;
-} // namespace DigitizerUi
+struct UiGraphModel;
+} // namespace gr::od
 
-namespace DigitizerUi::components {
+namespace gr::od::components {
 
 // describes an incoming connection to a property, from a UI control block
 struct UiControlConnection {
@@ -35,8 +35,8 @@ struct ModifyUiConnectionsPopup {
     bool draw(UiGraphModel* graphModel);
 };
 
-/// Removes the connection to @param property if exactly one UI control block names @param block specifically.
-/// Otherwise returns the popup in which the user chooses which of the connections to remove.
+/// removes the connection to `property` when exactly one UI control block names `block` specifically;
+/// otherwise returns the popup in which the user picks the connections to remove
 [[nodiscard]] std::optional<ModifyUiConnectionsPopup> unlinkUiControlledProperty(UiGraphBlock& block, const std::string& property);
 
 struct JumpToControlPopup {
@@ -49,13 +49,10 @@ struct JumpToControlPopup {
 };
 
 struct BlockControlsPanelContext {
-    BlockControlsPanelContext();
-    UiGraphBlock* selectedBlock() const;
-    void          setSelectedBlock(UiGraphBlock* block, UiGraphModel* model);
+    enum class Mode { None, Insert, AddAndBranch };
 
     UiGraphModel* graphModel = nullptr;
     std::string   targetGraph;
-    enum class Mode { None, Insert, AddAndBranch };
 
     Mode mode = Mode::None;
 
@@ -63,24 +60,25 @@ struct BlockControlsPanelContext {
     bool showNeighboursPreview = false;
 
     std::chrono::time_point<std::chrono::system_clock> closeTime;
-    std::function<void(UiGraphBlock* block)>           blockClickedCallback;
 
     std::optional<ModifyUiConnectionsPopup> modifyConnectionsDialog;
     std::optional<JumpToControlPopup>       jumpToControlPopup;
 
     std::function<void(const std::string& blockUniqueName)> focusBlockRequest;
 
-    void resetTime();
+    UiGraphBlock* selectedBlock() const;
+    void          setSelectedBlock(UiGraphBlock* block, UiGraphModel* model);
+    void          blockClicked(UiGraphBlock* block);
+    void          close();
+    void          resetTime();
 };
 
-void BlockControlsPanel(BlockControlsPanelContext& context, const ImVec2& pos, const ImVec2& frameSize, bool verticalLayout);
-void BlockSettingsControls(BlockControlsPanelContext& context, UiGraphBlock* block, const ImVec2& size = {0.f, 0.f});
+void blockControlsPanel(BlockControlsPanelContext& context, const ImVec2& pos, const ImVec2& frameSize, bool verticalLayout);
+void blockSettingsControls(BlockControlsPanelContext& context, UiGraphBlock* block, const ImVec2& size = {0.f, 0.f});
 
-/// Make imgui widgets to edit a block property value
-/// Supports types in block properties: string bool integer float enum color
-/// Returns a value containing monostate if no change occurred.
+/// widgets editing a property of type string, bool, integer, float, enum or colour; monostate when unchanged
 [[nodiscard]] gr::pmt::Value editBlockProperty(const char* label, const std::string& propertyName, const gr::pmt::Value& currentPropertyValue, const UiGraphBlock::SettingsMetaInformation& meta);
 
-} // namespace DigitizerUi::components
+} // namespace gr::od::components
 
 #endif

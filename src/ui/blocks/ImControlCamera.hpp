@@ -3,8 +3,8 @@
 
 #include "ImControlDevice.hpp"
 
-#include "../components/StyledStandardWidgets.hpp"
-#include "../utils/EmscriptenHelper.hpp"
+#include "../components/StyledWidgets.hpp"
+#include "../utils/Browser.hpp"
 
 #include <opendigitizer/video/CameraTypes.hpp>
 
@@ -18,7 +18,7 @@
 #include <utility>
 #include <vector>
 
-namespace DigitizerUi {
+namespace gr::od {
 
 struct ImControlCamera : ImControl<ImControlCamera> {
     using Description = gr::Doc<R""(@brief UI control for a CameraSource (target_map '<camera>:device'): selects the camera; its popup sets the mode
@@ -40,14 +40,13 @@ priority and the camera controls that both the V4L2 and the browser backend offe
         const SizeAndLayout layout       = prepareDraw(parsedConfig, look.dashboardStyle.toolbarControlInputWidth, look.dashboardStyle.toolbarControlMinimumWidth, labelWidth());
         loadValueIfConnectionChanged(value, parsedConfig);
         const gr::property_map& target = parsedConfig.firstControlledProperty.targetSettings;
-        drawWithLabelAndTooltip(layout, [&](float width) {
+        drawWithLabel(layout, [&](float width) {
             const bool    insideNodeEditor = parsedConfig.drawingContext == DrawableBlockConfig::DrawingContext::FlowgraphView;
-            IMW::Disabled cannotOpen(insideNodeEditor);
+            imw::Disabled cannotOpen(insideNodeEditor);
             ImGui::SetNextItemWidth(width - ImGui::GetFrameHeight() - ImGui::GetStyle().ItemInnerSpacing.x);
             if (auto picked = pickDevice("##device", target, value)) {
-                value       = std::move(*picked);
-                std::ignore = settings().setStaged({{"value", value}});
-                sendToTargets(value);
+                value = std::move(*picked);
+                commitValue(value);
             }
             ImGui::SameLine(0.f, ImGui::GetStyle().ItemInnerSpacing.x);
             if (ImGui::Button("...##cameraSettings", ImVec2(ImGui::GetFrameHeight(), ImGui::GetFrameHeight()))) {
@@ -64,7 +63,6 @@ priority and the camera controls that both the V4L2 and the browser backend offe
         return gr::work::Status::OK;
     }
 
-private:
     void sendToCamera(const std::string& camera, gr::property_map settings) {
         if (!camera.empty()) {
             toolbar::sendSettings(this->msgOut, camera, std::move(settings));
@@ -72,7 +70,7 @@ private:
     }
 
     void drawSettingsPopup(const gr::property_map& target, const std::string& camera) {
-        auto popup = IMW::Popup("cameraSettings", 0);
+        auto popup = imw::Popup("cameraSettings", 0);
         if (!popup) {
             return;
         }
@@ -83,10 +81,10 @@ private:
         }
         const auto priority = targetSetting<std::string>(target, "priority");
         ImGui::SetNextItemWidth(look.chartStyle.menuSettingWidgetWidth);
-        if (auto combo = DigitizerUi::ComboBox("priority", priority.c_str(), 0)) {
+        if (auto combo = ComboBox("priority", priority.c_str(), 0)) {
             for (const opendigitizer::video::ModePriority choice : gr::meta::enumValues<opendigitizer::video::ModePriority>()) {
                 const std::string choiceName(gr::meta::enumName(choice).value_or(""));
-                if (DigitizerUi::Selectable(choiceName.c_str(), choiceName == priority)) {
+                if (selectable(choiceName.c_str(), choiceName == priority)) {
                     sendToCamera(camera, {{"priority", choiceName}});
                 }
             }
@@ -125,6 +123,6 @@ private:
     }
 };
 
-} // namespace DigitizerUi
+} // namespace gr::od
 
 #endif // OPENDIGITIZER_UI_BLOCKS_IMCONTROLCAMERA_HPP

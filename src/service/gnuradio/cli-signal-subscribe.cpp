@@ -70,8 +70,8 @@ int main(int argc, char** argv) {
         signalsReceived    = acq.channelValues.n(0UZ);
         samplesReceived += acq.channelValues.n(1UZ);
         updateCount++;
-        double sample_rate = (static_cast<double>(samplesReceived) / static_cast<double>(uptime.count())) * 1000.0;
-        auto [min, max]    = [&acq]() {
+        double sampleRate = (static_cast<double>(samplesReceived) / static_cast<double>(uptime.count())) * 1000.0;
+        auto [min, max]   = [&acq]() {
             if (acq.channelValues.elements().empty()) {
                 return std::ranges::min_max_result{0.0f, 0.0f};
             } else {
@@ -79,7 +79,7 @@ int main(int argc, char** argv) {
             }
         }();
         std::print("t = {}ms: Update received: {}, samples: {}, signals: {}, min-max: {}-{}, total_samples: {}, avg_sampling_rate: {}, latency: {}s\n", //
-            uptime.count(), updateCount, acq.channelValues.n(1UZ), acq.channelValues.n(0UZ), min, max, samplesReceived, sample_rate, 1e-9 * static_cast<double>(latency.count()));
+            uptime.count(), updateCount, acq.channelValues.n(1UZ), acq.channelValues.n(0UZ), min, max, samplesReceived, sampleRate, 1e-9 * static_cast<double>(latency.count()));
     });
 
     while (true) {

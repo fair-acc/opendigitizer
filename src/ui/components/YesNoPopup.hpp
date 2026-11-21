@@ -2,16 +2,16 @@
 #define OPENDIGITIZER_UI_COMPONENTS_YES_NO_POPUP_HPP_
 
 #include "../common/LookAndFeel.hpp"
-#include "StyledStandardWidgets.hpp"
+#include "StyledWidgets.hpp"
 
 #include <imgui.h>
 
-namespace DigitizerUi::components {
+namespace gr::od::components {
 
 enum class YesNoPopupResult {
     PopupNotOpen,
-    PopupOpen_NothingPressed,
-    PopupOpen_YesPressed,
+    PopupOpenNothingPressed,
+    PopupOpenYesPressed,
 };
 
 struct YesNoPopupOptions {
@@ -21,7 +21,7 @@ struct YesNoPopupOptions {
 };
 
 [[nodiscard]] constexpr bool isPopupOpen(YesNoPopupResult result) { return result != YesNoPopupResult::PopupNotOpen; }
-[[nodiscard]] constexpr bool isPopupConfirmed(YesNoPopupResult result) { return result == YesNoPopupResult::PopupOpen_YesPressed; }
+[[nodiscard]] constexpr bool isPopupConfirmed(YesNoPopupResult result) { return result == YesNoPopupResult::PopupOpenYesPressed; }
 
 inline YesNoPopupResult beginYesNoPopup(const char* id, YesNoPopupOptions options, ImGuiWindowFlags windowFlags = ImGuiWindowFlags_None) {
     const auto   spacing     = ImGui::GetStyle().ItemSpacing;
@@ -41,17 +41,17 @@ inline YesNoPopupResult beginYesNoPopup(const char* id, YesNoPopupOptions option
         bool        pressedYes  = false;
         const float buttonSizeX = ImGui::GetContentRegionAvail().x;
 
-        if (DigitizerUi::TextButton(options.yesText, {buttonSizeX, buttonSizeY})) {
+        if (textButton(options.yesText, {buttonSizeX, buttonSizeY})) {
             pressedYes = true;
             ImGui::CloseCurrentPopup();
         }
-        if (DigitizerUi::TextButton(options.noText, {buttonSizeX, buttonSizeY})) {
+        if (textButton(options.noText, {buttonSizeX, buttonSizeY})) {
             ImGui::CloseCurrentPopup();
         }
-        return pressedYes ? PopupOpen_YesPressed : PopupOpen_NothingPressed;
+        return pressedYes ? PopupOpenYesPressed : PopupOpenNothingPressed;
     }
     return PopupNotOpen;
 }
-} // namespace DigitizerUi::components
+} // namespace gr::od::components
 
 #endif

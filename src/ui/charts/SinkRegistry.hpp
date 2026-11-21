@@ -11,23 +11,25 @@
 #include <unordered_map>
 #include <vector>
 
-namespace opendigitizer::charts {
+namespace gr::od::charts {
 
-/**
- * @brief Global registry for all SignalSink instances.
- *
- * Manages the lifetime of signal sinks and provides lookup by name.
- * Charts hold shared_ptr references to sinks from this registry.
- *
- * Thread-safe: all operations are protected by mutex.
- */
-class SinkRegistry {
-public:
+/// owns the SignalSinks and finds them by name; charts hold shared_ptrs to them; every operation takes one mutex
+struct SinkRegistry {
     using Listener = std::function<void(SignalSink&, bool /*isAdded*/)>;
 
+    mutable std::mutex                                           _mutex;
+    std::unordered_map<std::string, std::shared_ptr<SignalSink>> _sinks;
+    std::unordered_map<void*, Listener>                          _listeners;
+
+    SinkRegistry() = default;
+    ~SinkRegistry() { clear(); }
+
+    SinkRegistry(const SinkRegistry&)            = delete;
+    SinkRegistry& operator=(const SinkRegistry&) = delete;
+
     static SinkRegistry& instance() {
-        static SinkRegistry s_instance;
-        return s_instance;
+        static SinkRegistry registry;
+        return registry;
     }
 
     bool registerSink(std::shared_ptr<SignalSink> sink) {
@@ -116,35 +118,6 @@ public:
         return result;
     }
 
-    [[nodiscard]] bool hasSink(std::string_view uniqueName) const {
-        std::lock_guard lock(_mutex);
-        return _sinks.contains(std::string(uniqueName));
-    }
-
-    [[nodiscard]] std::vector<std::string> sinkNames() const {
-        std::lock_guard lock(_mutex);
-
-        std::vector<std::string> names;
-        names.reserve(_sinks.size());
-        for (const auto& [name, _] : _sinks) {
-            names.push_back(name);
-        }
-
-        return names;
-    }
-
-    [[nodiscard]] std::vector<std::shared_ptr<SignalSink>> allSinks() const {
-        std::lock_guard lock(_mutex);
-
-        std::vector<std::shared_ptr<SignalSink>> sinks;
-        sinks.reserve(_sinks.size());
-        for (const auto& [_, sink] : _sinks) {
-            sinks.push_back(sink);
-        }
-
-        return sinks;
-    }
-
     [[nodiscard]] std::size_t sinkCount() const {
         std::lock_guard lock(_mutex);
         return _sinks.size();
@@ -195,13 +168,6 @@ public:
         }
     }
 
-private:
-    SinkRegistry() = default;
-    ~SinkRegistry() { clear(); }
-
-    SinkRegistry(const SinkRegistry&)            = delete;
-    SinkRegistry& operator=(const SinkRegistry&) = delete;
-
     [[nodiscard]] std::vector<Listener> snapshotListeners() const {
         std::vector<Listener> snapshot;
         snapshot.reserve(_listeners.size());
@@ -210,12 +176,8 @@ private:
         }
         return snapshot;
     }
-
-    mutable std::mutex                                           _mutex;
-    std::unordered_map<std::string, std::shared_ptr<SignalSink>> _sinks;
-    std::unordered_map<void*, Listener>                          _listeners;
 };
 
-} // namespace opendigitizer::charts
+} // namespace gr::od::charts
 
 #endif // OPENDIGITIZER_CHARTS_SINKREGISTRY_HPP

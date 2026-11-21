@@ -1,9 +1,9 @@
 #ifndef OPENDIGITIZER_UI_COMPONENTS_EDITABLE_STRING_LIST_HPP_
 #define OPENDIGITIZER_UI_COMPONENTS_EDITABLE_STRING_LIST_HPP_
 
-#include "../common/ImguiWrap.hpp"
+#include "../common/Imw.hpp"
 #include "../common/LookAndFeel.hpp"
-#include "StyledStandardWidgets.hpp"
+#include "StyledWidgets.hpp"
 
 #include <misc/cpp/imgui_stdlib.h>
 
@@ -15,7 +15,7 @@
 #include <string_view>
 #include <vector>
 
-namespace DigitizerUi::components {
+namespace gr::od::components {
 
 struct EditableStringList {
     std::vector<std::string> entries{std::string{}};
@@ -26,13 +26,13 @@ struct EditableStringList {
         constexpr const char* kIconPlus  = "\u{f067}";
         constexpr const char* kIconTrash = "\u{f2ed}";
 
-        IMW::ChangeStrId listId(strId);
+        imw::ChangeStrId listId(strId);
         const ImVec2     squareButtonSize{ImGui::GetFrameHeight(), ImGui::GetFrameHeight()};
         const float      inputWidth = ImGui::GetFontSize() * LookAndFeel::instance().editableStringListInputWidthEms;
 
         std::optional<std::size_t> rowToDelete;
         for (std::size_t row = 0UZ; row < entries.size(); ++row) {
-            IMW::ChangeId rowId(static_cast<int>(row));
+            imw::ChangeId rowId(static_cast<int>(row));
             const bool    isLastRow = row + 1UZ == entries.size();
             if (isLastRow && _focusLastEntry) {
                 ImGui::SetKeyboardFocusHere();
@@ -46,9 +46,9 @@ struct EditableStringList {
                 const bool canAddRow   = !entries[row].empty();
                 bool       plusPressed = false;
                 {
-                    IMW::Disabled disabled(!canAddRow);
+                    imw::Disabled disabled(!canAddRow);
                     ImGui::PushFont(LookAndFeel::instance().fontIcons, squareButtonSize.y / 2.f);
-                    plusPressed = DigitizerUi::Button(kIconPlus, squareButtonSize);
+                    plusPressed = button(kIconPlus, squareButtonSize);
                     ImGui::PopFont();
                 }
                 if (plusPressed || (enterPressed && canAddRow)) {
@@ -57,7 +57,7 @@ struct EditableStringList {
                 }
             } else {
                 ImGui::PushFont(LookAndFeel::instance().fontIcons, squareButtonSize.y / 2.f);
-                if (DigitizerUi::Button(kIconTrash, squareButtonSize)) {
+                if (button(kIconTrash, squareButtonSize)) {
                     rowToDelete = row;
                 }
                 ImGui::PopFont();
@@ -75,6 +75,6 @@ struct EditableStringList {
     }
 };
 
-} // namespace DigitizerUi::components
+} // namespace gr::od::components
 
 #endif

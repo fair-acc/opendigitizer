@@ -1,6 +1,6 @@
 #include "BlockNeighboursPreview.hpp"
 #include "../GraphModel.hpp"
-#include "../common/ImguiWrap.hpp"
+#include "../common/Imw.hpp"
 #include "../common/LookAndFeel.hpp"
 #include "Block.hpp"
 #include "DataTypeStyle.hpp"
@@ -9,9 +9,12 @@
 #include <ranges>
 #include <string>
 
-namespace DigitizerUi::components {
+namespace gr::od::components {
 
 struct ScaleFont {
+    ImFont* const font;
+    const float   originalScale;
+
     explicit ScaleFont(float scale) : font(ImGui::GetFont()), originalScale(font->Scale) {
         font->Scale = scale;
         ImGui::PushFont(font);
@@ -25,18 +28,14 @@ struct ScaleFont {
     ScaleFont& operator=(const ScaleFont&) = delete;
     ScaleFont(ScaleFont&&)                 = delete;
     ScaleFont& operator=(ScaleFont&&)      = delete;
-
-    ImFont* const font;
-    const float   originalScale;
 };
 
 std::string_view shortBlockTitle(std::string_view title) {
-    // minor improvement to save precious space. Drop the Source and Sink
-    // suffixes as they can be deduced from the context.
+    // the Source and Sink suffixes follow from the context
 
-    static constexpr std::string_view suffixes[] = {"Source", "Sink"};
+    static constexpr std::string_view kSuffixes[] = {"Source", "Sink"};
 
-    for (auto suffix : suffixes) {
+    for (auto suffix : kSuffixes) {
         if (title.ends_with(suffix)) {
             return title.substr(0, title.size() - suffix.size());
         }
@@ -45,7 +44,6 @@ std::string_view shortBlockTitle(std::string_view title) {
     return title;
 }
 
-/// returns the left ports or the right ports of a block
 std::set<UiGraphPort*> portsForBlock(UiGraphBlock& block, UiGraphModel& model, gr::PortDirection portDirection) {
 
     auto edges = model.rootBlock.childEdges | std::views::filter([&](const auto& edge) {
@@ -66,19 +64,11 @@ std::set<UiGraphPort*> portsForBlock(UiGraphBlock& block, UiGraphModel& model, g
     }) | std::ranges::to<std::set>();
 }
 
-void BlockNeighboursPreview(const BlockControlsPanelContext& context, ImVec2 availableSize) {
-    // Here we draw the current block and its neighbours, for navigation purposes. Clicking a neighbour will change the panel properties.
-    // Reuses styling from the main flowgraph.
-    // Rendering with ax::NodeEditor for  would be overkill and introduce complications:
-    // - We don't want interaction (DnD, Zoom, change edges)
-    // - View should not move
-    // While the above can be achieved with some hacking and private API, disabling panning was crashing inside ImGui and disabling Zoom
-    // was flaky, where it still zoomed in some edge cases.
+void blockNeighboursPreview(BlockControlsPanelContext& context, ImVec2 availableSize) {
+    // drawn by hand: ax::NodeEditor would need private API to disable interaction, panning (which crashed) and zoom (which was flaky)
 
     if (!context.graphModel) {
-        // We can not show the preview if the graph model is not set
-        // (this can happen when block properties are shown in the
-        // chart view)
+        // no graph model while the chart view shows block properties
         return;
     }
 
@@ -87,7 +77,6 @@ void BlockNeighboursPreview(const BlockControlsPanelContext& context, ImVec2 ava
     }
 
     if (!context.selectedBlock()) {
-        // This does not happen, it would be a bug. Let it crash in debug mode so we notice.
         assert(false);
         return;
     }
@@ -109,7 +98,6 @@ void BlockNeighboursPreview(const BlockControlsPanelContext& context, ImVec2 ava
         return maxWidth;
     };
 
-    // Layout parameters
     const auto& flowgraphLookAndFeel = LookAndFeel::instance().flowgraph;
     const float blockInnerPadding    = flowgraphLookAndFeel.previewBlockInnerPadding * 2;
     const float leftRectsMaxWidth    = maxBlockTextSize(leftBlocks) + blockInnerPadding;
@@ -121,18 +109,15 @@ void BlockNeighboursPreview(const BlockControlsPanelContext& context, ImVec2 ava
     const auto  numBlocksRight       = rightBlocks.size();
     const auto  maxRects             = static_cast<float>(std::max(numBlocksLeft, numBlocksRight));
 
-    // Port parameters
     const float portWidth  = flowgraphLookAndFeel.previewPortSize.x;
     const float portHeight = flowgraphLookAndFeel.previewPortSize.y;
 
-    // Center rectangle parameters
     const float centerBlockWidth  = flowgraphLookAndFeel.previewCenterBlockSize;
     const float centerBlockHeight = centerBlockWidth;
 
     const bool hasLeft  = numBlocksLeft;
     const bool hasRight = numBlocksRight;
 
-    // Calculate total height needed for N rects with spacing
     const float topMargin        = flowgraphLookAndFeel.previewMargin.y;
     const float horizontalMargin = flowgraphLookAndFeel.previewMargin.x;
     const float totalHeight      = std::max(maxRects * blockHeight + (maxRects - 1.0f) * verticalSpacing + (topMargin * 2), centerBlockHeight + (topMargin * 2));
@@ -156,7 +141,6 @@ void BlockNeighboursPreview(const BlockControlsPanelContext& context, ImVec2 ava
     ImGui::BeginChild("blockNavigationPreview", ImVec2(totalWidth, totalHeight), false);
     ImGui::BeginGroup();
 
-    // Calculate positions
     const float startX       = horizontalMargin;
     const float startY       = topMargin;
     const float middleBlockX = startX + (hasLeft ? leftRectsMaxWidth + blockSpacing : 0);
@@ -172,13 +156,11 @@ void BlockNeighboursPreview(const BlockControlsPanelContext& context, ImVec2 ava
     const ImU32 lineColor        = ImGui::ColorConvertFloat4ToU32(ImGui::GetStyle().Colors[ImGuiCol_Text]);
     const ImU32 textColor        = ImGui::ColorConvertFloat4ToU32(ImGui::GetStyle().Colors[ImGuiCol_Text]);
 
-    // cache the port positions to simply the edge drawing code
     std::unordered_map<UiGraphPort*, ImVec2> portPositions;
 
     const ImVec2 centerBlockTopLeft     = ImGui::GetWindowPos() + ImVec2(middleBlockX, totalHeight / 2 - centerBlockHeight / 2);
     const ImVec2 centerBlockBottomRight = centerBlockTopLeft + ImVec2(centerBlockWidth, centerBlockHeight);
 
-    // background
     auto drawList = ImGui::GetWindowDrawList();
     ImGui::GetWindowDrawList()->AddRectFilled(ImGui::GetWindowPos(), ImGui::GetWindowPos() + ImGui::GetWindowSize(), bgColor, ImGui::GetStyle().ChildRounding);
 
@@ -188,11 +170,9 @@ void BlockNeighboursPreview(const BlockControlsPanelContext& context, ImVec2 ava
         }
     };
 
-    // Draw left ports first for middle block
     {
         const auto ports = portsForBlock(*context.selectedBlock(), *context.graphModel, gr::PortDirection::INPUT);
         size_t     i     = 0;
-        // std::views::enumerate(ports)) TODO: Use once we bump to an EMSDK that supports it
         for (const auto& port : ports) {
             const float portY = centerBlockTopLeft.y + pinLocalPositionY(i, ports.size(), centerBlockHeight, portHeight);
             const float portX = centerBlockTopLeft.x - portWidth;
@@ -202,7 +182,6 @@ void BlockNeighboursPreview(const BlockControlsPanelContext& context, ImVec2 ava
         }
     }
 
-    // Draw right ports first for middle block
     {
         const auto ports = portsForBlock(*context.selectedBlock(), *context.graphModel, gr::PortDirection::OUTPUT);
         size_t     i     = 0;
@@ -215,7 +194,6 @@ void BlockNeighboursPreview(const BlockControlsPanelContext& context, ImVec2 ava
         }
     }
 
-    // Draw middle block
     drawList->AddRectFilled(centerBlockTopLeft, centerBlockBottomRight, fillColor, lookAndFeel.flowgraph.nodeRounding);
     drawList->AddRect(centerBlockTopLeft - ImVec2(1, 1), centerBlockBottomRight + ImVec2(1, 1), outerBorderColor, lookAndFeel.flowgraph.nodeRounding, 0, borderThickness);
     drawList->AddRect(centerBlockTopLeft, centerBlockBottomRight, borderColor, lookAndFeel.flowgraph.nodeRounding, 0, borderThickness);
@@ -229,7 +207,6 @@ void BlockNeighboursPreview(const BlockControlsPanelContext& context, ImVec2 ava
         const ImVec2 rectMin    = ImGui::GetWindowPos() + ImVec2(blockX, y);
         const ImVec2 rectMax    = rectMin + ImVec2(blockWidth, blockHeight);
 
-        // All edges connected to this neighbor
         auto edges = context.graphModel->rootBlock.childEdges | std::views::filter([&](const auto& edge) { //
             if (!edge.edgeSourcePort || !edge.edgeDestinationPort) {
                 return false;
@@ -242,7 +219,6 @@ void BlockNeighboursPreview(const BlockControlsPanelContext& context, ImVec2 ava
             }
         });
 
-        // Ports in the neighbor
         const auto ports = edges | std::views::transform([&](const auto& edge) {
             return isLeft ? edge.edgeSourcePort : //
                        edge.edgeDestinationPort;
@@ -259,21 +235,17 @@ void BlockNeighboursPreview(const BlockControlsPanelContext& context, ImVec2 ava
             ++portIndex;
         }
 
-        // Handle interaction
         ImGui::SetCursorScreenPos(rectMin);
         const ImU32 blockColor = ImGui::IsMouseHoveringRect(rectMin, rectMax) ? hoverColor : fillColor;
 
-        // Draw block
         drawList->AddRectFilled(rectMin, rectMax, blockColor, lookAndFeel.flowgraph.nodeRounding);
         drawList->AddRect(rectMin, rectMax, borderColor, lookAndFeel.flowgraph.nodeRounding, 0, borderThickness);
 
-        // Button and callback
         std::string buttonId = (isLeft ? "left_block_" : "right_block_") + std::to_string(index);
         if (ImGui::InvisibleButton(buttonId.c_str(), ImVec2(blockWidth, blockHeight))) {
-            context.blockClickedCallback(&block);
+            context.blockClicked(&block);
         }
 
-        // Block title
         const std::string_view text     = shortBlockTitle(block.blockName);
         const ImVec2           textSize = ImGui::CalcTextSize(text.data(), text.data() + text.size());
         const ImVec2           textPos  = rectMin + ImVec2((blockWidth - textSize.x) * 0.5f, (blockHeight - textSize.y) * 0.5f);
@@ -291,7 +263,6 @@ void BlockNeighboursPreview(const BlockControlsPanelContext& context, ImVec2 ava
         const ImVec2 cp2 = lineEnd + ImVec2(-blockSpacing / 2, 0);
         drawList->AddBezierCubic(lineStart, cp1, cp2, lineEnd, lineColor, flowgraphLookAndFeel.previewLinkThickness);
 
-        // Draw arrow at line end:
         ImVec2 arrowPoints[3];
         arrowPoints[0] = lineEnd + ImVec2(0, -arrowWidth / 2);
         arrowPoints[1] = lineEnd + ImVec2(arrowHeight, 0);
@@ -327,4 +298,4 @@ void BlockNeighboursPreview(const BlockControlsPanelContext& context, ImVec2 ava
     ImGui::EndChild(); // blocks
     ImGui::EndChild(); // scroll_area
 }
-} // namespace DigitizerUi::components
+} // namespace gr::od::components

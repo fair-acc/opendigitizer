@@ -1,3 +1,4 @@
+#include "App.hpp"
 #include "ImGuiTestApp.hpp"
 #include "TestDashboardRunner.hpp"
 
@@ -5,14 +6,14 @@
 #include <boost/ut.hpp>
 
 #include <gnuradio-4.0/BlockRegistry.hpp>
-#include <gnuradio-4.0/GrBasicBlocks.hpp>
-#include <gnuradio-4.0/GrTestingBlocks.hpp>
 
 #include "../common/LookAndFeel.hpp"
 #include <Dashboard.hpp>
 #include <DashboardPage.hpp>
 #include <DashboardView.hpp>
+#include <charts/XYChart.hpp>
 #include <components/AutoHide.hpp>
+#include <components/SignalSelector.hpp>
 
 #include <cmrc/cmrc.hpp>
 
@@ -24,40 +25,41 @@
 #include <optional>
 #include <span>
 
+using namespace gr::od;
+
 CMRC_DECLARE(ui_test_assets);
 
 using namespace boost;
 using namespace boost::ut;
 
 namespace {
-using Mode           = DigitizerUi::DashboardView::Mode;
-using LegendPosition = DigitizerUi::DashboardView::LegendPosition;
+using Mode           = DashboardView::Mode;
+using LegendPosition = DashboardView::LegendPosition;
 
 constexpr ImVec2 kHostPos{200.f, 150.f};
 constexpr ImVec2 kHostSize{800.f, 600.f};
 
-struct TestState {
-    std::shared_ptr<DigitizerUi::Dashboard>     dashboard;
-    std::shared_ptr<DigitizerUi::Dashboard>     emptyDashboard;
-    std::unique_ptr<DigitizerUi::DashboardView> view;
-    std::unique_ptr<DigitizerUi::DashboardPage> page;
-    Mode                                        mode             = Mode::View;
-    LegendPosition                              legend           = LegendPosition::Bottom;
-    bool                                        drawEmpty        = false;
-    bool                                        documentHost     = false;
-    int                                         regionId         = 0;
-    bool                                        hideView         = false;
-    bool                                        background       = true;
-    bool                                        frameProbe       = false;
-    float                                       probedFrameAlpha = -1.f;
-    std::optional<ImVec4>                       hostBackground;
+struct TestState : test::TestDashboardRunner {
+    std::shared_ptr<Dashboard>     emptyDashboard;
+    std::unique_ptr<DashboardView> view;
+    std::unique_ptr<DashboardPage> page;
+    Mode                           mode             = Mode::View;
+    LegendPosition                 legend           = LegendPosition::Bottom;
+    bool                           drawEmpty        = false;
+    bool                           documentHost     = false;
+    int                            regionId         = 0;
+    bool                           hideView         = false;
+    bool                           background       = true;
+    bool                           frameProbe       = false;
+    float                          probedFrameAlpha = -1.f;
+    std::optional<ImVec4>          hostBackground;
 };
 
-TestState* g_state = nullptr;
+TestState* gState = nullptr;
 
 const ImGuiWindow* hostWindow() { return ImGui::FindWindowByName("Host"); }
 
-std::vector<const ImGuiWindow*> chartWindows() { return opendigitizer::test::chartWindows(*g_state->dashboard); }
+std::vector<const ImGuiWindow*> chartWindows() { return test::chartWindows(*gState->dashboard); }
 
 ImRect chartsBounds() {
     ImRect bounds(ImVec2(std::numeric_limits<float>::max(), std::numeric_limits<float>::max()), ImVec2(std::numeric_limits<float>::lowest(), std::numeric_limits<float>::lowest()));
@@ -76,14 +78,14 @@ float topOfCharts() {
 }
 } // namespace
 
-struct TestApp : public DigitizerUi::test::ImGuiTestApp {
-    using DigitizerUi::test::ImGuiTestApp::ImGuiTestApp;
+struct TestApp : public test::ImGuiTestApp {
+    using test::ImGuiTestApp::ImGuiTestApp;
 
     void registerTests() override {
         ImGuiTest* t = IM_REGISTER_TEST(engine(), "dashboardview", "embedded dashboard");
 
         t->GuiFunc = [](ImGuiTestContext*) {
-            auto& state = *g_state;
+            auto& state = *gState;
             if (state.documentHost && state.view && state.hideView) {
                 return;
             }
@@ -91,12 +93,12 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 const ImGuiViewport* viewport = ImGui::GetMainViewport();
                 ImGui::SetNextWindowPos(viewport->Pos);
                 ImGui::SetNextWindowSize(viewport->Size);
-                IMW::Window document("##document", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoSavedSettings);
+                imw::Window document("##document", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoSavedSettings);
                 ImGui::SetCursorScreenPos(kHostPos);
-                IMW::ChangeId regionScope(state.regionId);
-                IMW::Child    region("##region", kHostSize, ImGuiChildFlags_None, ImGuiWindowFlags_None);
-                DigitizerUi::LookAndFeel::mutableInstance().dashboardStyle.legend = LegendPosition::None;
-                std::ignore                                                       = state.view->draw(*state.dashboard, state.mode);
+                imw::ChangeId regionScope(state.regionId);
+                imw::Child    region("##region", kHostSize, ImGuiChildFlags_None, ImGuiWindowFlags_None);
+                LookAndFeel::mutableInstance().dashboardStyle.legend = LegendPosition::None;
+                std::ignore                                          = state.view->draw(*state.dashboard, state.mode);
                 return;
             }
             ImGui::SetNextWindowPos(kHostPos);
@@ -104,21 +106,21 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             if (state.hostBackground) {
                 ImGui::PushStyleColor(ImGuiCol_WindowBg, *state.hostBackground);
             }
-            IMW::Window window("Host", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
+            imw::Window window("Host", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
             if (state.hostBackground) {
                 ImGui::PopStyleColor();
             }
             if (!state.view) {
                 return;
             }
-            auto& dashboardStyle      = DigitizerUi::LookAndFeel::mutableInstance().dashboardStyle;
+            auto& dashboardStyle      = LookAndFeel::mutableInstance().dashboardStyle;
             dashboardStyle.legend     = state.legend;
             dashboardStyle.background = state.background;
-            DigitizerUi::DashboardView::Options options;
+            DashboardView::Options options;
             if (state.frameProbe) {
-                options.addDockWindows = [](DigitizerUi::DockSpace::Windows& windows) {
-                    static const auto probe = std::make_shared<DigitizerUi::DockSpace::Window>("FrameProbe");
-                    probe->renderFunc       = [] { g_state->probedFrameAlpha = ImPlot::GetStyleColorVec4(ImPlotCol_FrameBg).w; };
+                options.addDockWindows = [](DockSpace::Windows& windows) {
+                    static const auto probe = std::make_shared<DockSpace::Window>("FrameProbe");
+                    probe->renderFunc       = [] { gState->probedFrameAlpha = ImPlot::GetStyleColorVec4(ImPlotCol_FrameBg).w; };
                     windows.push_back(probe);
                 };
             }
@@ -126,12 +128,12 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
         };
 
         t->TestFunc = [](ImGuiTestContext* ctx) {
-            auto& state = *g_state;
+            auto& state = *gState;
 
             "a dashboard that has not loaded is drawn as a placeholder, without chart windows"_test = [&] {
-                state.view      = std::make_unique<DigitizerUi::DashboardView>();
+                state.view      = std::make_unique<DashboardView>();
                 state.drawEmpty = true;
-                ctx->Yield(10);
+                ctx->Yield(); // drawn once
                 expect(!state.emptyDashboard->isInitialised.load());
                 expect(state.emptyDashboard->uiWindows.empty()) << "no chart windows";
                 state.view.reset();
@@ -139,8 +141,8 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             };
 
             "bar and menu controls slide out of sight once the pointer stayed away, and back when it returns"_test = [] {
-                DigitizerUi::components::AutoHide hide;
-                const auto&                       look = DigitizerUi::LookAndFeel::instance();
+                components::AutoHide hide;
+                const auto&          look = LookAndFeel::instance();
                 expect(eq(hide.advance(false, look.autoHideDelaySeconds - 0.1f), 0.f)) << "in place until the delay";
                 expect(lt(std::abs(hide.advance(false, 0.2f) - 0.2f / look.autoHideSlideSeconds), 1e-6f)) << "then sliding by dt / autoHideSlideSeconds";
                 expect(eq(hide.advance(false, look.autoHideSlideSeconds), 1.f)) << "out of sight";
@@ -151,7 +153,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             "the .grc's dashboard editable sets the starting state (default true) and is saved, first"_test = [&] {
                 const auto restClient = std::make_shared<opencmw::client::RestClient>();
                 for (const std::optional<bool> editable : {std::optional{false}, std::optional{true}, std::optional<bool>{}}) {
-                    auto dashboard = DigitizerUi::Dashboard::create(restClient, DigitizerUi::DashboardDescription::createEmpty("editable"));
+                    auto dashboard = std::make_unique<Dashboard>(restClient, DashboardDescription::createEmpty("editable"));
                     dashboard->loadAndThen(std::format("blocks: []\nconnections: []\ndashboard:\n{}  layout: Free\n  sources: []\n  plots: []\n", editable ? std::format("  editable: {}\n", *editable) : std::string{}), [](gr::Graph&&) {}); // parsed, not run
                     expect(eq(dashboard->editable, editable.value_or(true)));
                 }
@@ -163,16 +165,14 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             };
 
             "a dashboard drawn in a child of an input-less full-screen window docks its charts inside the child, also under another ID stack"_test = [&] {
-                state.view         = std::make_unique<DigitizerUi::DashboardView>();
+                state.view         = std::make_unique<DashboardView>();
                 state.mode         = Mode::View;
                 state.documentHost = true;
-                while (state.dashboard->session.graphModel.recursiveGatherPlotSinks().size() < 6UZ) {
-                    ctx->Yield();
-                }
-                opendigitizer::test::waitUntilAllSamplesDrawn(ctx, *state.dashboard);
+                state.waitUntil(ctx, "the six plot sinks are known", [] { return gState->dashboard->session.graphModel.recursiveGatherPlotSinks().size() >= 6UZ; });
+                test::waitUntilAllSamplesDrawn(ctx, *state.dashboard);
                 const ImRect regionRect(kHostPos, kHostPos + kHostSize);
                 const auto   expectDockedInRegion = [&](std::string_view when) {
-                    opendigitizer::test::waitForStableCharts(ctx, *state.dashboard);
+                    test::waitForStableCharts(ctx, *state.dashboard);
                     for (const ImGuiWindow* window : chartWindows()) {
                         expect(window != nullptr) << fatal;
                         const ImRect rect(window->Pos, window->Pos + window->Size);
@@ -194,7 +194,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
 
                 for (const int region : {0, 1, 0}) {
                     state.hideView = true;
-                    ctx->Yield(10);
+                    state.waitUntil(ctx, "the chart windows are no longer drawn", [] { return std::ranges::none_of(chartWindows(), [](const ImGuiWindow* window) { return window != nullptr && window->Active; }); });
                     state.hideView = false;
                     state.regionId = region;
                     expectDockedInRegion(std::format("back under ID {} after frames without the view", region));
@@ -205,13 +205,11 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             };
 
             "every chart window of an embedded dashboard is docked inside the host rectangle"_test = [&] {
-                state.view = std::make_unique<DigitizerUi::DashboardView>();
-                while (state.dashboard->session.graphModel.recursiveGatherPlotSinks().size() < 6UZ) {
-                    ctx->Yield();
-                }
+                state.view = std::make_unique<DashboardView>();
+                state.waitUntil(ctx, "the six plot sinks are known", [] { return gState->dashboard->session.graphModel.recursiveGatherPlotSinks().size() >= 6UZ; });
                 for (const Mode mode : {Mode::View, Mode::Interaction}) {
                     state.mode = mode;
-                    opendigitizer::test::waitForStableCharts(ctx, *state.dashboard);
+                    test::waitForStableCharts(ctx, *state.dashboard);
                     const ImGuiWindow* host = hostWindow();
                     expect(host != nullptr) << fatal;
                     const ImRect hostRect(host->Pos, host->Pos + host->Size);
@@ -231,21 +229,20 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 const ImRect hostRect(kHostPos, kHostPos + kHostSize);
                 const auto   magentaShare = [&](bool background) {
                     state.background = background;
-                    opendigitizer::test::waitForStableCharts(ctx, *state.dashboard);
-                    ctx->Yield(3);
-                    const CapturedPixels pixels  = capturePixels(*ctx, chartsBounds());
+                    test::waitForStableCharts(ctx, *state.dashboard);
+                    const CapturedPixels pixels  = captureSettledPixels(*ctx, chartsBounds());
                     const auto           magenta = std::ranges::count_if(pixels.rgba, [](unsigned int c) { return (c & 0xFFU) > 240U && ((c >> 8U) & 0xFFU) < 15U && ((c >> 16U) & 0xFFU) > 240U; });
                     return static_cast<double>(magenta) / static_cast<double>(pixels.rgba.size());
                 };
-                state.mode                                                            = Mode::View;
-                state.hostBackground                                                  = ImVec4(1.f, 0.f, 1.f, 1.f);
-                DigitizerUi::LookAndFeel::mutableInstance().chartStyle.plotBackground = ImVec4(0.f, 0.f, 0.f, 0.f);
-                const ImVec4 frameBackground                                          = std::exchange(ImPlot::GetStyle().Colors[ImPlotCol_FrameBg], ImVec4(.3f, .3f, .4f, 1.f));
-                const double withBackground                                           = magentaShare(true);
-                const double withoutBackground                                        = magentaShare(false);
+                state.mode                                               = Mode::View;
+                state.hostBackground                                     = ImVec4(1.f, 0.f, 1.f, 1.f);
+                LookAndFeel::mutableInstance().chartStyle.plotBackground = ImVec4(0.f, 0.f, 0.f, 0.f);
+                const ImVec4 frameBackground                             = std::exchange(ImPlot::GetStyle().Colors[ImPlotCol_FrameBg], ImVec4(.3f, .3f, .4f, 1.f));
+                const double withBackground                              = magentaShare(true);
+                const double withoutBackground                           = magentaShare(false);
                 captureScreenshot(*ctx, hostRect);
-                DigitizerUi::LookAndFeel::mutableInstance().chartStyle = {};
-                ImPlot::GetStyle().Colors[ImPlotCol_FrameBg]           = frameBackground;
+                LookAndFeel::mutableInstance().chartStyle    = {};
+                ImPlot::GetStyle().Colors[ImPlotCol_FrameBg] = frameBackground;
                 state.hostBackground.reset();
                 state.background = true;
                 expect(withBackground < 0.01) << std::format("with backgrounds the chart windows cover the host: {:.3f} of their area magenta", withBackground);
@@ -259,7 +256,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                     return window ? window->Size : ImVec2{};
                 };
                 const auto expectCellRatios = [&](std::string_view view) {
-                    opendigitizer::test::waitForStableCharts(ctx, *state.dashboard);
+                    test::waitForStableCharts(ctx, *state.dashboard);
                     const float widthRatio  = size("Plot1").x / std::max(1.f, size("Plot2").x);
                     const float heightRatio = size("Plot4").y / std::max(1.f, size("Plot3").y);
                     expect(widthRatio > 2.5f && widthRatio < 3.5f) << std::format("{}: Plot1 is {:.2f} times as wide as Plot2, the cells 3", view, widthRatio);
@@ -267,7 +264,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 };
                 state.mode = Mode::View;
                 expectCellRatios("this view");
-                state.view = std::make_unique<DigitizerUi::DashboardView>();
+                state.view = std::make_unique<DashboardView>();
                 expectCellRatios("a second view");
             };
 
@@ -283,8 +280,8 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 const gr::property_map           saved{{"dockSpace", gr::property_map{{"hsplit", gr::property_map{{"ratio", .5f}, {"first", std::string("Plot1")}, {"second", stacked(right)}}}}}, {"floatingWindows", gr::property_map{}}};
                 state.dashboard->windowLayout = saved;
                 state.mode                    = Mode::View;
-                state.view                    = std::make_unique<DigitizerUi::DashboardView>();
-                opendigitizer::test::waitForStableCharts(ctx, *state.dashboard);
+                state.view                    = std::make_unique<DashboardView>();
+                test::waitForStableCharts(ctx, *state.dashboard);
                 const auto width = [](const char* name) {
                     const ImGuiWindow* window = ImGui::FindWindowByName(name);
                     return window ? window->Size.x : 0.f;
@@ -300,7 +297,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 const auto frameAlpha  = [&](bool background) {
                     state.background       = background;
                     state.probedFrameAlpha = -1.f;
-                    ctx->Yield(3);
+                    state.waitUntil(ctx, "a frame probed the frame colour", [&] { return state.probedFrameAlpha >= 0.f; });
                     return state.probedFrameAlpha;
                 };
                 const float withBackground                   = frameAlpha(true);
@@ -315,10 +312,10 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             "a legend on top moves the charts below it"_test = [&] {
                 state.mode   = Mode::View;
                 state.legend = LegendPosition::Bottom;
-                opendigitizer::test::waitForStableCharts(ctx, *state.dashboard);
+                test::waitForStableCharts(ctx, *state.dashboard);
                 const float topWithLegendBelow = topOfCharts();
                 state.legend                   = LegendPosition::Top;
-                opendigitizer::test::waitForStableCharts(ctx, *state.dashboard);
+                test::waitForStableCharts(ctx, *state.dashboard);
                 expect(topOfCharts() > topWithLegendBelow + 10.f) << std::format("top of charts {} with the legend on top, {} with it below", topOfCharts(), topWithLegendBelow);
                 captureScreenshot(*ctx, ImRect(kHostPos, kHostPos + kHostSize));
                 state.legend = LegendPosition::Bottom;
@@ -327,19 +324,19 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             "a legend on the left or right narrows the charts from that side, inside the host"_test = [&] {
                 state.mode   = Mode::View;
                 state.legend = LegendPosition::Bottom;
-                opendigitizer::test::waitForStableCharts(ctx, *state.dashboard);
+                test::waitForStableCharts(ctx, *state.dashboard);
                 const ImRect withLegendBelow = chartsBounds();
                 const ImRect hostRect(kHostPos, kHostPos + kHostSize);
 
                 state.legend = LegendPosition::Left;
-                opendigitizer::test::waitForStableCharts(ctx, *state.dashboard);
+                test::waitForStableCharts(ctx, *state.dashboard);
                 const ImRect withLegendLeft = chartsBounds();
                 expect(withLegendLeft.Min.x > withLegendBelow.Min.x + 30.f) << std::format("left edge {} with the legend on the left, {} with it below", withLegendLeft.Min.x, withLegendBelow.Min.x);
                 expect(hostRect.Contains(withLegendLeft));
                 captureScreenshot(*ctx, hostRect);
 
                 state.legend = LegendPosition::Right;
-                opendigitizer::test::waitForStableCharts(ctx, *state.dashboard);
+                test::waitForStableCharts(ctx, *state.dashboard);
                 const ImRect withLegendRight = chartsBounds();
                 expect(withLegendRight.Max.x < withLegendBelow.Max.x - 30.f) << std::format("right edge {} with the legend on the right, {} with it below", withLegendRight.Max.x, withLegendBelow.Max.x);
                 expect(hostRect.Contains(withLegendRight));
@@ -354,10 +351,10 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
         pageTest->GuiFunc = [](ImGuiTestContext*) {
             ImGui::SetNextWindowPos(kHostPos);
             ImGui::SetNextWindowSize(kHostSize);
-            IMW::Window window("Host", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
-            auto&       state = *g_state;
+            imw::Window window("Host", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
+            auto&       state = *gState;
             if (!state.page) {
-                state.page = std::make_unique<DigitizerUi::DashboardPage>();
+                state.page = std::make_unique<DashboardPage>();
                 state.page->setDashboard(*state.dashboard);
             }
             state.page->draw(Mode::Interaction);
@@ -365,12 +362,10 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
 
         pageTest->TestFunc = [](ImGuiTestContext* ctx) {
             "the edit pane opened from the legend lies inside the host"_test = [ctx] {
-                while (g_state->dashboard->session.graphModel.recursiveGatherPlotSinks().size() < 6UZ) {
-                    ctx->Yield();
-                }
-                ctx->Yield(5);
+                gState->waitUntil(ctx, "the six plot sinks are known", [] { return gState->dashboard->session.graphModel.recursiveGatherPlotSinks().size() >= 6UZ; });
+                test::waitForStableCharts(ctx, *gState->dashboard);
                 ctx->ItemClick("**/PlotSink1", ImGuiMouseButton_Right);
-                ctx->Yield(60);
+                gState->waitUntil(ctx, "the edit pane has opened", [] { return gState->page->isEditPaneShown(); });
 
                 const ImGuiWindow* panel = ImGui::FindWindowByName("BlockControlsPanel");
                 expect(panel != nullptr && panel->Active) << fatal << "the edit pane is open";
@@ -379,34 +374,70 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 expect(hostRect.Contains(panelRect)) << std::format("edit pane at ({}, {}) size ({}, {}) inside the host at ({}, {})", panelRect.Min.x, panelRect.Min.y, panelRect.GetWidth(), panelRect.GetHeight(), hostRect.Min.x, hostRect.Min.y);
                 captureScreenshot(*ctx, hostRect);
             };
-            g_state->page.reset();
+            gState->page.reset();
+        };
+
+        ImGuiTest* remoteTest = IM_REGISTER_TEST(engine(), "dashboardview", "adding a remote signal adds its source, sink, edge and chart");
+        remoteTest->GuiFunc   = pageTest->GuiFunc;
+        remoteTest->TestFunc  = [](ImGuiTestContext* ctx) {
+            "a remote signal gets a source, a sink fed by it, and a chart showing the sink"_test = [ctx] {
+                auto& graphModel = gState->dashboard->session.graphModel;
+                while (graphModel.recursiveGatherPlotSinks().size() < 6UZ) {
+                    ctx->Yield();
+                }
+                SignalData signal{};
+                signal.signalName  = "qa_remote_signal";
+                signal.unit        = "V";
+                signal.hostname    = "localhost";
+                signal.protocol    = "http";
+                signal.serviceName = "/GnuRadio/Acquisition";
+                signal.port        = 1;
+                gState->page->addSelectedRemoteSignal(signal);
+
+                const auto findBlock = [&graphModel](auto&& predicate) {
+                    UiGraphBlock* found = nullptr;
+                    graphModel.recursiveForEachBlock([&](const UiGraphModel::FindBlockResult& result) {
+                        if (result.block && predicate(*result.block)) {
+                            found = result.block;
+                        }
+                        return UiGraphModel::VisitorResult::Recurse;
+                    });
+                    return found;
+                };
+                const auto chartFor = [](std::string_view sinkName) {
+                    return std::ranges::any_of(gState->dashboard->uiWindows, [sinkName](const auto& w) { //
+                        return w.block && registeredId(w.block->typeName()) == "opendigitizer::charts::XYChart" && std::ranges::contains(static_cast<const charts::XYChart*>(w.block->raw())->data_sinks.value, sinkName);
+                    });
+                };
+                UiGraphBlock* source = nullptr;
+                UiGraphBlock* sink   = nullptr;
+                while (!source || !sink || !chartFor(sink->blockName) || std::ranges::none_of(graphModel.rootBlock.childBlocks[0]->childEdges, [&](const UiGraphEdge& edge) { return edge.edgeSourcePort && edge.edgeDestinationPort && edge.edgeSourcePort->ownerBlock == source && edge.edgeDestinationPort->ownerBlock == sink; })) {
+                    ctx->Yield();
+                    source = findBlock([](const UiGraphBlock& block) { return block.blockTypeName.starts_with("opendigitizer::RemoteStreamSource"); });
+                    sink   = source ? findBlock([source](const UiGraphBlock& block) { return block.isPlotSink() && block.blockName == registeredUniqueName(source->blockUniqueName) + "_sink"; }) : nullptr;
+                }
+                expect(sink->blockTypeName == "opendigitizer::ImPlotSink<float32>") << sink->blockTypeName;
+            };
+            gState->page.reset();
         };
     }
 };
 
 int main(int argc, char* argv[]) {
-    TestState state;
-    g_state = std::addressof(state);
-
-    auto options             = DigitizerUi::test::TestOptions::fromArgs(argc, argv);
+    auto options             = test::TestOptions::fromArgs(argc, argv);
     options.screenshotPrefix = "dashboard_view";
     TestApp app(options);
-    auto    restClient = std::make_shared<opencmw::client::RestClient>();
 
     app.initImGui();
+    TestState state;
+    gState = std::addressof(state);
 
     auto& registry = gr::globalBlockRegistry();
-    gr::blocklib::initGrBasicBlocks(registry);
-    gr::blocklib::initGrTestingBlocks(registry);
+    registerAppBlocks(registry);
 
-    auto grcFile         = cmrc::ui_test_assets::get_filesystem().open("examples/qa_layout.grc");
-    state.dashboard      = DigitizerUi::Dashboard::create(restClient, DigitizerUi::DashboardDescription::createEmpty("embedded"));
-    state.emptyDashboard = DigitizerUi::Dashboard::create(restClient, DigitizerUi::DashboardDescription::createEmpty("never loaded"));
-    state.dashboard->loadAndThen(std::string(grcFile.begin(), grcFile.end()), [&](gr::Graph&& graph) { state.dashboard->session.emplaceGraph(std::move(graph)); });
+    state.reload(cmrc::ui_test_assets::get_filesystem(), "examples/qa_layout.grc", "embedded");
+    state.emptyDashboard = std::make_unique<Dashboard>(state.restClient, DashboardDescription::createEmpty("never loaded"));
 
     const bool result = app.runTests();
-    state.page.reset();
-    state.view.reset();
-    g_state = nullptr;
     return result ? 0 : 1;
 }

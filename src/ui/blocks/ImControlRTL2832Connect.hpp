@@ -9,10 +9,10 @@
 #include <gnuradio-4.0/Block.hpp>
 #include <gnuradio-4.0/sdr/RTL2832Device.hpp>
 
-#include "../components/StyledStandardWidgets.hpp"
+#include "../components/StyledWidgets.hpp"
 #include "ImControl.hpp"
 
-namespace DigitizerUi {
+namespace gr::od {
 
 struct ImControlRTL2832Connect : ImControl<ImControlRTL2832Connect> {
     using Description = gr::Doc<R""(@brief RTL-SDR connect button: gives the web build access to the RTL-SDR dongle.
@@ -43,9 +43,9 @@ Browsers without WebUSB, cannot open the dongle; the native build opens it by it
         const float         button = ImGui::CalcTextSize(text.c_str()).x + 2.f * ImGui::GetStyle().FramePadding.x;
         const SizeAndLayout layout = prepareDraw(parsedConfig, button, button, 0.f);
 
-        drawWithLabelAndTooltip(layout, [&](float width) {
-            IMW::Disabled busy(connection != Connection::Idle);
-            if (DigitizerUi::Button(text.c_str(), ImVec2(width, 0.f))) {
+        drawWithLabel(layout, [&](float width) {
+            imw::Disabled busy(connection != Connection::Idle);
+            if (gr::od::button(text.c_str(), ImVec2(width, 0.f))) {
 #if defined(__EMSCRIPTEN__)
                 usb.requestPermission();
 #endif
@@ -79,6 +79,6 @@ Browsers without WebUSB, cannot open the dongle; the native build opens it by it
     }
 };
 
-} // namespace DigitizerUi
+} // namespace gr::od
 
 #endif

@@ -9,9 +9,7 @@
 #include <cstdint>
 #include <optional>
 
-namespace opendigitizer {
-
-GR_REGISTER_BLOCK(opendigitizer::ValueSource, [T], [ float, double ])
+namespace gr::od {
 
 template<typename T>
 struct ValueSource : gr::Block<ValueSource<T>> {
@@ -25,12 +23,6 @@ struct ValueSource : gr::Block<ValueSource<T>> {
 
     std::optional<T> _pending;
 
-    void settingsChanged(const gr::property_map& /*oldSettings*/, const gr::property_map& newSettings) {
-        if (newSettings.contains("value")) {
-            _pending = value.value;
-        }
-    }
-
     gr::work::Status processBulk(gr::OutputSpanLike auto& outSpan) {
         if (!_pending || outSpan.empty()) {
             outSpan.publish(0UZ);
@@ -43,8 +35,14 @@ struct ValueSource : gr::Block<ValueSource<T>> {
         _pending.reset();
         return gr::work::Status::OK;
     }
+
+    void settingsChanged(const gr::property_map& /*oldSettings*/, const gr::property_map& newSettings) {
+        if (newSettings.contains("value")) {
+            _pending = value.value;
+        }
+    }
 };
 
-} // namespace opendigitizer
+} // namespace gr::od
 
 #endif // OPENDIGITIZER_UI_BLOCKS_VALUESOURCE_HPP

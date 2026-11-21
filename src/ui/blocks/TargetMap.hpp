@@ -15,11 +15,11 @@
 
 #include <PluginPaths.hpp>
 
-namespace DigitizerUi {
+namespace gr::od {
 
 enum class TargetRelationship { NotTargeting, TargetingSpecifically, TargetingViaGlob };
 
-/// An entry in target_map for a UI control
+/// an entry of a UI control's target_map
 struct TargetEntry {
     std::string blockTarget;
     std::string propertyName;
@@ -43,9 +43,8 @@ struct TargetEntry {
 };
 
 namespace detail {
-/// Normally we try to prevent the user from inputting names that have commas or semicolons, because those are part of the TargetMap grammar
-/// However, it is valid for gnuradio to give a block a default name of its typename, which may contain <Template, Arguments> with commas
-/// Splitting this way instead of std::views::split(',') allows supporting those names
+/// commas and semicolons belong to the TargetMap grammar, and the UI keeps them out of names,
+/// but GR4 may name a block after its type, whose <Template, Arguments> contain commas: std::views::split(',') would cut them
 [[nodiscard]] inline std::expected<std::vector<std::string_view>, std::string> splitStringOutsideOfAngleBrackets(std::string_view text, char separator) {
     std::vector<std::string_view> parts;
     std::size_t                   depth     = 0UZ;
@@ -78,11 +77,11 @@ namespace detail {
     if (colon == std::string_view::npos) {
         return std::unexpected(std::format("'{}': expected a ':' between blocks and property", entryText));
     }
-    const std::string property = Digitizer::trimWhitespace(entryText.substr(colon + 1UZ));
+    const std::string property = digitizer::trimWhitespace(entryText.substr(colon + 1UZ));
     if (property.empty()) {
         return std::unexpected(std::format("'{}': empty property", entryText));
     }
-    const std::string blocksText = Digitizer::trimWhitespace(entryText.substr(0UZ, colon));
+    const std::string blocksText = digitizer::trimWhitespace(entryText.substr(0UZ, colon));
     if (blocksText.empty()) {
         return std::unexpected(std::format("'{}': no block named", entryText));
     }
@@ -95,7 +94,7 @@ namespace detail {
     }
     std::vector<TargetEntry> entries;
     for (const std::string_view nameText : *nameTexts) {
-        std::string name = Digitizer::trimWhitespace(nameText);
+        std::string name = digitizer::trimWhitespace(nameText);
         if (name.empty() || name == "*") {
             return std::unexpected(std::format("'{}': {}", entryText, name.empty() ? "empty block name" : "'*' mixed with block names"));
         }
@@ -108,31 +107,30 @@ namespace detail {
 [[nodiscard]] inline bool isValidBlockName(std::string_view name) { //
     return !name.contains(';')                                      //
            && !name.contains('*')                                   //
-           && Digitizer::trimWhitespace(name) == name               //
+           && digitizer::trimWhitespace(name) == name               //
            && detail::splitStringOutsideOfAngleBrackets(name, ',').transform([](const auto& parts) { return parts.size() == 1UZ; }).value_or(false);
 }
 
 /// trim whitespace and replace special characters with underscores (;*,<>)
 [[nodiscard]] inline std::string sanitizeUserInputtedName(std::string_view name) {
     static constexpr std::string_view kTargetMapGrammarCharacters = ";*,<>";
-    std::string                       sanitized                   = Digitizer::trimWhitespace(name);
+    std::string                       sanitized                   = digitizer::trimWhitespace(name);
     std::ranges::replace_if(sanitized, [](char c) { return kTargetMapGrammarCharacters.contains(c); }, '_');
     assert(isValidBlockName(sanitized));
     return sanitized;
 }
 
 /// A parsed version of target_map which supports finding the strongest connection, and adding and removing items with deduplication
-class TargetMap {
+struct TargetMap {
     std::vector<TargetEntry> _entries;
 
-public:
     [[nodiscard]] static std::expected<TargetMap, std::string> fromString(std::string_view stringRepresentation) {
         TargetMap map;
-        if (Digitizer::trimWhitespace(stringRepresentation).empty()) {
+        if (digitizer::trimWhitespace(stringRepresentation).empty()) {
             return map;
         }
         for (const auto entryRange : stringRepresentation | std::views::split(';')) {
-            auto entries = detail::parseTargetEntries(Digitizer::trimWhitespace(std::string_view(entryRange.begin(), entryRange.end())));
+            auto entries = detail::parseTargetEntries(digitizer::trimWhitespace(std::string_view(entryRange.begin(), entryRange.end())));
             if (!entries) {
                 return std::unexpected(std::move(entries.error()));
             }
@@ -161,7 +159,7 @@ public:
 
     [[nodiscard]] bool contains(const TargetEntry& maybeContained) const { return std::ranges::contains(_entries, maybeContained); }
 
-    /// If any of our target_map entries are specifically targeting the given block, return that relationship. if none, then NotTargeting. otherwise TargetingViaGlob
+    /// the relationship of the entries to the given block: specific, else TargetingViaGlob, else NotTargeting
     [[nodiscard]] TargetRelationship relationshipToTarget(std::string_view specificBlockName, std::string_view blockPropertyName) const {
         using enum TargetRelationship;
         TargetRelationship strongestRelationship = NotTargeting;
@@ -184,23 +182,22 @@ public:
     void removeTarget(const TargetEntry& maybeContained) { std::erase(_entries, maybeContained); }
 };
 
-/// If these units are used on a std::uint32_t, the editor will display as a color picker
+/// these units on a std::uint32_t make the editor show a colour picker
 inline constexpr std::array<std::string_view, 2> kColorUnits{"Color", "RGB"};
 
 [[nodiscard]] inline bool isColorUnit(std::string_view unit) { return std::ranges::contains(kColorUnits, unit); }
 
-/// Parse a string representing a list of types and units, of the form "float64;float32;unit:Hz;unit:kHz", and return
-/// whether typeName is one of the listed types and unit is one of the listed units. If either types or units are
-/// missing, it is interpreted as allowing any type or unit, respectively.
+/// whether `typeName` and `unit` are listed in `compatibleTypeMap`, of the form "float64;float32;unit:Hz;unit:kHz";
+/// no types listed allows any type, no units any unit
 [[nodiscard]] inline bool isCompatibleType(std::string_view compatibleTypeMap, std::string_view typeName, std::string_view unit = {}) {
     constexpr std::string_view kUnitPrefix = "unit:";
 
     std::vector<std::string> types;
     std::vector<std::string> units;
     for (const auto entryRange : compatibleTypeMap | std::views::split(';')) {
-        std::string entry = Digitizer::trimWhitespace(std::string_view(entryRange.begin(), entryRange.end()));
+        std::string entry = digitizer::trimWhitespace(std::string_view(entryRange.begin(), entryRange.end()));
         if (entry.starts_with(kUnitPrefix)) {
-            units.push_back(Digitizer::trimWhitespace(std::string_view(entry).substr(kUnitPrefix.size())));
+            units.push_back(digitizer::trimWhitespace(std::string_view(entry).substr(kUnitPrefix.size())));
         } else if (!entry.empty()) {
             types.push_back(std::move(entry));
         }
@@ -211,6 +208,6 @@ inline constexpr std::array<std::string_view, 2> kColorUnits{"Color", "RGB"};
     return typeMatches && unitMatches;
 }
 
-} // namespace DigitizerUi
+} // namespace gr::od
 
 #endif

@@ -3,8 +3,8 @@
 
 #include "ImControl.hpp"
 
-#include "../components/StyledStandardWidgets.hpp"
-#include "../utils/EmscriptenHelper.hpp"
+#include "../components/StyledWidgets.hpp"
+#include "../utils/Browser.hpp"
 
 #include <opendigitizer/video/CameraTypes.hpp>
 
@@ -20,7 +20,7 @@
 #include <utility>
 #include <vector>
 
-namespace DigitizerUi {
+namespace gr::od {
 
 /// a std::vector<std::string> setting as it arrives in UiGraphBlock::blockSettings: a tensor of string values
 [[nodiscard]] inline std::vector<std::string> stringList(const gr::pmt::Value& value) {
@@ -74,9 +74,9 @@ template<typename T>
     const auto                 shown   = std::ranges::find_if(devices, isShown);
     const std::string          preview = shown == devices.end() ? std::string(selected) : std::string(deviceName(*shown));
     std::optional<std::string> picked;
-    if (auto combo = DigitizerUi::ComboBox(id, preview.c_str(), 0)) {
+    if (auto combo = ComboBox(id, preview.c_str(), 0)) {
         for (const std::string& entry : fixed) {
-            if (DigitizerUi::Selectable(entry.c_str(), entry == selected)) {
+            if (selectable(entry.c_str(), entry == selected)) {
                 picked = entry;
             }
         }
@@ -84,7 +84,7 @@ template<typename T>
             ImGui::Separator();
         }
         for (const std::string& device : devices) {
-            if (DigitizerUi::Selectable(device.c_str(), isShown(device))) {
+            if (selectable(device.c_str(), isShown(device))) {
                 picked = opendigitizer::video::deviceSelector(device);
             }
         }
@@ -126,13 +126,13 @@ picking a device also sends `device_values` so, e.g., one list switches a Select
         const std::string&  shown      = _fallenBack ? fallback : value;
         const float         inputWidth = std::max(style.toolbarControlMinimumWidth, pickDeviceWidth(target, shown, choices));
         const SizeAndLayout layout     = prepareDraw(parsedConfig, inputWidth, style.toolbarControlMinimumWidth, labelWidth());
-        drawWithLabelAndTooltip(layout, [&](float width) {
-            IMW::Disabled cannotOpen(parsedConfig.drawingContext == DrawableBlockConfig::DrawingContext::FlowgraphView);
+        drawWithLabel(layout, [&](float width) {
+            imw::Disabled cannotOpen(parsedConfig.drawingContext == DrawableBlockConfig::DrawingContext::FlowgraphView);
             ImGui::SetNextItemWidth(width);
             if (auto picked = pickDevice("##device", target, shown, choices)) {
                 value       = std::move(*picked);
                 _fallenBack = false;
-                std::ignore = settings().setStaged({{"value", value}});
+                stageValue(value);
                 apply(value);
             }
         });
@@ -142,7 +142,6 @@ picking a device also sends `device_values` so, e.g., one list switches a Select
         return gr::work::Status::OK;
     }
 
-private:
     void followDeviceState(std::string_view state) {
         if (state.empty() || !std::ranges::contains(choices, fallback) || std::ranges::contains(choices, value)) {
             return;
@@ -167,6 +166,6 @@ private:
     }
 };
 
-} // namespace DigitizerUi
+} // namespace gr::od
 
 #endif // OPENDIGITIZER_UI_BLOCKS_IMCONTROLDEVICE_HPP

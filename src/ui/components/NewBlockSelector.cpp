@@ -1,28 +1,114 @@
 #include "NewBlockSelector.hpp"
 #include "InputTextCompletion.hpp"
 
-#include "../common/ImguiWrap.hpp"
+#include "../common/Imw.hpp"
 #include "../common/LookAndFeel.hpp"
 
 #include "../components/Dialog.hpp"
-#include "../components/ListBox.hpp"
-#include "../components/StyledStandardWidgets.hpp"
+#include "../components/StyledWidgets.hpp"
 
 #include "NewBlockSelectorFuzzySearch.hpp"
-#include "scope_exit.hpp"
+#include "stdex/tolower.hpp"
 
 #include <gnuradio-4.0/meta/utils.hpp>
 
+using namespace gr::od;
+
 using namespace std::string_literals;
-using DigitizerUi::components::FilterResult;
-using DigitizerUi::components::filterTypename;
-using DigitizerUi::components::NamespaceDelimitedSearchIterator;
+using components::FilterResult;
+using components::filterTypename;
+using components::NamespaceDelimitedSearchIterator;
+
+namespace gr::od {
+namespace {
+void ensureItemVisible() {
+    auto scroll = ImGui::GetScrollY();
+    auto min    = ImGui::GetWindowContentRegionMin().y + scroll;
+    auto max    = ImGui::GetWindowContentRegionMax().y + scroll;
+
+    auto h = ImGui::GetItemRectSize().y;
+    auto y = ImGui::GetCursorPosY() - scroll;
+    if (y > max) {
+        ImGui::SetScrollHereY(1);
+    } else if (y - h < min) {
+        ImGui::SetScrollHereY(0);
+    }
+}
+
+[[nodiscard]] std::optional<std::string> filteredListBox(const char* id, const ImVec2& size, std::vector<std::string>& names, FilteredListState& state) {
+    imw::ChangeStrId newId(id);
+
+    imw::Group group;
+
+    auto x = ImGui::GetCursorPosX();
+    auto y = ImGui::GetCursorPosY();
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextUnformatted("Filter:");
+    ImGui::SameLine();
+    ImGui::SetCursorPosY(y);
+
+    if (ImGui::IsWindowAppearing() || state.filterInputReclaimFocus) {
+        ImGui::SetKeyboardFocusHere();
+        state.filterInputReclaimFocus = false;
+    }
+
+    imw::ItemWidth newItemWidth(size.x - (ImGui::GetCursorPosX() - x));
+    const bool     shouldScrollToSelected = components::inputTextCompletion(names).inputText("##filterBlockType", &state.filterString);
+
+    if (auto listbox = imw::ListBox("##Available Block types", ImVec2{size.x, size.y - (ImGui::GetCursorPosY() - y)})) {
+        const auto matchesFilter = [&state](std::string_view name) { return !name.empty() && digitizer::utils::case_insensitive_contains(name, state.filterString); };
+        if (state.selected && !matchesFilter(*state.selected)) {
+            state.selected.reset();
+        }
+
+        int  selectOffset     = 0;
+        bool scrollToSelected = shouldScrollToSelected;
+        if (state.selected) {
+            if (ImGui::IsKeyPressed(ImGuiKey_DownArrow)) {
+                selectOffset     = 1;
+                scrollToSelected = true;
+            } else if (ImGui::IsKeyPressed(ImGuiKey_UpArrow)) {
+                selectOffset     = -1;
+                scrollToSelected = true;
+            }
+        }
+
+        const auto filtered = names | std::views::filter(matchesFilter) | std::ranges::to<std::vector>();
+        for (auto it = filtered.begin(); it != filtered.end(); ++it) {
+            if (!state.selected) {
+                state.selected = *it;
+            }
+
+            if (const bool isLastIteration = (it + 1) == filtered.end(); !isLastIteration) {
+                if (selectOffset == -1 && *(it + 1) == *state.selected) {
+                    state.selected = *it;
+                    selectOffset   = 0;
+                } else if (selectOffset == 1 && *it == *state.selected) {
+                    state.selected.reset();
+                    selectOffset = 0;
+                }
+            }
+
+            if (selectable(it->c_str(), state.selected && *it == *state.selected)) {
+                state.selected                = *it;
+                state.filterInputReclaimFocus = true;
+            }
+            if (state.selected && *state.selected == *it && scrollToSelected) {
+                ensureItemVisible();
+            }
+        }
+    }
+
+    return state.selected;
+}
+} // namespace
+} // namespace gr::od
 
 struct Symbol {
     std::string_view    fullSymbolName;
     const FilterResult& filterResult;
 
-    /// This draws the full name of the symbol with exact search matches highlighted. It is also a selectable and returns true if it was selected.
+    /// true when selected; exact search matches are highlighted
     [[nodiscard]] bool draw(std::string_view currentlySelected, bool scrollToSelected) const {
         bool selected = false;
         assert(!fullSymbolName.empty());
@@ -32,12 +118,12 @@ struct Symbol {
         const auto* window = ImGui::GetCurrentWindow();
 
         const bool wasSelected = fullSymbolName == currentlySelected;
-        if (DigitizerUi::Selectable(std::format("##{}", fullSymbolName).c_str(), wasSelected, ImGuiSelectableFlags_None, {buttonWidth, 0.f})) {
+        if (selectable(std::format("##{}", fullSymbolName).c_str(), wasSelected, ImGuiSelectableFlags_None, {buttonWidth, 0.f})) {
             selected = true;
         }
 
         if (wasSelected && scrollToSelected) {
-            DigitizerUi::components::detail::ensureItemVisible();
+            ensureItemVisible();
         }
 
         const auto fontSize = ImGui::GetFontSize();
@@ -51,10 +137,10 @@ struct Symbol {
             const char* matchEnd   = exactMatch.data() + exactMatch.size();
             const auto  boxPos     = textCursorInitial + ImVec2{ImGui::CalcTextSize(fullSymbolName.data(), matchStart).x, 0.0};
             const auto  boxSize    = ImGui::CalcTextSize(matchStart, matchEnd);
-            window->DrawList->AddRectFilled(boxPos, boxPos + boxSize, ImGui::ColorConvertFloat4ToU32(DigitizerUi::LookAndFeel::instance().palette().highlightedSearchResultsBg), DigitizerUi::LookAndFeel::instance().searchHighlightRounding);
+            window->DrawList->AddRectFilled(boxPos, boxPos + boxSize, ImGui::ColorConvertFloat4ToU32(LookAndFeel::instance().palette().highlightedSearchResultsBg), LookAndFeel::instance().searchHighlightRounding);
         }
 
-        ImFont*    font      = DigitizerUi::LookAndFeel::instance().fontNormal();
+        ImFont*    font      = LookAndFeel::instance().fontNormal();
         const auto textColor = ImGui::ColorConvertFloat4ToU32(ImGui::GetStyle().Colors[ImGuiCol_Text]);
         window->DrawList->AddText(font, fontSize, textCursorInitial, textColor, fullSymbolName.data(), fullSymbolName.data() + fullSymbolName.size());
         return selected;
@@ -79,6 +165,8 @@ struct NamespaceOrSymbol {
         }
     };
 
+    std::variant<Symbol, Namespace> variant;
+
     NamespaceOrSymbol() = delete;
     explicit NamespaceOrSymbol(const Symbol& symbol) : variant(symbol) {}
     explicit NamespaceOrSymbol(NamespaceTag) : variant(Namespace{}) {}
@@ -100,7 +188,7 @@ struct NamespaceOrSymbol {
         namespaceNode->insertOrLeaveExistingElement(key, Symbol{element, filter});
     }
 
-    /// If nonempty, the returned string view is the full symbol name of the selected symbol
+    /// if non-empty, the full symbol name of the selected symbol
     [[nodiscard]] std::string_view drawTreeRecursive(std::string_view currentlySelected, std::string& keyBuffer, bool scrollToSelected, std::optional<bool> newOpenValue) const {
         std::string_view selected;
         const auto*      namespaceNode = nameSpace();
@@ -111,13 +199,12 @@ struct NamespaceOrSymbol {
 
         for (const auto& [key, child] : namespaceNode->children) {
             const auto namespaceCase = [&keyBuffer, key, &newOpenValue, &child, &selected, scrollToSelected, currentlySelected](const Namespace&) {
-                // this is a branch
                 keyBuffer = key;
-                DigitizerUi::IMW::ChangeStrId id(keyBuffer.c_str());
+                imw::ChangeStrId id(keyBuffer.c_str());
                 if (newOpenValue) {
                     ImGui::SetNextItemOpen(*newOpenValue);
                 }
-                if (DigitizerUi::TreeNodeEx(keyBuffer.c_str(), ImGuiTreeNodeFlags_SpanAvailWidth | ImGuiTreeNodeFlags_DrawLinesFull)) {
+                if (treeNodeEx(keyBuffer.c_str(), ImGuiTreeNodeFlags_SpanAvailWidth | ImGuiTreeNodeFlags_DrawLinesFull)) {
                     if (auto maybeSelected = child->drawTreeRecursive(currentlySelected, keyBuffer, scrollToSelected, newOpenValue); !maybeSelected.empty()) {
                         selected = maybeSelected;
                     }
@@ -135,46 +222,44 @@ struct NamespaceOrSymbol {
         return selected;
     }
 
-private:
-    Namespace*                      nameSpace() { return std::get_if<Namespace>(&variant); }
-    const Namespace*                nameSpace() const { return std::get_if<Namespace>(&variant); }
-    std::variant<Symbol, Namespace> variant;
+    Namespace*       nameSpace() { return std::get_if<Namespace>(&variant); }
+    const Namespace* nameSpace() const { return std::get_if<Namespace>(&variant); }
 };
 
-namespace DigitizerUi {
+namespace gr::od {
 void NewBlockSelector::drawNamespaceTree(const ImVec2& size) {
-    IMW::Child window("##blockSelector", size, ImGuiChildFlags_None, ImGuiWindowFlags_None);
+    imw::Child window("##blockSelector", size, ImGuiChildFlags_None, ImGuiWindowFlags_None);
 
-    constexpr const char* clearButtonText  = "Clear";
-    constexpr const char* foldButtonText   = "Fold all";
-    constexpr const char* unfoldButtonText = "Unfold all";
-    const auto            originalCursorX  = ImGui::GetCursorPosX();
-    const auto            buttonStart      = ImGui::GetContentRegionAvail().x - (IMW::CalcAdjacentButtonSizes(std::array{clearButtonText, foldButtonText, unfoldButtonText}, DigitizerUi::CalcButtonSize)).x;
-    bool                  scrollToSelected = false;
+    constexpr const char* kClearButtonText  = "Clear";
+    constexpr const char* kFoldButtonText   = "Fold all";
+    constexpr const char* kUnfoldButtonText = "Unfold all";
+    const auto            originalCursorX   = ImGui::GetCursorPosX();
+    const auto            buttonStart       = ImGui::GetContentRegionAvail().x - (imw::calcAdjacentButtonSizes(std::array{kClearButtonText, kFoldButtonText, kUnfoldButtonText}, calcTextButtonSize)).x;
+    bool                  scrollToSelected  = false;
     ImGui::SetCursorPosX(buttonStart);
-    if (DigitizerUi::TextButton(clearButtonText)) {
-        m_blockFilter.clear();
+    if (textButton(kClearButtonText)) {
+        _blockFilter.clear();
         scrollToSelected = true; // more things are visible now that there is no filter
     }
     std::optional<bool> newUnfoldedValue;
     ImGui::SameLine();
-    if (DigitizerUi::TextButton(foldButtonText)) {
+    if (textButton(kFoldButtonText)) {
         newUnfoldedValue = false;
     }
     ImGui::SameLine();
-    if (DigitizerUi::TextButton(unfoldButtonText)) {
+    if (textButton(kUnfoldButtonText)) {
         newUnfoldedValue = true;
     }
     ImGui::SameLine();
     ImGui::SetCursorPosX(originalCursorX);
 
-    ImGui::SetNextItemWidth(buttonStart - ImGui::GetStyle().ItemSpacing.x); // since the InputTextCompletion has no label, this makes sense, otherwise subtract label width + spacing
+    ImGui::SetNextItemWidth(buttonStart - ImGui::GetStyle().ItemSpacing.x); // the input has no label
 
-    if (auto completionNamesView = data | std::views::keys; DigitizerUi::components::InputTextCompletion(completionNamesView).inputText("##filterTypenameType", &m_blockFilter)) {
+    if (auto completionNamesView = data | std::views::keys; components::inputTextCompletion(completionNamesView).inputText("##filterTypenameType", &_blockFilter)) {
         newUnfoldedValue = true; // user typed in the input filter, they probably want to see all matches
         scrollToSelected = true;
     }
-    if (!m_wasOpenLastFrame) {
+    if (!_wasOpenLastFrame) {
         ImGui::SetKeyboardFocusHere(-1);
     }
 
@@ -185,22 +270,20 @@ void NewBlockSelector::drawNamespaceTree(const ImVec2& size) {
         [[nodiscard]] constexpr std::string_view blockTypeName() const { return originalElement->first; }
     };
 
-    // create filter results for every entry in `data`, sorted by relevance. results are
-    // passed when drawing the tree, so as to highlight matching substrings
+    // filter results for every entry in `data`, by relevance; the tree highlights their matching substrings
     const std::vector<FilteredEntry> filterResults = [this] {
         std::vector<FilteredEntry> result;
         result.reserve(this->data.size());
 
         for (auto iterator = std::begin(this->data); iterator != std::end(this->data); ++iterator) {
             std::string_view blockType{iterator->first};
-            result.emplace_back(iterator, std::make_unique<FilterResult>(filterTypename(blockType, m_blockFilter)));
+            result.emplace_back(iterator, std::make_unique<FilterResult>(filterTypename(blockType, _blockFilter)));
         }
 
-        if (this->m_blockFilter.empty()) {
+        if (this->_blockFilter.empty()) {
             return result;
         }
 
-        // sort by relevance to the filter query
         std::ranges::stable_sort(result, std::ranges::greater(), [](const FilteredEntry& entry) { return entry.filterResult->score; });
 
         // remove all but roughly what will fit on the screen
@@ -212,9 +295,8 @@ void NewBlockSelector::drawNamespaceTree(const ImVec2& size) {
         return result;
     }();
 
-    // if selected element is no longer available, deselect it
-    if (std::ranges::none_of(filterResults, [this](const FilteredEntry& entry) { return entry.blockTypeName() == m_currentlySelectedType; })) {
-        m_currentlySelectedType.clear();
+    if (std::ranges::none_of(filterResults, [this](const FilteredEntry& entry) { return entry.blockTypeName() == _currentlySelectedType; })) {
+        _currentlySelectedType.clear();
     }
 
     auto globalNamespace = std::make_unique<NamespaceOrSymbol>(NamespaceOrSymbol::NamespaceTag{});
@@ -234,9 +316,9 @@ void NewBlockSelector::drawNamespaceTree(const ImVec2& size) {
     }
 
     std::string tempKeyBuffer;
-    auto        newSelected = globalNamespace->drawTreeRecursive(this->m_currentlySelectedType, tempKeyBuffer, scrollToSelected, newUnfoldedValue);
+    auto        newSelected = globalNamespace->drawTreeRecursive(this->_currentlySelectedType, tempKeyBuffer, scrollToSelected, newUnfoldedValue);
     if (!newSelected.empty()) {
-        this->m_currentlySelectedType = newSelected;
+        this->_currentlySelectedType = newSelected;
     }
 }
 
@@ -246,60 +328,46 @@ void NewBlockSelector::draw() {
     auto x = ImGui::GetCursorPosX();
     ImGui::SetCursorPosX(x + 32);
 
-    auto menu = IMW::ModalPopup(m_windowName.c_str(), nullptr, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+    auto menu = imw::ModalPopup(_windowName.c_str(), nullptr, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
     if (!menu) {
-        m_wasOpenLastFrame = false;
+        _wasOpenLastFrame = false;
         return;
     }
-    Digitizer::utils::scope_exit _([this] { this->m_wasOpenLastFrame = true; });
+    gr::on_scope_exit _([this] { this->_wasOpenLastFrame = true; });
 
     auto listSize = windowSize - ImVec2(64, 64);
     listSize.x /= 2.f;
 
     this->drawNamespaceTree(listSize);
 
-    // If the type is empty, we treat it as invalid,
-    // but some types might not have parametrizations,
-    // that is their empty parametrization is valid,
-    // so we need std::optional
+    // nullopt: invalid; an empty parametrisation is valid for a type without parameters
     std::optional<std::string> selectedParametrization;
 
-    if (!m_currentlySelectedType.empty()) {
-        if (auto typeIt = data.find(m_currentlySelectedType); typeIt != data.cend()) {
+    if (!_currentlySelectedType.empty()) {
+        if (auto typeIt = data.find(_currentlySelectedType); typeIt != data.cend()) {
             ImGui::SameLine();
 
-            if (m_currentlySelectedType != m_previouslySelectedType) {
-                m_previouslySelectedType              = m_currentlySelectedType;
-                m_selectedTypeParametrizationListName = "parametrizations_for_" + m_currentlySelectedType;
+            if (_currentlySelectedType != _previouslySelectedType) {
+                _previouslySelectedType              = _currentlySelectedType;
+                _selectedTypeParametrizationListName = "parametrizations_for_" + _currentlySelectedType;
             }
 
-            auto parameterization = components::FilteredListBox(m_selectedTypeParametrizationListName.c_str(), listSize, //
-                typeIt->second, [index = 0](auto& parametrization) mutable -> std::pair<int, std::string> {
-                    index++;
-                    if (parametrization.empty()) {
-                        return std::pair{index, "default"s};
-                    } else {
-                        return std::pair{index, parametrization};
-                    }
-                });
-
-            if (parameterization) {
-                selectedParametrization = parameterization.value().second;
-            }
+            auto names              = typeIt->second | std::views::transform([](const std::string& parametrization) { return parametrization.empty() ? "default"s : parametrization; }) | std::ranges::to<std::vector>();
+            selectedParametrization = filteredListBox(_selectedTypeParametrizationListName.c_str(), listSize, names, _parametrizationLists[_selectedTypeParametrizationListName]);
         }
     }
 
-    const bool okEnabled    = !m_currentlySelectedType.empty();
-    const auto dialogResult = components::DialogButtons(okEnabled);
-    if (dialogResult == components::DialogButton::Ok && !m_currentlySelectedType.empty() && selectedParametrization && m_onTypeSelected) {
-        std::string type = m_currentlySelectedType;
+    const bool okEnabled    = !_currentlySelectedType.empty();
+    const auto dialogResult = components::dialogButtons(okEnabled);
+    if (dialogResult == components::DialogButton::Ok && !_currentlySelectedType.empty() && selectedParametrization && _onTypeSelected) {
+        std::string type = _currentlySelectedType;
         if (*selectedParametrization != "default"s) {
             type += *selectedParametrization;
         }
-        m_onTypeSelected(std::move(type));
+        _onTypeSelected(std::move(type));
     }
     if (dialogResult != components::DialogButton::None) {
-        m_onTypeSelected = {}; // release captured state once the popup closes
+        _onTypeSelected = {}; // release captured state once the popup closes
     }
 }
-} // namespace DigitizerUi
+} // namespace gr::od

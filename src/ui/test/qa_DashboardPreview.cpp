@@ -1,3 +1,4 @@
+#include "DashboardBlocks.hpp"
 #include "components/DashboardPreview.hpp"
 #include "components/Docking.hpp"
 #include <boost/ut.hpp>
@@ -7,9 +8,11 @@
 #include <initializer_list>
 #include <vector>
 
+using namespace gr::od;
+
 namespace {
 // rectangles as {x, y, w, h} fractions of the layout area, worked out by hand from the layout rules
-bool sameRects(const std::vector<DigitizerUi::LayoutRect>& actual, std::initializer_list<std::array<float, 4>> expected) {
+bool sameRects(const std::vector<LayoutRect>& actual, std::initializer_list<std::array<float, 4>> expected) {
     if (actual.size() != expected.size()) {
         return false;
     }
@@ -27,30 +30,31 @@ bool sameRects(const std::vector<DigitizerUi::LayoutRect>& actual, std::initiali
 
 int main() {
     using namespace boost::ut;
-    using DigitizerUi::DashboardPreview;
+    gr::BlockRegistry registry;
+    registerDashboardBlocks(registry); // the plot sink types previews recognise
     using enum DashboardPreview::ChartType;
 
     "layout rules: grid rectangles for 1, 2, 3, 5 and 6 windows"_test = [] {
-        using enum DigitizerUi::DockingLayoutType;
+        using enum DockingLayoutType;
         constexpr float kThird = 1.f / 3.f;
-        expect(sameRects(DigitizerUi::autoLayoutRects(Grid, 1UZ), {{0.f, 0.f, 1.f, 1.f}}));
-        expect(sameRects(DigitizerUi::autoLayoutRects(Grid, 2UZ), {{0.f, 0.f, .5f, 1.f}, {.5f, 0.f, .5f, 1.f}}));
-        expect(sameRects(DigitizerUi::autoLayoutRects(Grid, 3UZ), {{0.f, 0.f, .5f, .5f}, {.5f, 0.f, .5f, .5f}, {0.f, .5f, 1.f, .5f}}));
-        expect(sameRects(DigitizerUi::autoLayoutRects(Grid, 5UZ), {{0.f, 0.f, kThird, .5f}, {kThird, 0.f, kThird, .5f}, {2.f * kThird, 0.f, kThird, .5f}, {0.f, .5f, kThird, .5f}, {kThird, .5f, 2.f * kThird, .5f}}));
-        expect(sameRects(DigitizerUi::autoLayoutRects(Grid, 6UZ), {{0.f, 0.f, kThird, .5f}, {kThird, 0.f, kThird, .5f}, {2.f * kThird, 0.f, kThird, .5f}, {0.f, .5f, kThird, .5f}, {kThird, .5f, kThird, .5f}, {2.f * kThird, .5f, kThird, .5f}}));
+        expect(sameRects(autoLayoutRects(Grid, 1UZ), {{0.f, 0.f, 1.f, 1.f}}));
+        expect(sameRects(autoLayoutRects(Grid, 2UZ), {{0.f, 0.f, .5f, 1.f}, {.5f, 0.f, .5f, 1.f}}));
+        expect(sameRects(autoLayoutRects(Grid, 3UZ), {{0.f, 0.f, .5f, .5f}, {.5f, 0.f, .5f, .5f}, {0.f, .5f, 1.f, .5f}}));
+        expect(sameRects(autoLayoutRects(Grid, 5UZ), {{0.f, 0.f, kThird, .5f}, {kThird, 0.f, kThird, .5f}, {2.f * kThird, 0.f, kThird, .5f}, {0.f, .5f, kThird, .5f}, {kThird, .5f, 2.f * kThird, .5f}}));
+        expect(sameRects(autoLayoutRects(Grid, 6UZ), {{0.f, 0.f, kThird, .5f}, {kThird, 0.f, kThird, .5f}, {2.f * kThird, 0.f, kThird, .5f}, {0.f, .5f, kThird, .5f}, {kThird, .5f, kThird, .5f}, {2.f * kThird, .5f, kThird, .5f}}));
     };
 
     "layout rules: row and column split evenly"_test = [] {
-        using enum DigitizerUi::DockingLayoutType;
+        using enum DockingLayoutType;
         constexpr float kThird = 1.f / 3.f;
-        expect(sameRects(DigitizerUi::autoLayoutRects(Row, 3UZ), {{0.f, 0.f, kThird, 1.f}, {kThird, 0.f, kThird, 1.f}, {2.f * kThird, 0.f, kThird, 1.f}}));
-        expect(sameRects(DigitizerUi::autoLayoutRects(Column, 3UZ), {{0.f, 0.f, 1.f, kThird}, {0.f, kThird, 1.f, kThird}, {0.f, 2.f * kThird, 1.f, kThird}}));
-        expect(DigitizerUi::autoLayoutRects(Grid, 0UZ).empty());
+        expect(sameRects(autoLayoutRects(Row, 3UZ), {{0.f, 0.f, kThird, 1.f}, {kThird, 0.f, kThird, 1.f}, {2.f * kThird, 0.f, kThird, 1.f}}));
+        expect(sameRects(autoLayoutRects(Column, 3UZ), {{0.f, 0.f, 1.f, kThird}, {0.f, kThird, 1.f, kThird}, {0.f, 2.f * kThird, 1.f, kThird}}));
+        expect(autoLayoutRects(Grid, 0UZ).empty());
     };
 
     "layout rules: free cells are scaled by the largest extent"_test = [] {
         const std::array<std::array<std::int64_t, 4>, 3> cells{{{0, 0, 3, 1}, {3, 0, 1, 1}, {0, 1, 2, 1}}};
-        expect(sameRects(DigitizerUi::freeLayoutRects(cells), {{0.f, 0.f, .75f, .5f}, {.75f, 0.f, .25f, .5f}, {0.f, .5f, .5f, .5f}}));
+        expect(sameRects(freeLayoutRects(cells), {{0.f, 0.f, .75f, .5f}, {.75f, 0.f, .25f, .5f}, {0.f, .5f, .5f, .5f}}));
     };
 
     const auto expectRect = [](const std::optional<DashboardPreview::Rect>& rect, float x, float y, float w, float h) {
@@ -65,7 +69,7 @@ int main() {
     };
 
     "splits in free layout"_test = [expectRect] {
-        constexpr std::string_view yaml = R"(blocks:
+        constexpr std::string_view kYaml = R"(blocks:
   - id: gr::basic::SignalGenerator<float32>
     parameters:
       name: NotASink
@@ -118,7 +122,7 @@ dashboard:
         - SrcA
 )";
 
-        const auto preview = DashboardPreview::fromFlowgraphYaml(yaml);
+        const auto preview = DashboardPreview::fromFlowgraphYaml(kYaml);
         expect(preview.has_value());
         if (!preview) {
             return;
@@ -131,12 +135,11 @@ dashboard:
         expect(!preview->charts.at(0).isFloating);
 
         expect(!preview->charts.at(0).signals.at(0).isDataSet);
-        // this one had a color set so we can test that
+        // this one has a colour
         expect(preview->charts.at(0).signals.at(1) == DashboardPreview::Signal{.color = 4660U, .isDataSet = true});
         expect(!preview->charts.at(1).signals.at(0).isDataSet);
 
-        // hsplit: first ie. PlotLeft gets ratio of the width from the left
-        // vsplit: second ie. PlotBottom gets ratio of the height from the bottom
+        // hsplit: the first (PlotLeft) gets the ratio of the width from the left; vsplit: the second (PlotBottom) the ratio of the height from the bottom
         expectRect(preview->charts.at(0).rect, 0.f, 0.f, 0.25f, 1.f);
         // these two to the right of charts[0], x is at its width
         expectRect(preview->charts.at(1).rect, 0.25f, 0.75f, 0.75f, 0.25f);
@@ -144,7 +147,7 @@ dashboard:
     };
 
     "floating windows keep coordinates exactly"_test = [expectRect] {
-        constexpr std::string_view yaml = R"(blocks: []
+        constexpr std::string_view kYaml = R"(blocks: []
 dashboard:
   layout: Free
   windowLayout:
@@ -170,7 +173,7 @@ dashboard:
       sources: []
 )";
 
-        const auto preview = DashboardPreview::fromFlowgraphYaml(yaml);
+        const auto preview = DashboardPreview::fromFlowgraphYaml(kYaml);
         expect(preview.has_value()) << fatal;
         expect(eq(preview->charts.size(), 3UZ));
         // two split evenly
@@ -178,14 +181,14 @@ dashboard:
         expectRect(preview->charts.at(1).rect, 0.5f, 0.f, 0.5f, 1.f);
         expect(!preview->charts.at(0).isFloating);
         expect(!preview->charts.at(1).isFloating);
-        // one floating with the exact numbers from the yaml
+        // one floating with the exact numbers from the kYaml
         expectRect(preview->charts.at(2).rect, 128.f, 72.f, 640.f, 360.f);
         expect(preview->charts.at(2).isFloating);
         expect(preview->charts.at(2).type == Other);
     };
 
     "use rect key for describing layout"_test = [expectRect] {
-        constexpr std::string_view yaml = R"(blocks:
+        constexpr std::string_view kYaml = R"(blocks:
   - id: opendigitizer::ImPlotSink<float32>
     parameters:
       name: S1
@@ -207,7 +210,7 @@ dashboard:
       rect: [1, 0, 3, 2]
 )";
 
-        const auto preview = DashboardPreview::fromFlowgraphYaml(yaml);
+        const auto preview = DashboardPreview::fromFlowgraphYaml(kYaml);
         expect(preview.has_value());
         if (!preview) {
             return;
@@ -221,7 +224,7 @@ dashboard:
     };
 
     "implotsinks with no input draw without a signal shown"_test = [] {
-        constexpr std::string_view yaml = R"(blocks:
+        constexpr std::string_view kYaml = R"(blocks:
   - id: opendigitizer::ImPlotSink<float32>
     parameters:
       name: ConnectedSink
@@ -250,7 +253,7 @@ dashboard:
         - MissingSink
 )";
 
-        const auto preview = DashboardPreview::fromFlowgraphYaml(yaml);
+        const auto preview = DashboardPreview::fromFlowgraphYaml(kYaml);
         expect(preview.has_value());
         if (!preview) {
             return;
@@ -263,11 +266,11 @@ dashboard:
         expect(preview->charts.at(0).signals.at(1).color == 0) << "expected 0 color for the sink with no inputs";
 
         expect(!preview->charts.at(0).signals.at(2).isDataSet);
-        expect(preview->charts.at(0).signals.at(2).color == 0) << "expected 0 color for user defined block, which doesnt use ColourManager";
+        expect(preview->charts.at(0).signals.at(2).color == 0) << "expected 0 color for user defined block, which doesnt use SignalColours";
     };
 
     "row layout"_test = [expectRect] {
-        constexpr std::string_view yaml = R"(blocks: []
+        constexpr std::string_view kYaml = R"(blocks: []
 dashboard:
   layout: Row
   sources: []
@@ -280,7 +283,7 @@ dashboard:
       sources: []
 )";
 
-        const auto preview = DashboardPreview::fromFlowgraphYaml(yaml);
+        const auto preview = DashboardPreview::fromFlowgraphYaml(kYaml);
         expect(preview.has_value());
         if (!preview) {
             return;
@@ -292,7 +295,7 @@ dashboard:
     };
 
     "fall back to grid if things are missing"_test = [expectRect] {
-        constexpr std::string_view yaml = R"(blocks: []
+        constexpr std::string_view kYaml = R"(blocks: []
 dashboard:
   sources: []
   plots:
@@ -304,7 +307,7 @@ dashboard:
       sources: []
 )";
 
-        const auto preview = DashboardPreview::fromFlowgraphYaml(yaml);
+        const auto preview = DashboardPreview::fromFlowgraphYaml(kYaml);
         expect(preview.has_value());
         if (!preview) {
             return;

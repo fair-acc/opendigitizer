@@ -19,27 +19,10 @@
 #include <utility>
 #include <vector>
 
-namespace opendigitizer {
+namespace gr::od {
 
-GR_REGISTER_BLOCK(opendigitizer::PianoControl)
-
-struct PianoControl : DigitizerUi::ImControl<PianoControl> {
+struct PianoControl : ImControl<PianoControl> {
     using Description = gr::Doc<"UI control that draws a piano keyboard">;
-
-    gr::Annotated<std::string, "signal_generator_name", gr::Visible, gr::Doc<"Unique name of the block which will have its \"frequency\" field changed by the piano">> signal_generator_name;
-    gr::Annotated<gr::Size_t, "octave", gr::Visible, gr::Doc<"Octave of the first key. Octave 4 is middle C">>                                                         octave              = 4;
-    gr::Annotated<gr::Size_t, "octave_count", gr::Visible, gr::Doc<"Number of octaves drawn">, gr::Limits<1, 10>>                                                      octave_count        = 2;
-    const std::string                                                                                                                                                  compatible_type_map = "bool";
-
-    static constexpr float  kBlackKeyProportionToWhiteKey = 0.6f;
-    static constexpr ImVec4 kColorHoveredBlackKey         = {.3f, .3f, .3f, 1.f};
-    static constexpr ImVec4 kColorHoveredWhiteKey         = {.85f, .85f, .85f, 1.f};
-    static constexpr ImVec4 kColorIdleBlackKey            = {.05f, .05f, .05f, 1.f};
-    static constexpr ImVec4 kColorIdleWhiteKey            = {1.f, 1.f, 1.f, 1.f};
-
-    GR_MAKE_REFLECTABLE(PianoControl, signal_generator_name, octave, octave_count, compatible_type_map);
-
-    explicit PianoControl(gr::property_map initParameters = {}) : DigitizerUi::ImControl<PianoControl>(std::move(initParameters)) {}
 
     using midi_note_t = int;
     struct Key {
@@ -51,6 +34,21 @@ struct PianoControl : DigitizerUi::ImControl<PianoControl> {
         [[nodiscard]] bool contains(ImVec2 pos) const noexcept { return pos.x >= min.x && pos.x < max.x && pos.y >= min.y && pos.y < max.y; }
     };
 
+    static constexpr float  kBlackKeyProportionToWhiteKey = 0.6f;
+    static constexpr ImVec4 kColorHoveredBlackKey         = {.3f, .3f, .3f, 1.f};
+    static constexpr ImVec4 kColorHoveredWhiteKey         = {.85f, .85f, .85f, 1.f};
+    static constexpr ImVec4 kColorIdleBlackKey            = {.05f, .05f, .05f, 1.f};
+    static constexpr ImVec4 kColorIdleWhiteKey            = {1.f, 1.f, 1.f, 1.f};
+
+    gr::Annotated<std::string, "signal_generator_name", gr::Visible, gr::Doc<"Unique name of the block which will have its \"frequency\" field changed by the piano">> signal_generator_name;
+    gr::Annotated<gr::Size_t, "octave", gr::Visible, gr::Doc<"Octave of the first key. Octave 4 is middle C">>                                                         octave              = 4;
+    gr::Annotated<gr::Size_t, "octave_count", gr::Visible, gr::Doc<"Number of octaves drawn">, gr::Limits<1, 10>>                                                      octave_count        = 2;
+    const std::string                                                                                                                                                  compatible_type_map = "bool";
+
+    GR_MAKE_REFLECTABLE(PianoControl, signal_generator_name, octave, octave_count, compatible_type_map);
+
+    explicit PianoControl(gr::property_map initParameters = {}) : ImControl<PianoControl>(std::move(initParameters)) {}
+
     [[nodiscard]] static constexpr bool isBlackKey(midi_note_t note) noexcept {
         constexpr std::array<bool, 12> kIsBlackKeyLookupTable{false, true, false, true, false, false, true, false, true, false, true, false};
         return kIsBlackKeyLookupTable[static_cast<std::size_t>(note) % kIsBlackKeyLookupTable.size()];
@@ -60,7 +58,6 @@ struct PianoControl : DigitizerUi::ImControl<PianoControl> {
     [[nodiscard]] midi_note_t  firstNote() const noexcept { return 12 * (static_cast<midi_note_t>(octave) + 1); }
     [[nodiscard]] std::size_t  whiteKeyCount() const noexcept { return 7U * octave_count; }
 
-    /// Returns a bunch of Key structs which describe the area and color the keys should be drawn
     [[nodiscard]] std::vector<Key> calculateKeyLocations(ImVec2 origin, float whiteKeyWidth, float height) const {
         const float blackKeyWidth  = kBlackKeyProportionToWhiteKey * whiteKeyWidth;
         const float blackKeyHeight = kBlackKeyProportionToWhiteKey * height;
@@ -83,12 +80,12 @@ struct PianoControl : DigitizerUi::ImControl<PianoControl> {
     }
 
     gr::work::Status draw(const gr::property_map& config = {}) noexcept {
-        const auto          parsedConfig  = DigitizerUi::DrawableBlockConfig::fromMap(config);
+        const auto          parsedConfig  = DrawableBlockConfig::fromMap(config);
         const float         whiteKeyWidth = .8f * ImGui::GetFrameHeight();
-        const float         height        = DigitizerUi::LookAndFeel::instance().dashboardStyle.toolbarRowHeight - ImGui::GetStyle().ItemSpacing.y;
+        const float         height        = LookAndFeel::instance().dashboardStyle.toolbarRowHeight - ImGui::GetStyle().ItemSpacing.y;
         const ImVec2        size          = {whiteKeyWidth * static_cast<float>(whiteKeyCount()), height};
         const SizeAndLayout layout        = prepareDraw(parsedConfig, size.x, size.x, labelWidth());
-        drawWithLabelAndTooltip(layout, [&](float) { drawKeys(whiteKeyWidth, size); });
+        drawWithLabel(layout, [&](float) { drawKeys(whiteKeyWidth, size); });
         return gr::work::Status::OK;
     }
 
@@ -97,7 +94,7 @@ struct PianoControl : DigitizerUi::ImControl<PianoControl> {
         std::vector<Key> keys   = calculateKeyLocations(origin, whiteWidth, size.y);
         const ImGuiIO&   io     = ImGui::GetIO();
 
-        std::ranges::stable_partition(keys, &Key::isBlackKey); // prioritize black keys when getting note under cursor to effectively layer them on top
+        std::ranges::stable_partition(keys, &Key::isBlackKey); // black keys first for the note under the cursor, which layers them on top
         const auto getNoteAt = [&](ImVec2 pos) -> std::optional<midi_note_t> {
             const auto it = std::ranges::find_if(keys, [pos](const Key& key) { return key.contains(pos); });
             return it == keys.end() ? std::nullopt : std::optional(it->midiNote);
@@ -141,12 +138,10 @@ struct PianoControl : DigitizerUi::ImControl<PianoControl> {
         if (signal_generator_name.value.empty()) {
             return;
         }
-        DigitizerUi::toolbar::sendSettings(this->msgOut, signal_generator_name.value, gr::property_map{{std::pmr::string("frequency"), noteFrequency(midiNote)}});
+        toolbar::sendSettings(this->msgOut, signal_generator_name.value, gr::property_map{{std::pmr::string("frequency"), noteFrequency(midiNote)}});
     }
 };
 
-} // namespace opendigitizer
-
-inline auto registerPianoControl = gr::registerBlock<opendigitizer::PianoControl>(gr::globalBlockRegistry());
+} // namespace gr::od
 
 #endif // OPENDIGITIZER_BLOCKS_PIANO_CONTROL_HPP

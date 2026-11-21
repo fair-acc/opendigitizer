@@ -58,20 +58,20 @@ void userMetrics(Profiler& profiler, int iterations) {
     thread_local static PeriodicTimer tim{profiler.forThisThread(), "metrics_loop", "diag", 100ms, true};
 
     std::mt19937                          gen{42};
-    std::uniform_real_distribution<float> cpu_dist(0.1f, 0.9f);
-    std::uniform_int_distribution<int>    buf_dist(100, 10000);
+    std::uniform_real_distribution<float> cpuDist(0.1f, 0.9f);
+    std::uniform_int_distribution<int>    bufDist(100, 10000);
 
     for (int i = 0; i < iterations; ++i) {
         tim.begin();
 
-        const float cpu_usage = cpu_dist(gen);
-        const int   buf_size  = buf_dist(gen);
+        const float cpuUsage = cpuDist(gen);
+        const int   bufSize  = bufDist(gen);
 
         simulateWork(5ms);
         tim.snapshot("io");
 
-        tim.metric("cpu", cpu_usage);
-        tim.metric("buffer_size", buf_size);
+        tim.metric("cpu", cpuUsage);
+        tim.metric("buffer_size", bufSize);
 
         simulateWork(10ms);
         tim.snapshot("compute");
@@ -87,12 +87,12 @@ void thresholdAlerts(Profiler& profiler, int iterations) {
         tim.begin();
 
         // simulate variable work - some iterations will exceed threshold
-        const auto work_time = (i % 5 == 0) ? 25ms : 8ms;
+        const auto workTime = (i % 5 == 0) ? 25ms : 8ms;
 
         simulateWork(5ms);
         tim.snapshot("blocked");
 
-        simulateWork(work_time);
+        simulateWork(workTime);
         tim.snapshot("work", kPrevious, [](auto d) { return d > 20ms; }); // alert if > 20ms
 
         // metric with threshold

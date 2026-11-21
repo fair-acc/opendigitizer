@@ -8,7 +8,7 @@
 #include <boost/ut.hpp>
 
 using namespace boost::ut;
-using namespace opendigitizer;
+using namespace gr::od;
 
 namespace {
 
@@ -30,9 +30,8 @@ constexpr float kNaN = std::numeric_limits<float>::quiet_NaN();
     return std::ranges::all_of(samples, [](auto sample) { return std::isfinite(static_cast<double>(sample)); });
 }
 
-/// SineOscillator releases samples according to wall-clock time, so this polls processBulk() until @param nSamples
-/// have been published. The sample values do not depend on how the samples are split across calls.
-std::vector<float> processSamplesForSineOscillator(SineOscillator<float>& oscillator, std::size_t nSamples) {
+/// SineOscillator releases samples by wall-clock time: polls processBulk() until `nSamples` are published; the values do not depend on how they split across calls
+std::vector<float> runOscillator(SineOscillator<float>& oscillator, std::size_t nSamples) {
     std::vector<float> result(nSamples);
     std::size_t        produced = 0UZ;
     while (produced < nSamples) {
@@ -55,7 +54,7 @@ std::vector<float> processSamplesForSineOscillator(SineOscillator<float>& oscill
 }
 
 template<typename T>
-[[nodiscard]] std::vector<double> processSamplesForEnvelope(GainEnvelope<T>& envelope, std::size_t nSamples, T input) {
+[[nodiscard]] std::vector<double> runEnvelope(GainEnvelope<T>& envelope, std::size_t nSamples, T input) {
     std::vector<double> volumes(nSamples);
     for (double& volume : volumes) {
         volume = static_cast<double>(envelope.processOne(input)) / static_cast<double>(input);
@@ -71,10 +70,8 @@ constexpr double   kVolumeTolerance = 1e-6;
     return static_cast<std::size_t>(std::ranges::distance(volumes.begin(), std::ranges::find_if(volumes, [level](double v) { return isVolumeEqual(v, level); })));
 }
 
-/// feeds @param seconds of a unit-amplitude sine at @param frequency through the filter and returns the output amplitude.
-/// The amplitude is derived from the RMS rather than the largest sample, which depends on where the samples land within
-/// each period. This is exact when @param seconds holds a whole number of periods. @param phase keeps the input
-/// continuous across calls
+/// the output amplitude of `seconds` of a unit-amplitude sine at `frequency` through the filter, from the RMS rather than the largest sample, which depends on where the samples land within each period;
+/// exact for a whole number of periods; `phase` keeps the input continuous across calls
 [[nodiscard]] double outputAmplitude(LowPassFilter<float>& filter, double frequency, double seconds, double& phase) {
     std::vector<float> outputs(numSamplesDuringTime(seconds, filter.sample_rate));
     for (float& output : outputs) {
@@ -93,7 +90,7 @@ const suite<"GainEnvelope"> gainEnvelopeTests = [] {
                 GainEnvelope<float> envelope({{"sample_rate", sampleRate}, {"attack", attack}, {"pressed", true}});
                 envelope.init(envelope.progress);
                 const std::size_t attackSamples = numSamplesDuringTime(attack, sampleRate);
-                const auto        volumes       = processSamplesForEnvelope(envelope, 2UZ * attackSamples, 1.f);
+                const auto        volumes       = runEnvelope(envelope, 2UZ * attackSamples, 1.f);
                 const std::size_t peakIndex     = indexOfFirstSampleAtVolume(volumes, 1.);
                 const auto        context       = std::format("attack {} s at {} Hz", attack, sampleRate);
 
@@ -113,7 +110,7 @@ const suite<"GainEnvelope"> gainEnvelopeTests = [] {
     "unpressed envelope is silent"_test = [] {
         GainEnvelope<float> envelope({{"pressed", false}});
         envelope.init(envelope.progress);
-        const auto volumes = processSamplesForEnvelope(envelope, 100UZ, 1.f);
+        const auto volumes = runEnvelope(envelope, 100UZ, 1.f);
         expect(std::ranges::all_of(volumes, [](double v) { return isVolumeEqual(v, 0.); }));
     };
 
@@ -125,7 +122,7 @@ const suite<"GainEnvelope"> gainEnvelopeTests = [] {
             envelope.init(envelope.progress);
             expect(eq(envelope.processOne(1.f), 1.f)) << fatal << "zero attack";
             const std::size_t decaySamples = numSamplesDuringTime(kTestingDecay, kTestingSampleRate);
-            const auto        volumes      = processSamplesForEnvelope(envelope, 2UZ * decaySamples, 1.f);
+            const auto        volumes      = runEnvelope(envelope, 2UZ * decaySamples, 1.f);
             const std::size_t sustainIndex = indexOfFirstSampleAtVolume(volumes, sustain);
 
             expect(sustainIndex + 1UZ >= decaySamples && sustainIndex <= decaySamples) << std::format("sustain {}: reached after {} samples", sustain, sustainIndex + 1UZ);
@@ -138,12 +135,12 @@ const suite<"GainEnvelope"> gainEnvelopeTests = [] {
         constexpr float     kTestingSampleRate = 8000.f;
         GainEnvelope<float> envelope({{"sample_rate", kTestingSampleRate}, {"attack", 0.}, {"decay", .01}, {"sustain_fraction", .2}, {"pressed", true}});
         envelope.init(envelope.progress);
-        const auto settled = processSamplesForEnvelope(envelope, numSamplesDuringTime(.1, kTestingSampleRate), 1.f);
+        const auto settled = runEnvelope(envelope, numSamplesDuringTime(.1, kTestingSampleRate), 1.f);
         expect(isVolumeEqual(settled.back(), .2)) << fatal << "settled at the initial sustain level";
 
         constexpr double kTestingRaisedSustain = .7;
         applySettings(envelope, {{"sustain_fraction", kTestingRaisedSustain}});
-        const auto volumes = processSamplesForEnvelope(envelope, numSamplesDuringTime(.1, kTestingSampleRate), 1.f);
+        const auto volumes = runEnvelope(envelope, numSamplesDuringTime(.1, kTestingSampleRate), 1.f);
         expect(volumes.front() > settled.back()) << "starts rising immediately";
         expect(std::ranges::is_sorted(volumes));
         expect(isVolumeEqual(volumes.back(), kTestingRaisedSustain)) << "settles at the new sustain level without overshooting";
@@ -156,11 +153,11 @@ const suite<"GainEnvelope"> gainEnvelopeTests = [] {
         for (const double attack : {0., .01}) { // the release should start from the same point regardless of how the sustain level was reached
             GainEnvelope<float> envelope({{"sample_rate", kTestingSampleRate}, {"attack", attack}, {"sustain_fraction", kTestingSustain}, {"decay", .01}, {"release", kTestingRelease}, {"pressed", true}});
             envelope.init(envelope.progress);
-            expect(isVolumeEqual(processSamplesForEnvelope(envelope, numSamplesDuringTime(.1, kTestingSampleRate), 1.f).back(), kTestingSustain)) << fatal;
+            expect(isVolumeEqual(runEnvelope(envelope, numSamplesDuringTime(.1, kTestingSampleRate), 1.f).back(), kTestingSustain)) << fatal;
 
             applySettings(envelope, {{"pressed", false}});
             const std::size_t releaseSamples = numSamplesDuringTime(kTestingRelease, kTestingSampleRate);
-            const auto        volumes        = processSamplesForEnvelope(envelope, 2UZ * releaseSamples, 1.f);
+            const auto        volumes        = runEnvelope(envelope, 2UZ * releaseSamples, 1.f);
             const std::size_t silenceIndex   = indexOfFirstSampleAtVolume(volumes, 0.);
             expect(silenceIndex + 1UZ >= releaseSamples && silenceIndex <= releaseSamples) << std::format("attack {}: silent after {} samples", attack, silenceIndex + 1UZ);
             expect(std::ranges::is_sorted(volumes, std::greater{}));
@@ -174,24 +171,24 @@ const suite<"GainEnvelope"> gainEnvelopeTests = [] {
         GainEnvelope<float> envelope({{"sample_rate", kTestingSampleRate}, {"attack", kTestingAttack}, {"release", kTestingRelease}, {"pressed", true}});
         envelope.init(envelope.progress);
         const std::size_t numAttackSamples = numSamplesDuringTime(kTestingAttack, kTestingSampleRate);
-        const double      releasedAt       = processSamplesForEnvelope(envelope, numAttackSamples / 4UZ, 1.f).back();
+        const double      releasedAt       = runEnvelope(envelope, numAttackSamples / 4UZ, 1.f).back();
         expect(releasedAt > 0. && releasedAt < 1.) << fatal << "released mid-attack";
 
         applySettings(envelope, {{"pressed", false}});
-        const auto        fadeOut                  = processSamplesForEnvelope(envelope, numAttackSamples / 16UZ, 1.f);
+        const auto        fadeOut                  = runEnvelope(envelope, numAttackSamples / 16UZ, 1.f);
         const std::size_t numSamplesForFullRelease = numSamplesDuringTime(kTestingRelease, kTestingSampleRate);
         const double      volumeBefore             = fadeOut.back();
         expect(volumeBefore < releasedAt && volumeBefore > 0.) << fatal << "partially faded";
-        expect(lt(static_cast<double>(indexOfFirstSampleAtVolume(processSamplesForEnvelope(envelope, numSamplesForFullRelease, 1.f), 0.)), static_cast<double>(numSamplesForFullRelease))) << "reaches silence before a full-volume release would";
+        expect(lt(static_cast<double>(indexOfFirstSampleAtVolume(runEnvelope(envelope, numSamplesForFullRelease, 1.f), 0.)), static_cast<double>(numSamplesForFullRelease))) << "reaches silence before a full-volume release would";
 
         // press again after a partial release
         GainEnvelope<float> second({{"sample_rate", kTestingSampleRate}, {"attack", kTestingAttack}, {"release", kTestingRelease}, {"pressed", true}});
         second.init(second.progress);
-        std::ignore = processSamplesForEnvelope(second, numAttackSamples / 2UZ, 1.f);
+        std::ignore = runEnvelope(second, numAttackSamples / 2UZ, 1.f);
         applySettings(second, {{"pressed", false}});
-        const double volumeAtRepress = processSamplesForEnvelope(second, numAttackSamples / 16UZ, 1.f).back();
+        const double volumeAtRepress = runEnvelope(second, numAttackSamples / 16UZ, 1.f).back();
         applySettings(second, {{"pressed", true}});
-        const auto reattack = processSamplesForEnvelope(second, numAttackSamples, 1.f);
+        const auto reattack = runEnvelope(second, numAttackSamples, 1.f);
         expect(reattack.front() > volumeAtRepress) << "attack continues upward from the current volume instead of restarting from silence";
         expect(lt(static_cast<double>(indexOfFirstSampleAtVolume(reattack, 1.)), static_cast<double>(numAttackSamples))) << "reaches full volume sooner than a full attack";
     };
@@ -205,9 +202,9 @@ const suite<"GainEnvelope"> gainEnvelopeTests = [] {
 
             expect(applyAndReturnRefusedParameters(envelope, {{"sample_rate", badSampleRate}}).contains("sample_rate")) << context << ": refused";
             const auto allValuesAreUnitValues = [](const std::vector<double>& volumes) { return std::ranges::all_of(volumes, [](double v) { return v >= 0. && v <= 1.; }); };
-            expect(allValuesAreUnitValues(processSamplesForEnvelope(envelope, numSamplesDuringTime(.1, kTestingSampleRate), 1.f))) << context << ": attack";
+            expect(allValuesAreUnitValues(runEnvelope(envelope, numSamplesDuringTime(.1, kTestingSampleRate), 1.f))) << context << ": attack";
             std::ignore = applyAndReturnRefusedParameters(envelope, {{"pressed", false}});
-            expect(allValuesAreUnitValues(processSamplesForEnvelope(envelope, numSamplesDuringTime(.1, kTestingSampleRate), 1.f))) << context << ": release";
+            expect(allValuesAreUnitValues(runEnvelope(envelope, numSamplesDuringTime(.1, kTestingSampleRate), 1.f))) << context << ": release";
         }
     };
 
@@ -333,7 +330,7 @@ const suite<"SineOscillator"> sineOscillatorTests = [] {
         for (const double frequency : {50., 440., 5000.}) {
             for (const float amplitude : {.25f, 1.f}) {
                 auto        oscillator = makeSineOscillator(frequency, 0.f, amplitude);
-                const auto  samples    = processSamplesForSineOscillator(*oscillator, 2000UZ);
+                const auto  samples    = runOscillator(*oscillator, 2000UZ);
                 std::size_t mismatches = 0UZ;
                 for (std::size_t i = 0UZ; i < samples.size(); ++i) {
                     const double expected = static_cast<double>(amplitude) * std::sin(2. * std::numbers::pi * frequency * static_cast<double>(i) / static_cast<double>(kTestingSampleRate));
@@ -361,9 +358,9 @@ const suite<"SineOscillator"> sineOscillatorTests = [] {
 
     "without portamento, a frequency change applies immediately"_test = [&] {
         auto oscillator = makeSineOscillator(kLowFrequency);
-        std::ignore     = processSamplesForSineOscillator(*oscillator, kSampleWindow);
+        std::ignore     = runOscillator(*oscillator, kSampleWindow);
         applySettings(*oscillator, {{"frequency", kHighFrequency}});
-        expect(approx(pitchOfAudioHz(processSamplesForSineOscillator(*oscillator, kSampleWindow), kTestingSampleRate), kHighFrequency, .01 * kHighFrequency));
+        expect(approx(pitchOfAudioHz(runOscillator(*oscillator, kSampleWindow), kTestingSampleRate), kHighFrequency, .01 * kHighFrequency));
         oscillator->stop();
     };
 
@@ -372,9 +369,9 @@ const suite<"SineOscillator"> sineOscillatorTests = [] {
 
     "with portamento, the pitch glides evenly to the new frequency over the portamento time"_test = [&] {
         auto oscillator = makeSineOscillator(kLowFrequency, kTestingPortamento);
-        std::ignore     = processSamplesForSineOscillator(*oscillator, kSampleWindow);
+        std::ignore     = runOscillator(*oscillator, kSampleWindow);
         applySettings(*oscillator, {{"frequency", kHighFrequency}});
-        const auto glide = processSamplesForSineOscillator(*oscillator, glideSamples + 2UZ * kSampleWindow);
+        const auto glide = runOscillator(*oscillator, glideSamples + 2UZ * kSampleWindow);
         const auto span  = std::span<const float>(glide);
 
         const double start     = pitchOfAudioHz(span.first(kSampleWindow), kTestingSampleRate);
@@ -390,11 +387,11 @@ const suite<"SineOscillator"> sineOscillatorTests = [] {
     "a frequency change during a glide starts the new glide from the current pitch"_test = [&] {
         auto oscillator = makeSineOscillator(kLowFrequency, kTestingPortamento);
         applySettings(*oscillator, {{"frequency", kHighFrequency}});
-        const auto   firstHalf   = processSamplesForSineOscillator(*oscillator, glideSamples / 2UZ);
+        const auto   firstHalf   = runOscillator(*oscillator, glideSamples / 2UZ);
         const double pitchBefore = pitchOfAudioHz(std::span<const float>(firstHalf).last(kSampleWindow / 3UZ), kTestingSampleRate);
 
         applySettings(*oscillator, {{"frequency", kLowFrequency}});
-        const auto   reversed   = processSamplesForSineOscillator(*oscillator, glideSamples + kSampleWindow);
+        const auto   reversed   = runOscillator(*oscillator, glideSamples + kSampleWindow);
         const double pitchAfter = pitchOfAudioHz(std::span<const float>(reversed).first(kSampleWindow / 2UZ), kTestingSampleRate);
         expect(approx(pitchBefore, midFrequency, .05 * midFrequency)) << std::format("before the change: {}", pitchBefore);
         expect(approx(pitchAfter, midFrequency, .05 * midFrequency)) << std::format("no jump to either end of the glide after the change: {}", pitchAfter);
@@ -405,10 +402,10 @@ const suite<"SineOscillator"> sineOscillatorTests = [] {
     "changing an unrelated setting during a glide does not restart the glide"_test = [&] {
         auto oscillator = makeSineOscillator(kLowFrequency, kTestingPortamento);
         applySettings(*oscillator, {{"frequency", kHighFrequency}});
-        std::ignore = processSamplesForSineOscillator(*oscillator, glideSamples / 2UZ);
+        std::ignore = runOscillator(*oscillator, glideSamples / 2UZ);
         applySettings(*oscillator, {{"amplitude", .5f}});
-        std::ignore     = processSamplesForSineOscillator(*oscillator, glideSamples / 2UZ);
-        const auto tail = processSamplesForSineOscillator(*oscillator, kSampleWindow);
+        std::ignore     = runOscillator(*oscillator, glideSamples / 2UZ);
+        const auto tail = runOscillator(*oscillator, kSampleWindow);
         expect(approx(pitchOfAudioHz(tail, kTestingSampleRate), kHighFrequency, .01 * kHighFrequency)) << "the glide ends one portamento time after the frequency change";
         expect(approx(*std::ranges::max_element(tail), .5f, .01f)) << "the amplitude change applies";
         oscillator->stop();
@@ -419,13 +416,13 @@ const suite<"SineOscillator"> sineOscillatorTests = [] {
             for (const double badFrequency : {0., -100., static_cast<double>(kNaN)}) {
                 const auto context    = std::format("portamento {}, frequency {}", glide, badFrequency);
                 auto       oscillator = makeSineOscillator(kLowFrequency, glide);
-                std::ignore           = processSamplesForSineOscillator(*oscillator, kSampleWindow);
+                std::ignore           = runOscillator(*oscillator, kSampleWindow);
 
                 expect(applyAndReturnRefusedParameters(*oscillator, {{"frequency", badFrequency}}).contains("frequency")) << context << ": refused";
-                expect(isAllFinite(processSamplesForSineOscillator(*oscillator, kSampleWindow))) << context << ": while the bad frequency was sent";
+                expect(isAllFinite(runOscillator(*oscillator, kSampleWindow))) << context << ": while the bad frequency was sent";
 
                 std::ignore      = applyAndReturnRefusedParameters(*oscillator, {{"frequency", kHighFrequency}});
-                const auto after = processSamplesForSineOscillator(*oscillator, glideSamples + kSampleWindow);
+                const auto after = runOscillator(*oscillator, glideSamples + kSampleWindow);
                 expect(isAllFinite(after)) << context << ": after a valid frequency is set again";
                 if (isAllFinite(after)) {
                     expect(approx(pitchOfAudioHz(std::span<const float>(after).last(kSampleWindow), kTestingSampleRate), kHighFrequency, .01 * kHighFrequency)) << context << ": plays the valid frequency";
@@ -440,10 +437,10 @@ const suite<"SineOscillator"> sineOscillatorTests = [] {
             auto oscillator = makeSineOscillator(kLowFrequency);
             // generating with an accepted sample rate of zero would wait forever for wall-clock samples, so a non-refusal ends this test case
             expect(applyAndReturnRefusedParameters(*oscillator, {{"sample_rate", badSampleRate}}).contains("sample_rate")) << fatal << std::format("sample_rate {} refused", badSampleRate);
-            expect(isAllFinite(processSamplesForSineOscillator(*oscillator, kSampleWindow))) << std::format("sample_rate {}", badSampleRate);
+            expect(isAllFinite(runOscillator(*oscillator, kSampleWindow))) << std::format("sample_rate {}", badSampleRate);
             oscillator->stop();
         }
     };
 };
 
-int main() { return 0; }
+int main() { return boost::ut::cfg<boost::ut::override>.run(); }

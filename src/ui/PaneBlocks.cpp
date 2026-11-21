@@ -5,7 +5,7 @@
 
 #include <gnuradio-4.0/Logger.hpp>
 
-namespace DigitizerUi {
+namespace gr::od {
 
 namespace {
 constexpr inline std::string_view kToolkit = "ImGui";
@@ -58,4 +58,4 @@ std::shared_ptr<gr::BlockModel> findDrawableBlock(const GraphSession& session, g
     return found == blocks.end() ? nullptr : *found;
 }
 
-} // namespace DigitizerUi
+} // namespace gr::od

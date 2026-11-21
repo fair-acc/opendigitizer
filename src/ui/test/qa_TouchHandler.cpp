@@ -7,6 +7,8 @@
 #include <ostream>
 #include <vector>
 
+using namespace gr::od;
+
 using namespace boost::ut;
 using namespace std::chrono_literals;
 
@@ -65,16 +67,16 @@ void startWithEmptyInputQueue() {
 constexpr SDL_FingerID kFirstFinger  = 101;
 constexpr SDL_FingerID kSecondFinger = 202;
 
-const suite<"TouchHandler finger lifecycle"> _lifecycle = [] {
+const suite<"TouchHandler finger lifecycle"> lifecycleTests = [] {
     "short tap is a left click"_test = [] {
         using Clock   = ManualClock<0>;
-        using Handler = DigitizerUi::TouchHandler<Clock>;
+        using Handler = TouchHandler<Clock>;
         startWithEmptyInputQueue();
 
-        Handler::processSDLEvent(fingerEvent(SDL_EVENT_FINGER_DOWN, kFirstFinger));
+        Handler::onSdlEvent(fingerEvent(SDL_EVENT_FINGER_DOWN, kFirstFinger));
         expect(eq(Handler::nFingers, 1UZ));
         Clock::advance(100ms);
-        Handler::processSDLEvent(fingerEvent(SDL_EVENT_FINGER_UP, kFirstFinger));
+        Handler::onSdlEvent(fingerEvent(SDL_EVENT_FINGER_UP, kFirstFinger));
 
         expect(eq(Handler::nFingers, 0UZ));
         expect(Handler::fingerUp);
@@ -83,12 +85,12 @@ const suite<"TouchHandler finger lifecycle"> _lifecycle = [] {
 
     "long press is a right click"_test = [] {
         using Clock   = ManualClock<1>;
-        using Handler = DigitizerUi::TouchHandler<Clock>;
+        using Handler = TouchHandler<Clock>;
         startWithEmptyInputQueue();
 
-        Handler::processSDLEvent(fingerEvent(SDL_EVENT_FINGER_DOWN, kFirstFinger));
+        Handler::onSdlEvent(fingerEvent(SDL_EVENT_FINGER_DOWN, kFirstFinger));
         Clock::advance(600ms);
-        Handler::processSDLEvent(fingerEvent(SDL_EVENT_FINGER_UP, kFirstFinger));
+        Handler::onSdlEvent(fingerEvent(SDL_EVENT_FINGER_UP, kFirstFinger));
 
         expect(eq(Handler::nFingers, 0UZ));
         expect(queuedButtonEvents() == std::vector<ButtonEvent>{{ImGuiMouseButton_Left, true}, {ImGuiMouseButton_Left, false}, {ImGuiMouseButton_Right, true}, {ImGuiMouseButton_Right, false}});
@@ -96,17 +98,17 @@ const suite<"TouchHandler finger lifecycle"> _lifecycle = [] {
 
     "two-finger gesture releases the single-finger press and never clicks"_test = [] {
         using Clock   = ManualClock<2>;
-        using Handler = DigitizerUi::TouchHandler<Clock>;
+        using Handler = TouchHandler<Clock>;
         startWithEmptyInputQueue();
 
-        Handler::processSDLEvent(fingerEvent(SDL_EVENT_FINGER_DOWN, kFirstFinger, 0.2f));
-        Handler::processSDLEvent(fingerEvent(SDL_EVENT_FINGER_DOWN, kSecondFinger, 0.8f));
+        Handler::onSdlEvent(fingerEvent(SDL_EVENT_FINGER_DOWN, kFirstFinger, 0.2f));
+        Handler::onSdlEvent(fingerEvent(SDL_EVENT_FINGER_DOWN, kSecondFinger, 0.8f));
         expect(eq(Handler::nFingers, 2UZ));
         expect(Handler::gestureActive);
 
         Clock::advance(100ms);
-        Handler::processSDLEvent(fingerEvent(SDL_EVENT_FINGER_UP, kSecondFinger, 0.8f));
-        Handler::processSDLEvent(fingerEvent(SDL_EVENT_FINGER_UP, kFirstFinger, 0.2f));
+        Handler::onSdlEvent(fingerEvent(SDL_EVENT_FINGER_UP, kSecondFinger, 0.8f));
+        Handler::onSdlEvent(fingerEvent(SDL_EVENT_FINGER_UP, kFirstFinger, 0.2f));
         Handler::updateGestures();
 
         expect(eq(Handler::nFingers, 0UZ));
@@ -116,10 +118,10 @@ const suite<"TouchHandler finger lifecycle"> _lifecycle = [] {
 
     "finger silent for more than 5 s is released"_test = [] {
         using Clock   = ManualClock<3>;
-        using Handler = DigitizerUi::TouchHandler<Clock>;
+        using Handler = TouchHandler<Clock>;
         startWithEmptyInputQueue();
 
-        Handler::processSDLEvent(fingerEvent(SDL_EVENT_FINGER_DOWN, kFirstFinger));
+        Handler::onSdlEvent(fingerEvent(SDL_EVENT_FINGER_DOWN, kFirstFinger));
         Clock::advance(4s);
         Handler::updateGestures();
         expect(eq(Handler::nFingers, 1UZ)) << "still within the grace period";
@@ -133,16 +135,16 @@ const suite<"TouchHandler finger lifecycle"> _lifecycle = [] {
 };
 
 // SDL3 SDL_EVENT_FINGER_CANCELED: the touch ended without a lift (e.g. browser 'touchcancel'), hence it is no click
-const suite<"TouchHandler cancelled touch"> _cancel = [] {
+const suite<"TouchHandler cancelled touch"> cancelTests = [] {
     "cancel releases the finger without clicking or signalling a lift"_test = [] {
         using Clock   = ManualClock<10>;
-        using Handler = DigitizerUi::TouchHandler<Clock>;
+        using Handler = TouchHandler<Clock>;
         startWithEmptyInputQueue();
 
-        Handler::processSDLEvent(fingerEvent(SDL_EVENT_FINGER_DOWN, kFirstFinger));
+        Handler::onSdlEvent(fingerEvent(SDL_EVENT_FINGER_DOWN, kFirstFinger));
         Handler::endFrame();
         Clock::advance(600ms); // would be a right click had the finger been lifted
-        Handler::processSDLEvent(fingerEvent(SDL_EVENT_FINGER_CANCELED, kFirstFinger));
+        Handler::onSdlEvent(fingerEvent(SDL_EVENT_FINGER_CANCELED, kFirstFinger));
 
         expect(eq(Handler::nFingers, 0UZ));
         expect(!Handler::fingerPressed[0]);
@@ -153,11 +155,11 @@ const suite<"TouchHandler cancelled touch"> _cancel = [] {
 
     "cancelled touch is no longer active in the next frame"_test = [] {
         using Clock   = ManualClock<11>;
-        using Handler = DigitizerUi::TouchHandler<Clock>;
+        using Handler = TouchHandler<Clock>;
         startWithEmptyInputQueue();
 
-        Handler::processSDLEvent(fingerEvent(SDL_EVENT_FINGER_DOWN, kFirstFinger));
-        Handler::processSDLEvent(fingerEvent(SDL_EVENT_FINGER_CANCELED, kFirstFinger));
+        Handler::onSdlEvent(fingerEvent(SDL_EVENT_FINGER_DOWN, kFirstFinger));
+        Handler::onSdlEvent(fingerEvent(SDL_EVENT_FINGER_CANCELED, kFirstFinger));
         Clock::advance(10s);
         Handler::updateGestures();
 
@@ -169,17 +171,17 @@ const suite<"TouchHandler cancelled touch"> _cancel = [] {
 
     "cancelling one of two fingers keeps the gesture until the other lifts"_test = [] {
         using Clock   = ManualClock<12>;
-        using Handler = DigitizerUi::TouchHandler<Clock>;
+        using Handler = TouchHandler<Clock>;
         startWithEmptyInputQueue();
 
-        Handler::processSDLEvent(fingerEvent(SDL_EVENT_FINGER_DOWN, kFirstFinger, 0.2f));
-        Handler::processSDLEvent(fingerEvent(SDL_EVENT_FINGER_DOWN, kSecondFinger, 0.8f));
-        Handler::processSDLEvent(fingerEvent(SDL_EVENT_FINGER_CANCELED, kSecondFinger, 0.8f));
+        Handler::onSdlEvent(fingerEvent(SDL_EVENT_FINGER_DOWN, kFirstFinger, 0.2f));
+        Handler::onSdlEvent(fingerEvent(SDL_EVENT_FINGER_DOWN, kSecondFinger, 0.8f));
+        Handler::onSdlEvent(fingerEvent(SDL_EVENT_FINGER_CANCELED, kSecondFinger, 0.8f));
         Handler::updateGestures();
         expect(eq(Handler::nFingers, 1UZ));
         expect(Handler::gestureActive);
 
-        Handler::processSDLEvent(fingerEvent(SDL_EVENT_FINGER_UP, kFirstFinger, 0.2f));
+        Handler::onSdlEvent(fingerEvent(SDL_EVENT_FINGER_UP, kFirstFinger, 0.2f));
         Handler::updateGestures();
         expect(eq(Handler::nFingers, 0UZ));
         expect(!Handler::gestureActive);
@@ -188,11 +190,11 @@ const suite<"TouchHandler cancelled touch"> _cancel = [] {
 
     "cancel or lift of an unknown finger is ignored"_test = [] {
         using Clock   = ManualClock<13>;
-        using Handler = DigitizerUi::TouchHandler<Clock>;
+        using Handler = TouchHandler<Clock>;
         startWithEmptyInputQueue();
 
-        Handler::processSDLEvent(fingerEvent(SDL_EVENT_FINGER_CANCELED, kFirstFinger));
-        Handler::processSDLEvent(fingerEvent(SDL_EVENT_FINGER_UP, kSecondFinger));
+        Handler::onSdlEvent(fingerEvent(SDL_EVENT_FINGER_CANCELED, kFirstFinger));
+        Handler::onSdlEvent(fingerEvent(SDL_EVENT_FINGER_UP, kSecondFinger));
 
         expect(eq(Handler::nFingers, 0UZ));
         expect(Handler::fingerIdToIndex.empty());
@@ -201,37 +203,37 @@ const suite<"TouchHandler cancelled touch"> _cancel = [] {
 };
 
 // ImGui knows ImGuiMouseButton_COUNT (5) buttons; a lone finger is the primary pointer, whatever slot it occupies
-const suite<"TouchHandler finger slots"> _slots = [] {
+const suite<"TouchHandler finger slots"> slotTests = [] {
     "lone finger in a high slot presses the left button"_test = [] {
         using Clock   = ManualClock<20>;
-        using Handler = DigitizerUi::TouchHandler<Clock>;
+        using Handler = TouchHandler<Clock>;
         startWithEmptyInputQueue();
 
         constexpr SDL_FingerID kFingers = 6;
         for (SDL_FingerID finger = 1; finger <= kFingers; ++finger) {
-            Handler::processSDLEvent(fingerEvent(SDL_EVENT_FINGER_DOWN, finger));
+            Handler::onSdlEvent(fingerEvent(SDL_EVENT_FINGER_DOWN, finger));
         }
         for (SDL_FingerID finger = 1; finger <= kFingers; ++finger) {
-            Handler::processSDLEvent(fingerEvent(SDL_EVENT_FINGER_UP, finger));
+            Handler::onSdlEvent(fingerEvent(SDL_EVENT_FINGER_UP, finger));
         }
         Handler::updateGestures();
         Handler::endFrame();
         GImGui->InputEventsQueue.resize(0);
 
-        Handler::processSDLEvent(fingerEvent(SDL_EVENT_FINGER_DOWN, kFirstFinger));
+        Handler::onSdlEvent(fingerEvent(SDL_EVENT_FINGER_DOWN, kFirstFinger));
         expect(eq(Handler::fingerIdToIndex.at(kFirstFinger), std::size_t{kFingers - 1})) << "reuses the most recently released slot";
         Clock::advance(100ms);
-        Handler::processSDLEvent(fingerEvent(SDL_EVENT_FINGER_UP, kFirstFinger));
+        Handler::onSdlEvent(fingerEvent(SDL_EVENT_FINGER_UP, kFirstFinger));
 
         expect(queuedButtonEvents() == std::vector<ButtonEvent>{{ImGuiMouseButton_Left, true}, {ImGuiMouseButton_Left, false}});
     };
 
     "motion of an unknown finger is ignored"_test = [] {
         using Clock   = ManualClock<21>;
-        using Handler = DigitizerUi::TouchHandler<Clock>;
+        using Handler = TouchHandler<Clock>;
         startWithEmptyInputQueue();
 
-        Handler::processSDLEvent(fingerEvent(SDL_EVENT_FINGER_MOTION, kFirstFinger));
+        Handler::onSdlEvent(fingerEvent(SDL_EVENT_FINGER_MOTION, kFirstFinger));
         expect(Handler::fingerIdToIndex.empty());
         expect(std::ranges::none_of(Handler::fingerPressed, std::identity{}));
 

@@ -3,7 +3,7 @@
 
 #include "../components/Keypad.hpp"
 #include "../components/SliderAndSpinner.hpp"
-#include "../components/StyledStandardWidgets.hpp"
+#include "../components/StyledWidgets.hpp"
 #include "ImControl.hpp"
 
 #include <imgui_internal.h>
@@ -11,7 +11,7 @@
 #include <gnuradio-4.0/Block.hpp>
 #include <gnuradio-4.0/formatter/ValueFormatter.hpp>
 
-namespace DigitizerUi {
+namespace gr::od {
 
 enum class NumberStyle { field, spinBox, slider, sliderSpinner };
 
@@ -44,17 +44,15 @@ struct ImControlNumber : ImControl<ImControlNumber> {
     double            value               = 0.;
     const std::string compatible_type_map = control::numberTypeNames();
     std::string       unit;
-    double            min   = std::numeric_limits<double>::lowest(); // allow further constraining of numeric range allowable by a property
-    double            max   = std::numeric_limits<double>::max();    // allow further constraining of numeric range allowable by a property
+    double            min   = std::numeric_limits<double>::lowest(); // may constrain the property's range further
+    double            max   = std::numeric_limits<double>::max();    // may constrain the property's range further
     double            step  = 0.;
     NumberStyle       style = NumberStyle::field;
 
     GR_MAKE_REFLECTABLE(ImControlNumber, value, compatible_type_map, unit, min, max, step, style);
 
-private:
     std::optional<double> _stepOfEnteredValue;
 
-public:
     explicit ImControlNumber(gr::property_map initParameters = {}) : ImControl<ImControlNumber>(std::move(initParameters)) {}
 
     gr::work::Status draw(const gr::property_map& config = {}) noexcept {
@@ -71,21 +69,19 @@ public:
         return gr::work::Status::OK;
     }
 
-private:
     [[nodiscard]] static std::string numberTypeName(const DrawableBlockConfig::ControlledProperty& controlledProperty) {
         const std::string controlledType = controlledProperty ? gr::pmt::detail::type_name(controlledProperty.value) : std::string{};
         const bool        isNumber       = control::withNumberType(controlledType, []<typename T>() { /* just checking if any type is correct */ });
         return isNumber ? controlledType : std::string("float64");
     }
 
-    [[nodiscard]] static double significantStep(double number) { return components::computeIncrementNonZero(std::format("{:.4f}", number)); }
+    [[nodiscard]] static double significantStep(double number) { return components::incrementOf(std::format("{:.4f}", number), components::TrailingZeros::Ignored); }
 
-    /// Given the constraints on the control, decide on the best style that is possible to use.
-    /// While slider may be desired, ImGui does not support sliders for extremely large numeric ranges
+    /// the desired style where possible: ImGui has no sliders for extremely large ranges
     static NumberStyle getBestStyle(NumberStyle desiredStyle, double lowerLimit, double upperLimit) {
         using enum NumberStyle;
-        constexpr auto limit = std::numeric_limits<double>::max() / 2.;
-        if ((desiredStyle == slider || desiredStyle == sliderSpinner) && (lowerLimit <= -limit || upperLimit >= limit)) {
+        constexpr auto kLimit = kImGuiSliderDoubleLimit;
+        if ((desiredStyle == slider || desiredStyle == sliderSpinner) && (lowerLimit <= -kLimit || upperLimit >= kLimit)) {
             return field;
         }
         return desiredStyle;
@@ -118,7 +114,7 @@ private:
         const T           stepSize    = std::max(clampedTo<T>(step != 0. ? step : derivedStep), std::is_integral_v<T> ? T{1} : T{});
         const auto        dataType    = imguiDataType<T>();
         const std::string format      = control::printfFormat<T>(unit);
-        const std::string id          = "##" + label;
+        const std::string id          = widgetId();
         const auto [natural, minimum] = naturalAndMinimumWidgetWidth(drawnStyle, calculateNumberLabelWidthForRange(lower, upper, stepSize, format.c_str()));
         const SizeAndLayout layout    = prepareDraw(parsedConfig, natural, minimum, labelWidth());
         bool                typed     = false;
@@ -135,7 +131,7 @@ private:
             typed                     = action == SliderAction::TypedInTextField;
             changed                   = action != SliderAction::NotEdited;
         };
-        drawWithLabelAndTooltip(layout, [&](float width) {
+        drawWithLabel(layout, [&](float width) {
             switch (drawnStyle) {
             case NumberStyle::field: field(width); break;
             case NumberStyle::spinBox:
@@ -156,12 +152,12 @@ private:
 
     template<typename T>
     void setNumber(T number) {
-        value       = static_cast<double>(number);
-        std::ignore = settings().setStaged({{"value", value}});
+        value = static_cast<double>(number);
+        stageValue(value);
         sendToTargets(number);
     }
 };
 
-} // namespace DigitizerUi
+} // namespace gr::od
 
 #endif

@@ -3,12 +3,12 @@
 #include <algorithm>
 #include <cmath>
 
-#include "common/ImguiWrap.hpp"
+#include "common/Imw.hpp"
 #include "common/LookAndFeel.hpp"
 
-#include "scope_exit.hpp"
+#include <gnuradio-4.0/meta/utils.hpp>
 
-namespace DigitizerUi {
+namespace gr::od {
 
 namespace {
 constexpr inline std::size_t kGridCells = 16UZ;
@@ -18,8 +18,7 @@ void alignForWidth(float width, float alignment) noexcept {
     const float avail  = ImGui::GetContentRegionAvail().x;
     const float offset = (avail - width) * alignment;
     if (offset > 0.0f) {
-        // whole pixels, like ImGui's own line starts, otherwise the measured width of the aligned items changes with
-        // the fractional start, which moves the start again in the next frame
+        // whole pixels, like ImGui's own line starts: otherwise the measured width of the aligned items changes with the fractional start, which moves the start again in the next frame
         const ImVec2 cursor = ImGui::GetCursorScreenPos();
         ImGui::SetCursorScreenPos(ImVec2{std::floor(cursor.x + offset), cursor.y});
     }
@@ -28,12 +27,12 @@ void alignForWidth(float width, float alignment) noexcept {
 DashboardView::DashboardView() = default;
 
 DashboardView::~DashboardView() {
-    if (opendigitizer::charts::g_chartRequests == std::addressof(_chartRequests)) {
-        opendigitizer::charts::g_chartRequests = nullptr;
+    if (charts::gChartRequests == std::addressof(_chartRequests)) {
+        charts::gChartRequests = nullptr;
     }
 }
 
-void DashboardView::processPendingRequests() {
+void DashboardView::applyChartRequests() {
     if (_pendingTransmutation) {
         const auto request    = std::move(*_pendingTransmutation);
         _pendingTransmutation = std::nullopt;
@@ -51,11 +50,10 @@ void DashboardView::processPendingRequests() {
 }
 
 DockingLayoutType DashboardView::shownLayoutType(DockingLayoutType stored) {
-    const LookAndFeel& lookAndFeel = LookAndFeel::instance();
-    if (!lookAndFeel.compact) {
+    if (!gAppState.compact) {
         return stored;
     }
-    return lookAndFeel.portrait ? DockingLayoutType::Column : DockingLayoutType::Grid;
+    return gAppState.portrait ? DockingLayoutType::Column : DockingLayoutType::Grid;
 }
 
 DashboardView::Result DashboardView::draw(Dashboard& dashboard, Mode mode) { return draw(dashboard, mode, Options{}); }
@@ -75,10 +73,10 @@ DashboardView::Result DashboardView::draw(Dashboard& dashboard, Mode mode, const
         _layoutApplied = _layoutApplied && _dashboard == nullptr;
         _dashboard     = std::addressof(dashboard);
     }
-    dashboard.handleMessages();
+    dashboard.session.receiveMessages();
 
     ImGui::PushID(this);
-    Digitizer::utils::scope_exit popId = [] { ImGui::PopID(); };
+    gr::on_scope_exit popId = [] { ImGui::PopID(); };
 
     const DashboardStyle& style               = LookAndFeel::instance().dashboardStyle;
     const int             nTransparentColours = style.background ? 0 : 4;
@@ -88,7 +86,7 @@ DashboardView::Result DashboardView::draw(Dashboard& dashboard, Mode mode, const
         }
         ImPlot::PushStyleColor(ImPlotCol_FrameBg, ImVec4{});
     }
-    Digitizer::utils::scope_exit popTransparentColours = [nTransparentColours] {
+    gr::on_scope_exit popTransparentColours = [nTransparentColours] {
         ImGui::PopStyleColor(nTransparentColours);
         if (nTransparentColours > 0) {
             ImPlot::PopStyleColor();
@@ -96,7 +94,7 @@ DashboardView::Result DashboardView::draw(Dashboard& dashboard, Mode mode, const
     };
 
     Result     result;
-    IMW::Child plotsChild("##plots", options.size, false, ImGuiWindowFlags_NoScrollbar);
+    imw::Child plotsChild("##plots", options.size, false, ImGuiWindowFlags_NoScrollbar);
     if (!dashboard.isInitialised) {
         const char*  text     = "loading dashboard ...";
         const ImVec2 textSize = ImGui::CalcTextSize(text);
@@ -108,8 +106,8 @@ DashboardView::Result DashboardView::draw(Dashboard& dashboard, Mode mode, const
         setLayout(dashboard.layoutType, dashboard.windowLayout.empty() ? std::nullopt : std::optional<gr::property_map>(dashboard.windowLayout));
     }
     _dockSpace.setLayoutType(shownLayoutType(dashboard.layoutType));
-    opendigitizer::charts::g_chartRequests = std::addressof(_chartRequests);
-    processPendingRequests();
+    charts::gChartRequests = std::addressof(_chartRequests);
+    applyChartRequests();
 
     result.backgroundClicked = ImGui::IsWindowHovered() && ImGui::IsMouseReleased(ImGuiMouseButton_Left);
 
@@ -159,7 +157,7 @@ DashboardView::Result DashboardView::draw(Dashboard& dashboard, Mode mode, const
 }
 
 void DashboardView::drawCharts(Mode mode, const Options& options, ImVec2 paneSize) {
-    IMW::Group group;
+    imw::Group group;
 
     if (mode == Mode::Layout) {
         const uint32_t gridLineColor = ImGui::ColorConvertFloat4ToU32(LookAndFeel::instance().palette().gridLines);
@@ -181,10 +179,10 @@ void DashboardView::drawCharts(Mode mode, const Options& options, ImVec2 paneSiz
         const std::shared_ptr<gr::BlockModel>& blockPtr = uiWindow.block;
         windows.push_back(uiWindow.window);
         // the block is captured by value so that it stays alive while it draws
-        uiWindow.window->renderFunc                   = [block = blockPtr, mode] { std::ignore = block->draw(opendigitizer::charts::chartDrawConfig(mode)); };
+        uiWindow.window->renderFunc                   = [block = blockPtr, mode] { std::ignore = block->draw(charts::chartDrawConfig(mode)); };
         uiWindow.window->renderDockingContextMenuFunc = [block = blockPtr] {
-            opendigitizer::charts::drawDuplicateChartMenuItem(block->uniqueName());
-            opendigitizer::charts::drawRemoveChartMenuItem(block->uniqueName());
+            charts::drawDuplicateChartMenuItem(block->uniqueName());
+            charts::drawRemoveChartMenuItem(block->uniqueName());
         };
     }
     if (options.addDockWindows) {
@@ -195,7 +193,7 @@ void DashboardView::drawCharts(Mode mode, const Options& options, ImVec2 paneSiz
 }
 
 void DashboardView::drawLegendColumn(Mode mode, float height, const Options& options, Result& result) {
-    IMW::Child column("##legendColumn", ImVec2(_legendColumnWidth, height), false, ImGuiWindowFlags_NoScrollbar);
+    imw::Child column("##legendColumn", ImVec2(_legendColumnWidth, height), false, ImGuiWindowFlags_NoScrollbar);
     if (options.barLeading) {
         options.barLeading();
         ImGui::NewLine();
@@ -212,7 +210,7 @@ void DashboardView::drawLegendColumn(Mode mode, float height, const Options& opt
 }
 
 void DashboardView::drawBar(Mode mode, ImVec2 chartPaneSize, const Options& options, Result& result) {
-    IMW::Group group;
+    imw::Group group;
 
     if (options.barLeading) {
         options.barLeading();
@@ -242,4 +240,4 @@ void DashboardView::drawBar(Mode mode, ImVec2 chartPaneSize, const Options& opti
     _legendBox.y = std::max(_legendBox.y, LookAndFeel::instance().mainWindowIconButtonSize());
 }
 
-} // namespace DigitizerUi
+} // namespace gr::od

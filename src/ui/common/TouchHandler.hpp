@@ -20,37 +20,64 @@
 #include <SDL3/SDL.h>
 
 #include "../common/LookAndFeel.hpp"
-#include "conversion.hpp"
-#include "scope_exit.hpp"
+#include "stdex/cast.hpp"
 
-namespace DigitizerUi {
+namespace gr::od {
 
 template<typename ClockSourceType = std::chrono::system_clock, bool zoomViaMouseWheel = false>
 struct TouchHandler {
-    using TimePoint                                   = std::chrono::time_point<ClockSourceType>;
-    constexpr static inline std::size_t N_MAX_FINGERS = 10;
+    using TimePoint                                 = std::chrono::time_point<ClockSourceType>;
+    constexpr static inline std::size_t kMaxFingers = 10;
 
-    // fingerID to unique small int mapper
     static inline std::unordered_map<SDL_FingerID, std::size_t> fingerIdToIndex;
     static inline std::stack<std::size_t>                       releasedIndices;
     static inline std::size_t                                   nextAvailableIndex = 0;
 
-    //
+    static inline std::array<bool, kMaxFingers>      fingerPressed{};
+    static inline std::array<ImVec2, kMaxFingers>    fingerPos{};
+    static inline std::array<ImVec2, kMaxFingers>    fingerLastPos{}; // previous frame's finger position
+    static inline std::array<ImVec2, kMaxFingers>    fingerPosDiff{};
+    static inline std::array<ImVec2, kMaxFingers>    fingerPosDown{};
+    static inline std::array<ImVec2, kMaxFingers>    fingerPosUp{};
+    static inline std::array<TimePoint, kMaxFingers> fingerTimeStamp{}; // time stamp when the last change occurred
+    static inline std::array<TimePoint, kMaxFingers> fingerDownTimeStamp{};
+    static inline TimePoint                          gestureTimeStamp{};
+    static inline ImVec2                             gestureCentre{-1.f, -1.f};
+    static inline ImVec2                             gestureCentreDiff{0.f, 0.f};
+    static inline ImVec2                             gestureLastCentre{-1.f, -1.f};
+    static inline ImVec2                             gestureCentreDown{-1.f, -1.f};
+    static inline ImVec2                             gestureCentreUp{-1.f, -1.f};
+    static inline bool                               gestureActive      = false;
+    static inline bool                               gestureDragActive  = false;
+    static inline bool                               gestureZoomActive  = false;
+    static inline float                              gestureRotationRad = 0.0f;
+    static inline float                              gestureRotationDeg = 0.0f;
+
+    static inline bool        diagnostics         = false; // prints and draws finger/gesture state
+    static inline std::size_t nFingers            = 0;
+    static inline bool        fingerDown          = false;
+    static inline bool        fingerUp            = false;
+    static inline bool        touchActive         = false;
+    static inline bool        singleFingerClicked = false;
+
+    inline static std::map<ImGuiID, std::pair<bool, ImPlotRange>[ImAxis_COUNT]>                           plotLimits;
+    inline static std::map<ImGuiID, std::pair<std::array<float, 2>, std::pair<ImPlotRange, ImPlotRange>>> initialAxisData;
+    inline static ImGuiID                                                                                 zoomablePlotInit = 0UL;
+
     static std::size_t getOrAssignIndex(SDL_FingerID fingerId) {
         if (auto [it, inserted] = fingerIdToIndex.emplace(fingerId, nextAvailableIndex); !inserted) {
             return it->second;
         }
 
-        if (!releasedIndices.empty()) { // reuse released indices
+        if (!releasedIndices.empty()) {
             const std::size_t index = releasedIndices.top();
             releasedIndices.pop();
             fingerIdToIndex[fingerId] = index;
             return index;
         }
 
-        // no released indices -> use nextAvailableIndex.
         fingerIdToIndex[fingerId] = nextAvailableIndex;
-        assert(((nextAvailableIndex + 1) < N_MAX_FINGERS) && "more fingers than N_MAX_FINGERS detected");
+        assert(((nextAvailableIndex + 1) < kMaxFingers) && "more fingers than kMaxFingers detected");
         return nextAvailableIndex++;
     }
 
@@ -80,50 +107,8 @@ struct TouchHandler {
         releaseFingerIndex(fingerIndex);
     }
 
-    // Static state variables
-    static inline std::array<bool, N_MAX_FINGERS>          fingerPressed{};       // actual finger state
-    static inline std::array<bool, N_MAX_FINGERS>          fingerLifted{};        // actual finger lifted
-    static inline std::array<ImVec2, N_MAX_FINGERS>        fingerPos{};           // actual finger position
-    static inline std::array<ImVec2, N_MAX_FINGERS>        fingerLastPos{};       // previous frame's finger position
-    static inline std::array<ImVec2, N_MAX_FINGERS>        fingerPosDiff{};       // actual finger position difference
-    static inline std::array<ImVec2, N_MAX_FINGERS>        fingerPosDown{};       // finger position when finger touch down
-    static inline std::array<ImVec2, N_MAX_FINGERS>        fingerPosUp{};         // finger position when finger is lifted
-    static inline std::array<TimePoint, N_MAX_FINGERS>     fingerTimeStamp{};     // time stamp when the last change occurred
-    static inline std::array<TimePoint, N_MAX_FINGERS>     fingerDownTimeStamp{}; // time stamp when the finger was pressed
-    static inline std::array<TimePoint, N_MAX_FINGERS>     fingerUpTimeStamp{};   // time stamp when the finger was lifted
-    static inline std::array<std::uint32_t, N_MAX_FINGERS> fingerWindowID{};      // windowID where finger position when finger is lifted
-    // gesture state
-    static inline TimePoint gestureTimeStamp{};     // time stamp when the last change occurred
-    static inline TimePoint gestureDownTimeStamp{}; // time stamp when the finger was pressed
-    static inline TimePoint gestureUpTimeStamp{};   // time stamp when the finger was lifted
-    static inline ImVec2    gestureCentre{-1.f, -1.f};
-    static inline ImVec2    gestureCentreDiff{0.f, 0.f};
-    static inline ImVec2    gestureLastCentre{-1.f, -1.f};
-    static inline ImVec2    gestureCentreDown{-1.f, -1.f};
-    static inline ImVec2    gestureCentreUp{-1.f, -1.f};
-    static inline bool      gestureActive      = false;
-    static inline bool      gestureDragActive  = false;
-    static inline bool      gestureZoomActive  = false;
-    static inline float     gestureRotationRad = 0.0f;
-    static inline float     gestureRotationDeg = 0.0f;
-
-    static inline bool        diagnostics         = false; // prints and draws finger/gesture state
-    static inline std::size_t nFingers            = 0;
-    static inline bool        fingerDown          = false;
-    static inline bool        fingerUp            = false;
-    static inline bool        touchActive         = false;
-    static inline bool        singleFingerClicked = false;
-
-    // some helper functions
-    static float getFingerMovementDistance(std::size_t fingerIndex) {
-        if (fingerIndex >= N_MAX_FINGERS) {
-            return -1.0f;
-        }
-        return std::hypot(fingerPos[fingerIndex].x - fingerPosDown[fingerIndex].x, fingerPos[fingerIndex].y - fingerPosDown[fingerIndex].y);
-    }
-
     static auto getFingerPressedDuration(std::size_t fingerIndex) {
-        if (fingerIndex >= N_MAX_FINGERS) {
+        if (fingerIndex >= kMaxFingers) {
             return std::chrono::microseconds(-1);
         }
         return std::chrono::duration_cast<std::chrono::microseconds>(fingerTimeStamp[fingerIndex] - fingerDownTimeStamp[fingerIndex]);
@@ -132,44 +117,43 @@ struct TouchHandler {
     static void drawFingerPositions() {
         const float circleRadius = 10.0f;
         const auto  now          = ClockSourceType::now();
-        ImDrawList* draw_list    = ImGui::GetForegroundDrawList();
+        ImDrawList* drawList     = ImGui::GetForegroundDrawList();
 
-        for (std::size_t fingerIndex = 0; fingerIndex < N_MAX_FINGERS; ++fingerIndex) {
+        for (std::size_t fingerIndex = 0; fingerIndex < kMaxFingers; ++fingerIndex) {
             if (fingerPressed[fingerIndex] && fingerPosDown[fingerIndex].x != -1.f && fingerPosDown[fingerIndex].y != -1.f) {
-                draw_list->AddCircle(fingerPosDown[fingerIndex], circleRadius, IM_COL32(0, 255, 0, 255), 12, 3.0f); // green for pressed
+                drawList->AddCircle(fingerPosDown[fingerIndex], circleRadius, IM_COL32(0, 255, 0, 255), 12, 3.0f);
             }
 
             if (fingerPressed[fingerIndex] && fingerLastPos[fingerIndex].x != -1.f && fingerLastPos[fingerIndex].y != -1.f) {
-                draw_list->AddCircle(fingerLastPos[fingerIndex], 3.0f * circleRadius, IM_COL32(165, 165, 0, 255), 12, 3.0f); // yellow for last
+                drawList->AddCircle(fingerLastPos[fingerIndex], 3.0f * circleRadius, IM_COL32(165, 165, 0, 255), 12, 3.0f);
             }
 
             if (fingerPressed[fingerIndex] && fingerPos[fingerIndex].x != -1.f && fingerPos[fingerIndex].y != -1.f) {
-                draw_list->AddCircle(fingerPos[fingerIndex], 3.0f * circleRadius, IM_COL32(255, 165, 0, 255), 12, 3.0f); // orange for moving
+                drawList->AddCircle(fingerPos[fingerIndex], 3.0f * circleRadius, IM_COL32(255, 165, 0, 255), 12, 3.0f);
             }
 
             const auto timeSinceLifted = std::chrono::duration_cast<std::chrono::milliseconds>(now - fingerTimeStamp[fingerIndex]);
             if (fingerPosUp[fingerIndex].x != -1.f && fingerPosUp[fingerIndex].y != -1.f && (timeSinceLifted < std::chrono::seconds(3))) {
-                draw_list->AddNgon(fingerPosUp[fingerIndex], circleRadius, IM_COL32(255, 0, 0, 255), 3, 3.0f); // red for lifted
+                drawList->AddNgon(fingerPosUp[fingerIndex], circleRadius, IM_COL32(255, 0, 0, 255), 3, 3.0f);
             }
         }
 
-        // gesture diagnostics
         const auto timeSinceLifted = std::chrono::duration_cast<std::chrono::milliseconds>(now - gestureTimeStamp);
         if (gestureActive && gestureCentreDown.x != -1.f && gestureCentreDown.y != -1.f) {
-            draw_list->AddNgon(gestureCentreDown, 1.0f * circleRadius, IM_COL32(0, 255, 0, 255), 5, 3.0f); // green for initial gesture centre
+            drawList->AddNgon(gestureCentreDown, 1.0f * circleRadius, IM_COL32(0, 255, 0, 255), 5, 3.0f);
         }
         if (gestureActive && gestureLastCentre.x != -1.f && gestureLastCentre.y != -1.f) {
-            draw_list->AddNgon(gestureLastCentre, 3.0f * circleRadius, IM_COL32(165, 165, 0, 255), 5, 3.0f); // yellow pentagon for last gesture centre
+            drawList->AddNgon(gestureLastCentre, 3.0f * circleRadius, IM_COL32(165, 165, 0, 255), 5, 3.0f);
         }
         if (gestureActive && gestureCentre.x != -1.f && gestureCentre.y != -1.f) {
-            draw_list->AddNgon(gestureCentre, 3.0f * circleRadius, IM_COL32(255, 165, 0, 255), 5, 3.0f); // orange pentagon for moving gesture centre
+            drawList->AddNgon(gestureCentre, 3.0f * circleRadius, IM_COL32(255, 165, 0, 255), 5, 3.0f);
         }
         if (gestureCentreUp.x != -1.f && gestureCentreUp.y != -1.f && (timeSinceLifted < std::chrono::seconds(3))) {
-            draw_list->AddNgon(gestureCentreUp, circleRadius, IM_COL32(255, 0, 0, 255), 4, 3.0f); // red square for gesture centre lifted
+            drawList->AddNgon(gestureCentreUp, circleRadius, IM_COL32(255, 0, 0, 255), 4, 3.0f);
         }
     }
 
-    static void processSDLEvent(const SDL_Event& event) {
+    static void onSdlEvent(const SDL_Event& event) {
         const auto& displaySize = ImGui::GetIO().DisplaySize;
         const auto  now         = ClockSourceType::now();
 
@@ -180,15 +164,12 @@ struct TouchHandler {
             fingerDown                       = true;
             fingerTimeStamp[fingerIndex]     = now;
             fingerDownTimeStamp[fingerIndex] = fingerTimeStamp[fingerIndex];
-            fingerUpTimeStamp[fingerIndex]   = fingerTimeStamp[fingerIndex];
             fingerPressed[fingerIndex]       = true;
-            fingerLifted[fingerIndex]        = false;
             fingerPos[fingerIndex]           = {event.tfinger.x * displaySize.x, event.tfinger.y * displaySize.y};
             fingerLastPos[fingerIndex]       = fingerPos[fingerIndex];
             fingerPosDiff[fingerIndex]       = {0.f, 0.f};
             fingerPosDown[fingerIndex]       = fingerPos[fingerIndex];
             fingerPosUp[fingerIndex]         = {-1.f, -1.f};
-            fingerWindowID[fingerIndex]      = event.tfinger.windowID;
             ++nFingers;
 
             if (nFingers >= 2 && !gestureActive) {
@@ -196,12 +177,11 @@ struct TouchHandler {
                     ImGui::GetIO().AddMouseButtonEvent(ImGuiMouseButton_Left, false); // release initial finger - not a simple click/drag
                     singleFingerClicked = false;
                 }
-                gestureActive        = true;
-                gestureDownTimeStamp = now;
-                const ImVec2 centre  = {0.5f * fingerPos[0].x + 0.5f * fingerPos[1].x, 0.5f * fingerPos[0].y + 0.5f * fingerPos[1].y};
-                gestureLastCentre    = (gestureCentre.x != -1.f && gestureCentre.y != -1.f) ? gestureCentre : centre;
-                gestureCentre        = centre;
-                gestureCentreDown    = gestureCentre;
+                gestureActive       = true;
+                const ImVec2 centre = {0.5f * fingerPos[0].x + 0.5f * fingerPos[1].x, 0.5f * fingerPos[0].y + 0.5f * fingerPos[1].y};
+                gestureLastCentre   = (gestureCentre.x != -1.f && gestureCentre.y != -1.f) ? gestureCentre : centre;
+                gestureCentre       = centre;
+                gestureCentreDown   = gestureCentre;
             }
             if (!gestureActive && !gestureDragActive && !gestureZoomActive && nFingers == 1) {
                 ImGui::GetIO().AddMousePosEvent(fingerPos[fingerIndex].x, fingerPos[fingerIndex].y);
@@ -217,28 +197,25 @@ struct TouchHandler {
             if (knownFinger == fingerIdToIndex.end()) {
                 break;
             }
-            const std::size_t fingerIndex  = knownFinger->second;
-            touchActive                    = true;
-            fingerUp                       = true;
-            fingerTimeStamp[fingerIndex]   = now;
-            fingerUpTimeStamp[fingerIndex] = fingerTimeStamp[fingerIndex];
-            fingerPressed[fingerIndex]     = false;
-            fingerLifted[fingerIndex]      = true;
-            fingerLastPos[fingerIndex]     = fingerPos[fingerIndex];
-            fingerPos[fingerIndex]         = {event.tfinger.x * displaySize.x, event.tfinger.y * displaySize.y};
-            fingerPosDiff[fingerIndex]     = fingerPos[fingerIndex] - fingerLastPos[fingerIndex];
-            fingerPosUp[fingerIndex]       = fingerPos[fingerIndex];
-            fingerWindowID[fingerIndex]    = event.tfinger.windowID;
+            const std::size_t fingerIndex = knownFinger->second;
+            touchActive                   = true;
+            fingerUp                      = true;
+            fingerTimeStamp[fingerIndex]  = now;
+            fingerPressed[fingerIndex]    = false;
+            fingerLastPos[fingerIndex]    = fingerPos[fingerIndex];
+            fingerPos[fingerIndex]        = {event.tfinger.x * displaySize.x, event.tfinger.y * displaySize.y};
+            fingerPosDiff[fingerIndex]    = fingerPos[fingerIndex] - fingerLastPos[fingerIndex];
+            fingerPosUp[fingerIndex]      = fingerPos[fingerIndex];
             assert(nFingers > 0);
             --nFingers;
             releaseIndex(event.tfinger.fingerID);
             if (nFingers == 0 && !gestureActive && !gestureDragActive && !gestureZoomActive) {
-                if (getFingerPressedDuration(fingerIndex) < LookAndFeel::longPressDuration) { // short click -> process as left click
+                if (getFingerPressedDuration(fingerIndex) < LookAndFeel::kLongPressDuration) {
                     ImGui::GetIO().AddMouseButtonEvent(ImGuiMouseButton_Left, true);
                     ImGui::GetIO().AddMouseButtonEvent(ImGuiMouseButton_Left, false);
                     ImGui::GetIO().MouseDown[ImGuiMouseButton_Right]    = false;
                     ImGui::GetIO().MouseClicked[ImGuiMouseButton_Right] = false;
-                } else { // long click -> process as right click
+                } else {
                     ImGui::GetIO().AddMouseButtonEvent(ImGuiMouseButton_Left, false);
                     ImGui::GetIO().AddMouseButtonEvent(ImGuiMouseButton_Right, true);
                     ImGui::GetIO().AddMouseButtonEvent(ImGuiMouseButton_Right, false);
@@ -249,7 +226,7 @@ struct TouchHandler {
                 }
             }
 
-            if (!gestureDragActive && !gestureZoomActive && nFingers == 0) { // finish single-finger drag
+            if (!gestureDragActive && !gestureZoomActive && nFingers == 0) {
                 ImGui::GetIO().AddMousePosEvent(fingerPos[fingerIndex].x, fingerPos[fingerIndex].y);
                 ImGui::GetIO().AddMouseButtonEvent(ImGuiMouseButton_Left, false);
             }
@@ -279,11 +256,9 @@ struct TouchHandler {
             touchActive                   = true;
             fingerTimeStamp[fingerIndex]  = now;
             fingerPressed[fingerIndex]    = true;
-            fingerLifted[fingerIndex]     = false;
             fingerLastPos[fingerIndex]    = fingerPos[fingerIndex];
             fingerPos[fingerIndex]        = {event.tfinger.x * displaySize.x, event.tfinger.y * displaySize.y};
             fingerPosDiff[fingerIndex]    = fingerPos[fingerIndex] - fingerLastPos[fingerIndex];
-            fingerWindowID[fingerIndex]   = event.tfinger.windowID;
             if (nFingers == 1) {
                 ImGui::GetIO().AddMousePosEvent(fingerPos[fingerIndex].x, fingerPos[fingerIndex].y);
             }
@@ -297,18 +272,17 @@ struct TouchHandler {
     static void updateGestures() {
         const auto now = ClockSourceType::now();
 
-        // auto-lift finger if it hasn't been active (moving/lifted) for more than 10 seconds -> usually happens when an IO event has been lost
+        // auto-lift a finger inactive for more than 5 s: its SDL_EVENT_FINGER_UP was probably lost
         const auto timeSinceAnyLastActive = std::chrono::duration_cast<std::chrono::milliseconds>(now - *std::max_element(fingerTimeStamp.begin(), fingerTimeStamp.end()));
-        for (std::size_t fingerIndex = 0UL; fingerIndex < N_MAX_FINGERS; fingerIndex++) {
+        for (std::size_t fingerIndex = 0UL; fingerIndex < kMaxFingers; fingerIndex++) {
             const auto timeSinceLastActive = std::chrono::duration_cast<std::chrono::milliseconds>(now - fingerTimeStamp[fingerIndex]);
-            if (fingerPressed[fingerIndex] && (timeSinceLastActive > std::chrono::seconds(5)) && (timeSinceAnyLastActive > std::chrono::seconds(5))) { // more than 5 seconds of inaction, reset finger state
+            if (fingerPressed[fingerIndex] && (timeSinceLastActive > std::chrono::seconds(5)) && (timeSinceAnyLastActive > std::chrono::seconds(5))) {
                 releaseFinger(fingerIndex);
                 fingerUp = true;
                 std::print("WARNING: probably lost SDL_FINGER_UP event -> reset inactive fingerID {} out of {} - timeSinceLifted {}\n", fingerIndex, nFingers, timeSinceLastActive);
             }
         }
 
-        // compute gesture centre, pinch, and rotation
         if (nFingers >= 2 && fingerPressed[0] && fingerPressed[1]) {
             gestureTimeStamp = now;
 
@@ -321,7 +295,6 @@ struct TouchHandler {
             if constexpr (zoomViaMouseWheel) {
                 if (!gestureDragActive && std::hypot(gestureCentreDiff.x, gestureCentreDiff.y) > ImGui::GetIO().MouseDragThreshold) {
                     ImGui::GetIO().AddMouseButtonEvent(ImPlot::GetInputMap().Pan, true);
-                    // ImGui::GetIO().AddMousePosEvent(gestureCentre.x, gestureCentre.y);
                     gestureDragActive = true;
                     if (diagnostics) {
                         std::print("gesture: start two finger drag - centre ({},{}) move {} vs. threshold {}\n", gestureCentreUp.x, gestureCentreUp.y, std::hypot(gestureCentreDiff.x, gestureCentreDiff.y), ImGui::GetIO().MouseDragThreshold);
@@ -335,9 +308,8 @@ struct TouchHandler {
             }
         } else if (nFingers == 0) {
             if (gestureActive) {
-                gestureActive      = false;
-                gestureUpTimeStamp = now;
-                gestureCentreUp    = gestureCentre;
+                gestureActive   = false;
+                gestureCentreUp = gestureCentre;
 
                 gestureCentre      = {-1.f, -1.f};
                 gestureLastCentre  = {-1.f, -1.f};
@@ -367,14 +339,12 @@ struct TouchHandler {
         if (nFingers != 2) {
             return;
         }
-        // handle pinch/spread and rotation gestures
         const float prevDist = std::hypot(fingerLastPos[0].x - fingerLastPos[1].x, fingerLastPos[0].y - fingerLastPos[1].y);
         const float currDist = std::hypot(fingerPos[0].x - fingerPos[1].x, fingerPos[0].y - fingerPos[1].y);
 
         float pinchFactor = currDist / prevDist;
 
         if constexpr (zoomViaMouseWheel) {
-            // zoom interaction via mouse wheel
             ImGui::GetIO().AddMouseWheelEvent((pinchFactor - 1.f) * 2.f, (pinchFactor - 1.f) * 2.f);
         }
         ImVec2 prevDir = {fingerLastPos[1].x - fingerLastPos[0].x, fingerLastPos[1].y - fingerLastPos[0].y};
@@ -398,12 +368,8 @@ struct TouchHandler {
         singleFingerClicked = false;
     }
 
-    inline static std::map<ImGuiID, std::pair<bool, ImPlotRange>[ImAxis_COUNT]> plotLimits;
-    inline static ImGuiID                                                       zoomablePlotInit = 0UL;
-
-    //
-    inline static bool BeginZoomablePlot(const std::string& plotName, const ImVec2& size, ImPlotFlags flags) {
-        assert((zoomablePlotInit == 0) && "mismatched BeginZoomablePlot <-> EndZoomablePlot");
+    inline static bool beginZoomablePlot(const std::string& plotName, const ImVec2& size, ImPlotFlags flags) {
+        assert((zoomablePlotInit == 0) && "mismatched beginZoomablePlot <-> endZoomablePlot");
         const ImGuiID ID = ImGui::GetID(plotName.c_str());
         zoomablePlotInit = ID;
 
@@ -418,7 +384,6 @@ struct TouchHandler {
             }
         }
 
-        // Apply standard plot styles: no plot/label padding, 5% vertical fit padding
         ImPlot::PushStyleVar(ImPlotStyleVar_PlotPadding, ImVec2{0, 0});
         ImPlot::PushStyleVar(ImPlotStyleVar_LabelPadding, ImVec2{3, 1});
         ImPlot::PushStyleVar(ImPlotStyleVar_FitPadding, ImVec2{0.0f, 0.05f});
@@ -431,17 +396,18 @@ struct TouchHandler {
         return false;
     }
 
-    static void EndZoomablePlot() {
-        Digitizer::utils::scope_exit guard = [&] {
-            ImPlot::EndPlot();
-            ImPlot::PopStyleVar(3);
-            zoomablePlotInit = 0UL;
-        };
+    static void endZoomablePlot() {
+        applyPinchZoom();
+        ImPlot::EndPlot();
+        ImPlot::PopStyleVar(3);
+        zoomablePlotInit = 0UL;
+    }
 
+    static void applyPinchZoom() {
         if (!gestureActive || gestureDragActive || nFingers != 2) {
             return;
         }
-        constexpr auto isPointInRect = [](const ImVec2& point, const ImRect& rect) -> bool { return point.x >= rect.Min.x && point.x <= rect.Max.x && point.y >= rect.Min.y && point.y <= rect.Max.y; };
+        const auto isPointInRect = [](const ImVec2& point, const ImRect& rect) { return point.x >= rect.Min.x && point.x <= rect.Max.x && point.y >= rect.Min.y && point.y <= rect.Max.y; };
         if (!isPointInRect(gestureCentre, ImPlot::GetCurrentContext()->CurrentPlot->PlotRect)) {
             return;
         }
@@ -451,8 +417,8 @@ struct TouchHandler {
             const ImVec2 currDist    = fingerPosDiff[0] - fingerPosDiff[1];
             const ImVec2 zoomFactor  = {1.0f - currDist.x / initialDist.x, 1.0f - currDist.y / initialDist.y};
 
-            const float ZOOM_THRESHOLD = LookAndFeel::isDesktop ? 0.001f : 0.02f;
-            if (std::abs(zoomFactor.x - 1.f) < ZOOM_THRESHOLD && std::abs(zoomFactor.y - 1.f) < ZOOM_THRESHOLD) {
+            constexpr float kZoomThreshold = LookAndFeel::kIsDesktop ? 0.001f : 0.02f;
+            if (std::abs(zoomFactor.x - 1.f) < kZoomThreshold && std::abs(zoomFactor.y - 1.f) < kZoomThreshold) {
                 return;
             }
         }
@@ -465,15 +431,12 @@ struct TouchHandler {
             }
         }
 
-        const auto processAxis = [ALPHA = 0.8](const ImPlotAxis& axis, ImPlotRange& rangeToUpdate, const std::array<ImVec2, N_MAX_FINGERS>& fingerPosDown, const std::array<ImVec2, N_MAX_FINGERS>& fingerPos) {
-            // check flipping of upper/lower finger position
+        const auto updateAxis = [ALPHA = 0.8](const ImPlotAxis& axis, ImPlotRange& rangeToUpdate, const std::array<ImVec2, kMaxFingers>& fingerPosDown, const std::array<ImVec2, kMaxFingers>& fingerPos) {
             bool initialOrder = (axis.Vertical ? fingerPosDown[0].y : fingerPosDown[0].x) < (axis.Vertical ? fingerPosDown[1].y : fingerPosDown[1].x);
             bool currentOrder = (axis.Vertical ? fingerPos[0].y : fingerPos[0].x) < (axis.Vertical ? fingerPos[1].y : fingerPos[1].x);
 
-            // if the initial order is different from the current order, fingers have crossed.
             bool fingersCrossed = initialOrder != currentOrder;
 
-            // assign positions based on whether fingers are crossed.
             const float initialPosLower  = axis.Vertical ? (fingersCrossed ? fingerPosDown[1].y : fingerPosDown[0].y) : (fingersCrossed ? fingerPosDown[1].x : fingerPosDown[0].x);
             const float initialPosHigher = axis.Vertical ? (fingersCrossed ? fingerPosDown[0].y : fingerPosDown[1].y) : (fingersCrossed ? fingerPosDown[0].x : fingerPosDown[1].x);
             const float currentPosLower  = axis.Vertical ? (fingersCrossed ? fingerPos[1].y : fingerPos[0].y) : (fingersCrossed ? fingerPos[1].x : fingerPos[0].x);
@@ -482,21 +445,16 @@ struct TouchHandler {
             const ImPlotRect  currLimits   = ImPlot::GetPlotLimits();
             const ImPlotRange currentRange = axis.Vertical ? currLimits.Y : currLimits.X;
 
-            // store initial plot and finger positions
-            static std::map<ImGuiID, std::pair<std::array<float, 2>, std::pair<ImPlotRange, ImPlotRange>>> initialAxisData;
-            // check if the initial range data for this axis ID exists
             if (initialAxisData.find(axis.ID) == initialAxisData.end() || initialAxisData[axis.ID].first[0] != initialPosLower || initialAxisData[axis.ID].first[1] != initialPosHigher) {
                 initialAxisData[axis.ID] = {{initialPosLower, initialPosHigher}, {currentRange, {axis.PixelsToPlot(initialPosLower), axis.PixelsToPlot(initialPosHigher)}}};
             }
             const auto [initialPixelPosition, initialPlotPosition]   = initialAxisData[axis.ID];
             const auto [initialPlotRange, initialPlotFingerPosition] = initialPlotPosition;
 
-            // panning calculation:
             const double panCentre        = 0.5 * (axis.PixelsToPlot(currentPosLower) + axis.PixelsToPlot(currentPosHigher));
             const double panCentreInitial = 0.5 * (initialPlotFingerPosition.Min + initialPlotFingerPosition.Max);
             const double averagePanAmount = 4.0 * (panCentre - panCentreInitial);
 
-            // zoom calculation:
             const double currentDistance = std::abs(static_cast<double>(currentPosHigher) - static_cast<double>(currentPosLower));
             const double initialDistance = static_cast<double>(std::max(std::abs(initialPixelPosition[1] - initialPixelPosition[0]), ImGui::GetIO().MouseDragThreshold));
             const double zoomFactor      = std::clamp(currentDistance / initialDistance, 0.1, 20.0);
@@ -518,7 +476,6 @@ struct TouchHandler {
             }
         };
 
-        // retrieve or create the plot limit entry and apply the new limits
         auto& limitsEntry = plotLimits[zoomablePlotInit];
         for (std::size_t axisID = 0UL; axisID < ImAxis_COUNT; ++axisID) {
             auto& axis = ImPlot::GetCurrentContext()->CurrentPlot->Axes[axisID];
@@ -527,7 +484,7 @@ struct TouchHandler {
                 continue;
             }
             ImPlotRange range;
-            processAxis(axis, range, fingerPosDown, fingerPos);
+            updateAxis(axis, range, fingerPosDown, fingerPos);
             limitsEntry[axisID].first  = true;
             limitsEntry[axisID].second = range;
         }
@@ -546,6 +503,6 @@ struct TouchHandler {
     }
 };
 
-} // namespace DigitizerUi
+} // namespace gr::od
 
 #endif // OPENDIGITIZER_TOUCHHANDLER_HPP

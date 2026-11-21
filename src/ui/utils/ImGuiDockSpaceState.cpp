@@ -7,28 +7,29 @@
 
 #include <imgui_internal.h>
 
+using namespace gr::od;
+
 namespace {
-constexpr auto defaultSplitRatio = 1.F;
+using namespace dock_space;
+
+constexpr auto kDefaultSplitRatio = 1.F;
 
 gr::property_map saveLayoutVisitor(ImGuiDockNode* node, std::unordered_map<std::string_view, ImGuiWindow*>& remainingWindowsByName) noexcept {
     const auto [left, right] = node->ChildNodes;
 
     if (node->Windows.size() > 0) {
-        // this seems to only really be possible for floating windows, you can dock
-        // onto the window frame and both windows will take up the same node. We
-        // just don't save this
+        // only floating windows can share a node by docking onto the window frame: not saved
         return {};
     }
     if (!left && !right && node->Windows.size() == 0UL) {
-        // this node has no children or windows so it does not need to be
-        // remembered, probably the root node with nothing docked in it
+        // no children and no windows, probably the empty root node: nothing to remember
         return {};
     }
 
     gr::property_map out;
 
     // children share the size less the separator: a ratio of the node's size shrinks child 1 per save
-    const auto splitRatio = !left && !right ? defaultSplitRatio : [node, left, right] {
+    const auto splitRatio = !left && !right ? kDefaultSplitRatio : [node, left, right] {
         if (node->SplitAxis == ImGuiAxis_X) {
             return left && right ? left->Size.x / (left->Size.x + right->Size.x) : (left ? left->Size.x : right->Size.x) / node->Size.x;
         } else {
@@ -36,8 +37,8 @@ gr::property_map saveLayoutVisitor(ImGuiDockNode* node, std::unordered_map<std::
         }
     }();
 
-    if (splitRatio != defaultSplitRatio) {
-        out.try_emplace("ratio", splitRatio);
+    if (splitRatio != kDefaultSplitRatio) {
+        out.try_emplace(kRatio, splitRatio);
     }
 
     const auto branch = [&remainingWindowsByName](auto* child) {
@@ -56,31 +57,25 @@ gr::property_map saveLayoutVisitor(ImGuiDockNode* node, std::unordered_map<std::
     };
 
     if (auto firstChild = branch(left)) {
-        out.try_emplace("first", std::move(firstChild));
+        out.try_emplace(kFirst, std::move(firstChild));
     }
     if (auto secondChild = branch(right)) {
-        out.try_emplace("second", std::move(secondChild));
+        out.try_emplace(kSecond, std::move(secondChild));
     }
 
-    return gr::property_map{{node->SplitAxis == ImGuiAxis_X ? "hsplit" : "vsplit", std::move(out)}};
+    return gr::property_map{{node->SplitAxis == ImGuiAxis_X ? kHSplit : kVSplit, std::move(out)}};
 };
 
 void applyLayoutVisitor(const gr::property_map& region, ImGuiID nodeId) noexcept {
-    auto hsplit = region.find("hsplit");
-    auto vsplit = region.find("vsplit");
-    if (hsplit == region.end() && vsplit == region.end()) { // invalid yaml
-        return;
-    }
-    const bool splitIsHorizontal = hsplit != region.end();
-    const auto split             = splitIsHorizontal ? hsplit : vsplit;
+    if (const auto split = findSplit(region)) {
+        const bool  splitIsHorizontal = split->horizontal;
+        const auto& regionInner       = split->inner;
+        const auto  ratioIter         = regionInner.find(kRatio);
+        const float ratio             = ratioIter != regionInner.end() ? ratioIter->second.value_or(kDefaultSplitRatio) : kDefaultSplitRatio;
 
-    if (const auto regionInner = split->second.get_if<gr::property_map>()) {
-        const auto  ratioIter = regionInner->find("ratio");
-        const float ratio     = ratioIter != regionInner->end() ? ratioIter->second.value_or(defaultSplitRatio) : defaultSplitRatio;
-
-        const auto firstIter  = regionInner->find("first");
-        const auto secondIter = regionInner->find("second");
-        if (firstIter != regionInner->end() && secondIter != regionInner->end()) {
+        const auto firstIter  = regionInner.find(kFirst);
+        const auto secondIter = regionInner.find(kSecond);
+        if (firstIter != regionInner.end() && secondIter != regionInner.end()) {
             ImGuiID topNode;
             ImGuiID bottomNode;
             ImGui::DockBuilderSplitNode(nodeId, splitIsHorizontal ? ImGuiDir_Left : ImGuiDir_Down, ratio, &topNode, &bottomNode);
@@ -101,17 +96,27 @@ void applyLayoutVisitor(const gr::property_map& region, ImGuiID nodeId) noexcept
 };
 } // namespace
 
-namespace DigitizerUi {
-/// Custom serialization of ImGui dockspace state. ImGui::SaveIniSettingsToMemory()
-/// and ImGui::LoadIniSettingsFromMemory() are also available and they mostly
-/// handle this, but then we end up doing something like putting an entire INI file
-/// as a string into our dashboard yaml, and we can't control what gets serialized.
+namespace gr::od {
+std::optional<dock_space::Split> dock_space::findSplit(const gr::property_map& region) noexcept {
+    const auto hsplit = region.find(kHSplit);
+    const auto vsplit = region.find(kVSplit);
+    if (hsplit == region.end() && vsplit == region.end()) {
+        return std::nullopt;
+    }
+    const bool horizontal = hsplit != region.end();
+    if (const auto inner = (horizontal ? hsplit : vsplit)->second.get_if<gr::property_map>()) {
+        return Split{.horizontal = horizontal, .inner = *inner};
+    }
+    return std::nullopt;
+}
+
+/// custom serialisation: ImGui::SaveIniSettingsToMemory() and LoadIniSettingsFromMemory() mostly handle this,
+/// but would put an entire INI file into the dashboard yaml, without control over what gets serialised
 gr::property_map saveDockSpaceState(std::span<const std::string_view> relevantWindowsNames, ImGuiID dockspaceNodeID) noexcept {
     ImGuiContext&  g                    = *GImGui;
     ImGuiDockNode* centralDockspaceNode = ImGui::DockBuilderGetNode(dockspaceNodeID);
     assert(centralDockspaceNode);
 
-    // pair up relevant window names with their imgui windows
     std::unordered_map<std::string_view, ImGuiWindow*> remainingWindowsByName;
     remainingWindowsByName.reserve(relevantWindowsNames.size());
     for (std::string_view windowName : relevantWindowsNames) {
@@ -137,28 +142,28 @@ gr::property_map saveDockSpaceState(std::span<const std::string_view> relevantWi
         }
 
         floatingWindows[std::pmr::string{windowName}] = gr::property_map{
-            {"x", windowPtr->Pos.x},
-            {"y", windowPtr->Pos.y},
-            {"width", windowPtr->Size.x},
-            {"height", windowPtr->Size.y},
+            {dock_space::kX, windowPtr->Pos.x},
+            {dock_space::kY, windowPtr->Pos.y},
+            {dock_space::kWidth, windowPtr->Size.x},
+            {dock_space::kHeight, windowPtr->Size.y},
         };
     }
 
     return {
-        {"dockSpace", std::move(dockSpace)},
-        {"floatingWindows", std::move(floatingWindows)},
+        {dock_space::kDockSpace, std::move(dockSpace)},
+        {dock_space::kFloatingWindows, std::move(floatingWindows)},
     };
 }
 
 bool restoreDockSpaceState(const gr::property_map& state, ImGuiID rootNodeID) noexcept {
-    auto dockSpaceIter = state.find("dockSpace");
-    auto floatingIter  = state.find("floatingWindows");
+    auto dockSpaceIter = state.find(dock_space::kDockSpace);
+    auto floatingIter  = state.find(dock_space::kFloatingWindows);
     if (floatingIter == state.end() || dockSpaceIter == state.end()) {
         return false;
     }
 
     bool docked = false;
-    if (const auto dockMap = dockSpaceIter->second.get_if<gr::property_map>(); dockMap && (dockMap->contains("hsplit") || dockMap->contains("vsplit"))) {
+    if (const auto dockMap = dockSpaceIter->second.get_if<gr::property_map>(); dockMap && (dockMap->contains(dock_space::kHSplit) || dockMap->contains(dock_space::kVSplit))) {
         applyLayoutVisitor(*dockMap, rootNodeID);
         docked = true;
     }
@@ -172,11 +177,11 @@ bool restoreDockSpaceState(const gr::property_map& state, ImGuiID rootNodeID) no
                 };
 
                 const std::string name(windowName);
-                ImGui::SetWindowPos(name.c_str(), {get("x"), get("y")});
-                ImGui::SetWindowSize(name.c_str(), {get("width"), get("height")});
+                ImGui::SetWindowPos(name.c_str(), {get(dock_space::kX), get(dock_space::kY)});
+                ImGui::SetWindowSize(name.c_str(), {get(dock_space::kWidth), get(dock_space::kHeight)});
             }
         }
     }
     return docked;
 }
-} // namespace DigitizerUi
+} // namespace gr::od

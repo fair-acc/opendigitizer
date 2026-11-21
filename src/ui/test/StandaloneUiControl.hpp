@@ -5,7 +5,7 @@
 
 #include <boost/ut.hpp>
 
-namespace opendigitizer::test {
+namespace gr::od::test {
 
 template<typename TControl>
 struct StandaloneControl {
@@ -25,6 +25,6 @@ struct StandaloneControl {
         return messages;
     }
 };
-} // namespace opendigitizer::test
+} // namespace gr::od::test
 
 #endif

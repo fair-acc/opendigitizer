@@ -8,13 +8,13 @@
 #include <string>
 #include <vector>
 
-namespace opendigitizer::test {
+namespace gr::od::test {
 
 struct UiControlCompatibilityTarget : gr::Block<UiControlCompatibilityTarget> {
+    using Description = gr::Doc<"testing block to exercise different types and limits, especially for UI control block connections">;
+
     enum class Shape { Sin, Cos, Square };
     enum class Color { red, green, blue };
-
-    using Description = gr::Doc<"testing block to exercise different types and limits, especially for UI control block connections">;
 
     gr::Annotated<float, "low range", gr::Limits<0.f, 1.f>>           low_range                           = 0.5f;
     gr::Annotated<float, "high range", gr::Limits<10.f, 20.f>>        high_range                          = 15.f;
@@ -50,6 +50,6 @@ struct UiControlDeviceTarget : gr::Block<UiControlDeviceTarget> {
     void processOne(std::uint8_t) {}
 };
 
-} // namespace opendigitizer::test
+} // namespace gr::od::test
 
 #endif

@@ -20,7 +20,7 @@
 #include <emscripten.h>
 #endif
 
-namespace Digitizer {
+namespace digitizer {
 
 namespace detail {
 
@@ -201,6 +201,6 @@ public:
         return opencmw::URI<>::UriFactory(opencmw::URI<>(""s));
     }
 };
-} // namespace Digitizer
+} // namespace digitizer
 
 #endif // OPENDIGITIZER_SETTINGS_H

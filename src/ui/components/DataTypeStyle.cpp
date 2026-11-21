@@ -10,7 +10,7 @@
 using namespace std::string_literals;
 using namespace std::string_view_literals;
 
-namespace DigitizerUi {
+namespace gr::od {
 
 uint32_t darkenOrLighten(uint32_t color) {
     if (LookAndFeel::instance().style == LookAndFeel::Style::Light) {
@@ -79,9 +79,9 @@ bool isEventDataType(std::string_view type) {
 }
 
 const DataTypeStyle& styleForDataType(std::string_view type) {
-    using DataTypeStyleMap = std::unordered_map<std::string, DataTypeStyle, opendigitizer::TransparentStringHash, std::equal_to<>>;
+    using DataTypeStyleMap = std::unordered_map<std::string, DataTypeStyle, TransparentStringHash, std::equal_to<>>;
 
-    // If there is a style for T, then there should also be a matching style for DataSet<T> unless another one is already specified
+    // a style for T implies a matching one for DataSet<T>, unless another one is specified
     auto withDataSetStyles = [](DataTypeStyleMap map) {
         const std::vector<std::pair<std::string, DataTypeStyle>> explicitStyles(map.begin(), map.end());
         for (const auto& [name, style] : explicitStyles) {
@@ -139,4 +139,4 @@ const DataTypeStyle& styleForDataType(std::string_view type) {
     return it->second;
 }
 
-} // namespace DigitizerUi
+} // namespace gr::od

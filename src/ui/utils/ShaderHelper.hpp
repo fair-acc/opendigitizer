@@ -14,7 +14,7 @@
 #include <SDL3/SDL_opengl.h>
 #endif
 
-namespace opendigitizer::shader {
+namespace gr::od::shader {
 
 #ifdef __EMSCRIPTEN__
 static constexpr auto* kGlslPrefix = "#version 300 es\nprecision highp float;\n";
@@ -121,6 +121,6 @@ inline GLuint attachFBO(GLuint tex) {
     return complete;
 }
 
-} // namespace opendigitizer::shader
+} // namespace gr::od::shader
 
 #endif // OPENDIGITIZER_UTILS_SHADERHELPER_HPP
