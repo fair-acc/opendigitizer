@@ -9,7 +9,7 @@ GR4's [`CLAUDE.md`](https://github.com/fair-acc/gnuradio4/blob/main/CLAUDE.md) i
 design, naming, layout, documentation, C++23, GR4 conventions, testing, commits and the pre-submit checklist. Read it
 first.
 
-The local copies below are taken verbatim from GR4 `bd3d68bb` (2026-10-29) and are re-synced with each GR4 bump:
+The local copies below are taken verbatim from GR4 `5fa47fc0` (2026-11-21) and are re-synced with each GR4 bump:
 
 | File                            | Purpose                                                 |
 | ------------------------------- | ------------------------------------------------------- |
