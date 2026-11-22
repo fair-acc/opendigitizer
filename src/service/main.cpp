@@ -124,8 +124,13 @@ std::unique_ptr<Broker<>> setupBroker(const Digitizer::Settings& settings) {
                     {"cache-control", "public, max-age=3600"},
                 };
 
-                auto       cmrcFs   = std::make_shared<cmrc::embedded_filesystem>(cmrc::assets::get_filesystem());
-                const auto mainPath = std::format("web/index.html#dashboard={}{}", settings.defaultDashboard, settings.darkMode ? "&darkMode=true" : "");
+                auto cmrcFs = std::make_shared<cmrc::embedded_filesystem>(cmrc::assets::get_filesystem());
+
+                std::map<std::string, std::string, std::less<>> locationQuery;
+                if (settings.darkMode) {
+                    locationQuery.emplace("darkMode", "true");
+                }
+                const auto mainPath = std::format("web/index.html#{}", Digitizer::AppLocation::forDashboard(settings.defaultDashboard, std::move(locationQuery)).toHash());
 
                 auto redirectHandler = [](auto from, auto to) {
                     return rest::Handler{.method = "GET", .path = from, .handler = [to](const rest::Request&) {

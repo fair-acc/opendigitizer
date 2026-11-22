@@ -3,6 +3,8 @@
 
 #include <URI.hpp>
 
+#include "AppLocation.hpp"
+
 #include <algorithm>
 #include <cstdlib>
 #include <optional>
@@ -66,7 +68,7 @@ struct Settings {
     std::string           wasmServeDir{""};
     std::string           defaultDashboard{"RemoteDemo"};
     std::string           remoteDashboards{"../dashboard/defaultDashboards"};
-    bool                  dashboardFromUrlFragment{false}; // set when the page URL has #dashboard=...
+    bool                  dashboardFromUrlFragment{false}; // set when the page URL has #/dashboard/<name>
     std::optional<bool>   deprecatedEditable;              // v1.0 DIGITIZER_EDIT_MODE or URL fragment 'editable': overrides the .grc for one release
 
 private:
@@ -142,22 +144,18 @@ private:
         };
         basePath = extractPrefixBefore(basePath, "web/index.html"); // TODO: temporary fix to be compatible with proxy forwarding like: https://my.proxy.com/prefix/web/index.html -> https://my.localdomain.com//web/index.html'. All paths (incl. dashboard need to be relative to the 'prefix' path.
 
-        auto fragment = url.fragment().value_or("");
-        for (auto param : std::ranges::split_view(fragment, "&"sv)) {
-            auto sv = std::string_view(param.begin(), param.end());
-            if (sv.starts_with("dashboard=")) {
-                defaultDashboard         = sv.substr("dashboard="sv.length());
-                dashboardFromUrlFragment = true;
-            } else if (sv.starts_with("darkMode=")) {
-                darkMode = sv.substr("darkMode="sv.length()) == "true"sv;
-            } else if (sv.starts_with("darkMode")) {
-                darkMode = true;
-            } else if (sv.starts_with("theme=")) {
-                theme = sv.substr("theme="sv.length());
-            } else if (sv == "editable"sv || sv.starts_with("editable="sv)) {
-                deprecatedEditable = sv.substr("editable"sv.length()) != "=false"sv;
-                gr::log::warning("the URL fragment 'editable' is deprecated: set 'editable' in the dashboard section of the .grc");
-            }
+        const AppLocation location = AppLocation::parse(url.fragment().value_or(""));
+        if (auto name = location.dashboardName()) {
+            defaultDashboard         = *name;
+            dashboardFromUrlFragment = true;
+        }
+        darkMode = location.flag("darkMode").value_or(darkMode);
+        if (const auto it = location.query.find("theme"); it != location.query.end()) {
+            theme = it->second;
+        }
+        if (const auto editable = location.flag("editable")) {
+            deprecatedEditable = editable;
+            gr::log::warning("the URL fragment 'editable' is deprecated: set 'editable' in the dashboard section of the .grc");
         }
 #endif
         std::println("settings loaded: bindAddresses={}, darkMode={}, theme={}, checkCertificates={}, hostname={}, basePath='{}', wasmServeDir={}, defaultDashboard={}, remoteDashboards={}", //

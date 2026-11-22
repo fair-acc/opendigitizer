@@ -13,6 +13,10 @@ add_test(NAME qa_c_wrapper COMMAND qa_c_wrapper)
 target_link_libraries(qa_DeviceNameHelper PRIVATE ut opendigitizer-options)
 add_test(NAME qa_DeviceNameHelper COMMAND qa_DeviceNameHelper)
 
+add_executable(qa_AppLocation qa_AppLocation.cpp)
+target_link_libraries(qa_AppLocation PRIVATE ut opendigitizer-options)
+add_test(NAME qa_AppLocation COMMAND qa_AppLocation)
+
 add_executable(qa_PeriodicTimer qa_PeriodicTimer.cpp)
 target_include_directories(qa_PeriodicTimer INTERFACE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include/>
                                                       $<INSTALL_INTERFACE:include/>)
