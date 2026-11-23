@@ -11,9 +11,7 @@
 #include <string_view>
 #include <utility>
 
-namespace opendigitizer {
-
-GR_REGISTER_BLOCK(opendigitizer::Arithmetic, [ float, double ]);
+namespace gr::od {
 
 template<typename T>
 requires std::is_arithmetic_v<T>
@@ -60,8 +58,6 @@ struct Arithmetic : gr::Block<Arithmetic<T>> {
     }
 };
 
-} // namespace opendigitizer
-
-inline const auto kArithmeticRegistered = gr::registerBlock<opendigitizer::Arithmetic, float, double>(gr::globalBlockRegistry());
+} // namespace gr::od
 
 #endif

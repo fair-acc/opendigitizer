@@ -102,11 +102,11 @@ const boost::ut::suite<"Xoshiro256pp"> tests = [] {
     };
 
     "constexpr evaluation"_test = [] {
-        constexpr auto val = [] {
+        constexpr auto kValue = [] {
             Xoshiro256pp rng(42);
             return rng.nextU64();
         }();
-        expect(val != 0_u);
+        expect(kValue != 0_u);
     };
 
     "splitmix64 avoids zero state"_test = [] {

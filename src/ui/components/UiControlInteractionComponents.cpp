@@ -11,52 +11,57 @@
 #include "MapUtils.hpp"
 #include "OverlayButton.hpp"
 
-#include <scope_exit.hpp>
+#include <gnuradio-4.0/meta/utils.hpp>
 
 #include <imgui_node_editor.h>
 
+using namespace gr::od;
+
 namespace {
 
+struct UiControlConnectionNotchResult {
+    float labelHeight  = 0.F;
+    bool  labelClicked = false;
+    bool  notchClicked = false;
+};
+
 [[nodiscard]] ImVec2 uiControlConnectionLabelSize(std::string_view label) {
-    using namespace DigitizerUi;
     auto* font = LookAndFeel::instance().fontTiny();
     return font->CalcTextSizeA(font->LegacySize, FLT_MAX, 0.F, label.data(), label.data() + label.size());
 }
 
-/// Distance between the left edge of a block and the right edge of the connection source block label
-/// Must be called while the editor is active
+/// from the left edge of a block to the right edge of the connection source block label; only while the editor is active
 [[nodiscard]] float uiControlConnectionLabelGap() {
     // the part of the node padding not covered by the notch, plus some extra since imgui seems to underestimate text size
-    return ax::NodeEditor::GetStyle().NodePadding.x - DigitizerUi::LookAndFeel::instance().flowgraph.uiControlNotchLengthInwards + ImGui::GetStyle().ItemInnerSpacing.x;
+    return ax::NodeEditor::GetStyle().NodePadding.x - LookAndFeel::instance().flowgraph.uiControlNotchLengthInwards + ImGui::GetStyle().ItemInnerSpacing.x;
 }
 
-[[nodiscard]] ImVec4 DigitizerUi::Palette::*unlinkPaletteColor(bool pressed) { return pressed ? &DigitizerUi::Palette::flowgraphUiControlUnlinkPressed : &DigitizerUi::Palette::flowgraphUiControlUnlink; }
+[[nodiscard]] ImVec4 Palette::*unlinkPaletteColor(bool pressed) { return pressed ? &Palette::flowgraphUiControlUnlinkPressed : &Palette::flowgraphUiControlUnlink; }
 
 void drawUnlinkIcon(ImDrawList* drawList, ImVec2 center, float iconFontSize, bool pressed) {
-    using namespace DigitizerUi;
     using namespace std::string_view_literals;
-    static constexpr auto unlinkIcon = "\u{f00d}"sv;
+    static constexpr auto kUnlinkIcon = "\u{f00d}"sv;
 
     ImFont*      iconFont = LookAndFeel::instance().fontIconsSolid;
     const ImVec2 iconSize = [iconFont, iconFontSize] {
-        IMW::FontWithSize fontChange(iconFont, iconFontSize);
-        return ImGui::CalcTextSize(unlinkIcon.data(), unlinkIcon.data() + unlinkIcon.size());
+        imw::FontWithSize fontChange(iconFont, iconFontSize);
+        return ImGui::CalcTextSize(kUnlinkIcon.data(), kUnlinkIcon.data() + kUnlinkIcon.size());
     }();
     const auto iconColor = LookAndFeel::getColorU32ImGui(unlinkPaletteColor(pressed));
-    drawList->AddText(iconFont, iconFontSize, center - (iconSize / 2.F), iconColor, unlinkIcon.data(), unlinkIcon.data() + unlinkIcon.size());
+    drawList->AddText(iconFont, iconFontSize, center - (iconSize / 2.F), iconColor, kUnlinkIcon.data(), kUnlinkIcon.data() + kUnlinkIcon.size());
 }
 
-[[nodiscard]] float uiControlTargetRowHeight() { return DigitizerUi::LookAndFeel::instance().fontTiny()->LegacySize; }
+[[nodiscard]] float uiControlTargetRowHeight() { return LookAndFeel::instance().fontTiny()->LegacySize; }
 
-[[nodiscard]] float uiControlTargetRowPitch() { return uiControlTargetRowHeight() + DigitizerUi::LookAndFeel::instance().flowgraph.uiControlTargetRowSpacing; }
+[[nodiscard]] float uiControlTargetRowPitch() { return uiControlTargetRowHeight() + LookAndFeel::instance().flowgraph.uiControlTargetRowSpacing; }
 
-[[nodiscard]] std::size_t uiControlTargetEntryCount(const DigitizerUi::UiGraphBlock& control) {
+[[nodiscard]] std::size_t uiControlTargetEntryCount(const UiGraphBlock& control) {
     const auto targets = control.uiControlTargetMap();
     return targets ? targets->entries().size() : 0UZ;
 }
 
 [[nodiscard]] std::size_t uiControlTargetRowCount(std::size_t entryCount) {
-    // max of 1 because we always draw one notch for the drag-connect handle
+    // the drag-connect handle always has a notch
     return std::max(entryCount, 1UZ);
 }
 
@@ -65,17 +70,14 @@ void drawUnlinkIcon(ImDrawList* drawList, ImVec2 center, float iconFontSize, boo
 }
 
 [[nodiscard]] ImVec2 uiControlDragHandleHitboxSize() {
-    const auto& flowgraphLookAndFeel = DigitizerUi::LookAndFeel::instance().flowgraph;
+    const auto& flowgraphLookAndFeel = LookAndFeel::instance().flowgraph;
     return ImVec2{flowgraphLookAndFeel.pinWidth, flowgraphLookAndFeel.pinHeight};
 }
 
-/// Draws the text @param outsideLabel to the left of the block, and a notch indicating the connection
-/// from that to whatever text is inside the block at the current cursor position.
-/// This does not move the cursor. Pass 0 to @param rowHeight to use the height of the drawn text instead.
-/// Pass @param interactionId to make connection interactable for the Unlink and Jump to Control actions
-DigitizerUi::components::UiControlConnectionNotchResult drawUiControlConnectionNotch(std::string_view outsideLabel, ImVec2 blockStartCursorPosition, float rowHeight, ImU32 color, const char* interactionId) {
-    using namespace DigitizerUi;
-    using namespace DigitizerUi::components;
+/// `outsideLabel` left of the block and a notch connecting it to the text inside the block at the current cursor position, which does not move;
+/// `rowHeight` 0: the height of the drawn text; `interactionId` makes the connection interactable for the Unlink and Jump to Control actions
+UiControlConnectionNotchResult drawUiControlConnectionNotch(std::string_view outsideLabel, ImVec2 blockStartCursorPosition, float rowHeight, ImU32 color, const char* interactionId) {
+    using namespace components;
 
     const ImVec4 nodePadding = ax::NodeEditor::GetStyle().NodePadding;
     const auto   blockLeft   = blockStartCursorPosition.x - nodePadding.x;
@@ -108,7 +110,7 @@ DigitizerUi::components::UiControlConnectionNotchResult drawUiControlConnectionN
     if (notch.hovered || notch.held) {
         drawUnlinkIcon(fgDrawList, ImVec2{blockLeft, centerY}, textSize.y, notch.held);
     } else {
-        // the outside label text and the inside label text may be different colors so we can draw a nice gradient between them on the notch to make it less noticable
+        // the outside and inside label texts may differ in colour: a gradient between them on the notch makes that less noticeable
         const ImU32 insideColor = ImGui::GetColorU32(ImGuiCol_Text);
         fgDrawList->AddRectFilledMultiColor(ImVec2{blockLeft - LookAndFeel::instance().flowgraph.uiControlNotchLengthOutwards, centerY - .5F}, ImVec2{blockLeft + LookAndFeel::instance().flowgraph.uiControlNotchLengthInwards, centerY + .5F}, color, insideColor, insideColor, color);
     }
@@ -119,7 +121,7 @@ DigitizerUi::components::UiControlConnectionNotchResult drawUiControlConnectionN
 
 } // namespace
 
-namespace DigitizerUi::components {
+namespace gr::od::components {
 
 void BlockDragConnectOverlay::draw() const {
     const auto  lineColor = LookAndFeel::getColorU32ImGui(&Palette::flowgraphUiControlPendingConnection);
@@ -167,6 +169,47 @@ bool BlockDragConnectInteraction::update(std::span<UiGraphBlock* const> drawnBlo
     }
     _cancelled = _releasedOnUniqueName == _sourceUniqueName;
     return true;
+}
+
+ScrollableListSelectionPopupResult ScrollableListSelectionPopup::draw(const std::function<bool(std::size_t)>& isItemEnabled) {
+    if (!std::exchange(_opened, true)) {
+        ImGui::OpenPopup(_name.c_str());
+    }
+    std::optional<std::size_t> hoveredItem;
+    bool                       confirmed = false;
+
+    if (auto popup = imw::Popup(_name.c_str(), 0)) {
+        if (ImGui::IsKeyPressed(ImGuiKey_Escape)) {
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::TextUnformatted(_name.c_str());
+        ImGui::Separator();
+        {
+            imw::Child list("##items", LookAndFeel::instance().selectionPopupListSize, true, 0);
+            for (std::size_t index = 0UZ; index < _items.size(); ++index) {
+                imw::Disabled incompatible(isItemEnabled && !isItemEnabled(index));
+                _items[index].draw();
+                if (ImGui::IsItemHovered()) {
+                    hoveredItem = index;
+                }
+            }
+            if (_items.empty() && !_emptyListMessage.empty()) {
+                imw::StyleColor textColor(ImGuiCol_Text, LookAndFeel::instance().palette().errorColor);
+                ImGui::TextWrapped("%s", _emptyListMessage.c_str());
+            }
+        }
+
+        const float doneWidth = LookAndFeel::instance().selectionPopupDoneWidth;
+        ImGui::SetCursorPosX(ImGui::GetCursorPosX() + std::max(0.F, (ImGui::GetContentRegionAvail().x - doneWidth) / 2.F));
+        if (textButton("Done", ImVec2(doneWidth, 0.F))) {
+            confirmed = true;
+            ImGui::CloseCurrentPopup();
+        }
+    }
+
+    const SelectionPopupState unconfirmedState = ImGui::IsPopupOpen(_name.c_str()) ? SelectionPopupState::InProgress : SelectionPopupState::Cancelled;
+    const SelectionPopupState state            = confirmed ? SelectionPopupState::Confirmed : unconfirmedState;
+    return {.currentState = state, .hoveredItem = hoveredItem};
 }
 
 std::optional<std::string_view> UiControlMultiSelectPopup::hoveredProperty() const {
@@ -332,13 +375,13 @@ std::optional<ImVec2> drawUiControlTargetList(UiGraphModel& graphModel, const Ui
     if (isDragHandleActive) {
         ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
     }
-    // part of the reason for GetColorU32 here is to apply the style alpha, for greying out the node when it is filtered
+    // GetColorU32 applies the style alpha, which greys out a filtered node
     const ImU32 lineColor = ImGui::GetColorU32(isDragHandleActive ? LookAndFeel::instance().palette().flowgraphUiControlHighlight : color);
 
     auto*             drawList = ImGui::GetWindowDrawList();
-    IMW::FontWithSize font(LookAndFeel::instance().fontTiny(), rowHeight);
-    IMW::StyleColor   textColor(ImGuiCol_Text, color);
-    // AddLine offsets its endpoints by half a pixel but AddCircleFilled does not, so this is required to draw a circle centered on the line
+    imw::FontWithSize font(LookAndFeel::instance().fontTiny(), rowHeight);
+    imw::StyleColor   textColor(ImGuiCol_Text, color);
+    // AddLine offsets its endpoints by half a pixel but AddCircleFilled does not: needed to centre a circle on the line
     const float lineHalfThickness = flowgraphLookAndFeel.uiControlTargetLineThickness / 2.F;
     const auto  drawLineSegment   = [&](const ImRect& segment) { drawList->AddRectFilled(ImVec2{lineX - lineHalfThickness, segment.Min.y}, ImVec2{lineX + lineHalfThickness, segment.Max.y}, lineColor); };
 
@@ -348,7 +391,7 @@ std::optional<ImVec2> drawUiControlTargetList(UiGraphModel& graphModel, const Ui
 
     std::size_t index = 0;
     for (const auto& entry : entries) {
-        Digitizer::utils::scope_exit increment = [&index] { ++index; };
+        gr::on_scope_exit increment = [&index] { ++index; };
 
         const std::string text      = std::format("{}:{}", entry.isGlob() ? "*" : entry.blockTarget, entry.propertyName);
         const ImVec2      dotCenter = calculateRowCenter(index);
@@ -364,7 +407,7 @@ std::optional<ImVec2> drawUiControlTargetList(UiGraphModel& graphModel, const Ui
             drawList->AddCircleFilled(dotCenter, flowgraphLookAndFeel.uiControlTargetDotRadius, lineColor);
         }
 
-        IMW::StyleColor labelColor(ImGuiCol_Text, unlinkInteractionState.hovered || unlinkInteractionState.held ? LookAndFeel::instance().palette().*unlinkPaletteColor(unlinkInteractionState.held) : color);
+        imw::StyleColor labelColor(ImGuiCol_Text, unlinkInteractionState.hovered || unlinkInteractionState.held ? LookAndFeel::instance().palette().*unlinkPaletteColor(unlinkInteractionState.held) : color);
         ImGui::RenderTextEllipsis(drawList, ImVec2{labelLeft, dotCenter.y - (rowHeight / 2.F)}, ImVec2{node.Max.x, dotCenter.y + (rowHeight / 2.F)}, node.Max.x, text.c_str(), nullptr, nullptr);
 
         if (unlinkInteractionState.clicked) {
@@ -415,13 +458,13 @@ std::optional<ImRect> calculateAndArrangeUiControlBlocksDesignatedRegion(std::sp
 constexpr int kNodeEditorBackgroundDrawChannel = 5;
 
 void drawUiControlRegionBackgroundRect(const ImRect& region) {
-    constexpr std::uint8_t fillAlpha = 0x33;
-    const std::uint32_t    opaque    = LookAndFeel::getColorU32Opaque(&Palette::flowgraphUiControlPendingConnection);
-    auto* const            drawList  = ImGui::GetWindowDrawList();
+    constexpr std::uint8_t kFillAlpha = 0x33;
+    const std::uint32_t    opaque     = LookAndFeel::getColorU32Opaque(&Palette::flowgraphUiControlPendingConnection);
+    auto* const            drawList   = ImGui::GetWindowDrawList();
 
     const int blockDrawChannel = drawList->_Splitter._Current;
     drawList->ChannelsSetCurrent(kNodeEditorBackgroundDrawChannel);
-    drawList->AddRectFilled(region.Min, region.Max, rgbToImGuiABGR(opaque, fillAlpha), LookAndFeel::instance().flowgraph.nodeRounding);
+    drawList->AddRectFilled(region.Min, region.Max, rgbToImGuiABGR(opaque, kFillAlpha), LookAndFeel::instance().flowgraph.nodeRounding);
     drawList->AddRect(region.Min, region.Max, rgbToImGuiABGR(opaque), LookAndFeel::instance().flowgraph.nodeRounding, ImDrawFlags_None, LookAndFeel::instance().flowgraph.uiControlRegionBorderThickness);
     drawList->ChannelsSetCurrent(blockDrawChannel);
 }
@@ -436,9 +479,9 @@ void drawIncomingPropertyConnectionIndicators(                                  
     if (indicators.empty()) {
         return;
     }
-    IMW::Font font(LookAndFeel::instance().fontSmall());
+    imw::Font font(LookAndFeel::instance().fontSmall());
 
-    // iterate blockSettings rather than indicators so that we draw in the same order the properties would be drawn in if they were not being indicated as connected
+    // blockSettings order, not indicator order: as the properties are drawn when not connected
     for (const auto& [propertyKey, propertyValue] : block.blockSettings) {
         auto indicatorsForProperty = indicators | std::views::filter([&propertyKey](const auto& indicator) { return indicator.propertyName == propertyKey; });
         if (std::ranges::empty(indicatorsForProperty)) {
@@ -459,7 +502,7 @@ void drawIncomingPropertyConnectionIndicators(                                  
 
         drawLeftHandSideNotchAndBlockName(*indicatorsForProperty.begin(), ImGui::GetTextLineHeight());
 
-        // just draw the RHS property name (the target of the connection) only once, the rest are more entries on the left, beneath this first entry
+        // the target property name only once; further connections are entries on the left, beneath the first
         const auto&       currentPropertyMetaInformation = block.blockSettingsMetaInformation[std::string(propertyKey)];
         const std::string value                          = valueToString(propertyValue);
         const std::string displayName                    = currentPropertyMetaInformation.description.empty() ? std::string(propertyKey) : currentPropertyMetaInformation.description;
@@ -471,4 +514,4 @@ void drawIncomingPropertyConnectionIndicators(                                  
     }
 }
 
-} // namespace DigitizerUi::components
+} // namespace gr::od::components

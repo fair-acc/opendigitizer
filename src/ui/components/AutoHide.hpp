@@ -9,7 +9,7 @@
 
 #include <algorithm>
 
-namespace DigitizerUi::components {
+namespace gr::od::components {
 
 /// controls that slide out of sight once the pointer has stayed away from them for LookAndFeel::autoHideDelaySeconds and
 /// slide back when it comes within autoHideRevealDistance of where they belong (a tap there on touch screens)
@@ -42,6 +42,6 @@ struct AutoHide {
     }
 };
 
-} // namespace DigitizerUi::components
+} // namespace gr::od::components
 
 #endif // OPENDIGITIZER_UI_COMPONENTS_AUTOHIDE_HPP

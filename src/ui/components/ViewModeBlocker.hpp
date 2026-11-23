@@ -4,15 +4,15 @@
 #include <imgui.h>
 #include <imgui_internal.h>
 
-#include "../common/ImguiWrap.hpp"
+#include "../common/Imw.hpp"
 #include "YesNoPopup.hpp"
 
-namespace DigitizerUi::components {
+namespace gr::od::components {
 
 [[nodiscard]] inline bool drawViewModeBlocker(const ImRect& area) noexcept {
     ImGui::SetNextWindowSize(area.GetSize());
     ImGui::SetNextWindowPos(area.GetTL());
-    IMW::Window window("coveringWindow", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoScrollbar);
+    imw::Window window("coveringWindow", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoScrollbar);
     const auto  unlockPopupID = "Return dashboard to interactive mode?##lockModeDisableInputBlockerPopup";
     ImGui::SetCursorScreenPos(area.GetTL());
     if (ImGui::InvisibleButton("inputBlocker", area.GetSize()) || (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Right))) {
@@ -30,6 +30,6 @@ namespace DigitizerUi::components {
     return exitRequested;
 }
 
-} // namespace DigitizerUi::components
+} // namespace gr::od::components
 
 #endif

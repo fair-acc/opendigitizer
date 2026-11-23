@@ -7,13 +7,11 @@
 
 #include <boost/ut.hpp>
 
+using namespace gr::od;
+
 using namespace boost::ut;
 
 const boost::ut::suite<"target_map"> targetMapTests = [] {
-    using DigitizerUi::TargetEntry;
-    using DigitizerUi::TargetMap;
-    using DigitizerUi::TargetRelationship;
-
     const auto entriesString = [](std::string_view text) {
         const auto parsed = TargetMap::fromString(text);
         expect(parsed.has_value()) << fatal << text;
@@ -32,25 +30,24 @@ const boost::ut::suite<"target_map"> targetMapTests = [] {
 
     "block names containing colons are parsed correctly"_test = [&] {
         expect(entriesString("sub:BlockA:gain") == "sub:BlockA/gain");
-        constexpr static auto* namespacedBlockMap = "gr::basic::SignalGenerator<float32>:frequency";
-        expect(entriesString(namespacedBlockMap) == "gr::basic::SignalGenerator<float32>/frequency");
+        constexpr static auto* kNamespacedBlockMap = "gr::basic::SignalGenerator<float32>:frequency";
+        expect(entriesString(kNamespacedBlockMap) == "gr::basic::SignalGenerator<float32>/frequency");
         expect(entriesString("sub:BlockA,BlockB::x:gain") == "sub:BlockA/gain BlockB::x/gain");
-        constexpr static auto* singleColonMap = "sub:BlockA,BlockB:gain";
-        expect(TargetMap::fromString(singleColonMap)->toString() == singleColonMap);
-        expect(TargetMap::fromString(namespacedBlockMap)->toString() == namespacedBlockMap);
+        constexpr static auto* kSingleColonMap = "sub:BlockA,BlockB:gain";
+        expect(TargetMap::fromString(kSingleColonMap)->toString() == kSingleColonMap);
+        expect(TargetMap::fromString(kNamespacedBlockMap)->toString() == kNamespacedBlockMap);
     };
 
     "parsing target map with block names that have multiple template arguments"_test = [&] {
-        constexpr static auto* fftMap = "gr::blocks::fft::FFT<float32, gr::DataSet<float32>>:output_in_db";
-        expect(entriesString(fftMap) == "gr::blocks::fft::FFT<float32, gr::DataSet<float32>>/output_in_db");
-        expect(TargetMap::fromString(fftMap)->toString() == fftMap);
-        constexpr static auto* mixedMap = "A<x, y>,B,C<z<1, 2>, w>:gain";
-        expect(entriesString(mixedMap) == "A<x, y>/gain B/gain C<z<1, 2>, w>/gain");
-        expect(TargetMap::fromString(mixedMap)->toString() == mixedMap);
+        constexpr static auto* kFftMap = "gr::blocks::fft::FFT<float32, gr::DataSet<float32>>:output_in_db";
+        expect(entriesString(kFftMap) == "gr::blocks::fft::FFT<float32, gr::DataSet<float32>>/output_in_db");
+        expect(TargetMap::fromString(kFftMap)->toString() == kFftMap);
+        constexpr static auto* kMixedMap = "A<x, y>,B,C<z<1, 2>, w>:gain";
+        expect(entriesString(kMixedMap) == "A<x, y>/gain B/gain C<z<1, 2>, w>/gain");
+        expect(TargetMap::fromString(kMixedMap)->toString() == kMixedMap);
     };
 
     "names that have unbalanced <> or unecessary commas and would mess up parsing are marked as invalid"_test = [] {
-        using DigitizerUi::isValidBlockName;
         for (const std::string_view valid : {"", "BlockA", "sub:BlockA", "gr::blocks::fft::FFT<float32, gr::DataSet<float32>>"}) {
             expect(isValidBlockName(valid)) << valid;
         }
@@ -60,7 +57,6 @@ const boost::ut::suite<"target_map"> targetMapTests = [] {
     };
 
     "sanitizeUserInputtedName"_test = [] {
-        using DigitizerUi::sanitizeUserInputtedName;
         expect(sanitizeUserInputtedName("BlockA") == "BlockA");
         expect(sanitizeUserInputtedName("  A,B ") == "A_B");
         expect(sanitizeUserInputtedName("A;B") == "A_B");
@@ -70,7 +66,7 @@ const boost::ut::suite<"target_map"> targetMapTests = [] {
         expect(sanitizeUserInputtedName("A<,B") == "A__B");
         expect(sanitizeUserInputtedName("A>,B") == "A__B");
         for (const std::string_view input : {"A,B", " * ", "A<x;y>", "A<*>", " A ; B , C ", "A<", "A>,B"}) {
-            expect(DigitizerUi::isValidBlockName(sanitizeUserInputtedName(input))) << input;
+            expect(isValidBlockName(sanitizeUserInputtedName(input))) << input;
         }
     };
 
@@ -160,7 +156,6 @@ const boost::ut::suite<"target_map"> targetMapTests = [] {
     };
 
     "isCompatibleType() with specific types"_test = [] {
-        using DigitizerUi::isCompatibleType;
         expect(isCompatibleType("float32", "float32"));
         expect(!isCompatibleType("float32", "float64")) << "no implicit widening";
         expect(!isCompatibleType("float32", "float3")) << "whole names, not prefixes";
@@ -170,7 +165,6 @@ const boost::ut::suite<"target_map"> targetMapTests = [] {
     };
 
     "isCompatibleType() specifying empty string or \"*\" for a glob"_test = [] {
-        using DigitizerUi::isCompatibleType;
         for (const std::string_view typeName : {"float32", "bool", "string", "enum"}) {
             expect(isCompatibleType("", typeName)) << typeName;
             expect(isCompatibleType("  ", typeName)) << typeName;
@@ -180,7 +174,6 @@ const boost::ut::suite<"target_map"> targetMapTests = [] {
     };
 
     "passing a map that only constrains based on units to isCompatibleType()"_test = [] {
-        using DigitizerUi::isCompatibleType;
         expect(isCompatibleType("unit:Color;unit:RGB", "uint32", "Color"));
         expect(isCompatibleType("unit:Color;unit:RGB", "float32", "RGB"));
         expect(!isCompatibleType("unit:Color;unit:RGB", "uint32", "Hz"));
@@ -190,7 +183,6 @@ const boost::ut::suite<"target_map"> targetMapTests = [] {
     };
 
     "passing a map with both types and units to isCompatibleType()"_test = [] {
-        using DigitizerUi::isCompatibleType;
         expect(isCompatibleType("unit:Color;unit:RGB;uint32", "uint32", "RGB"));
         expect(!isCompatibleType("unit:Color;unit:RGB;uint32", "float32", "Color")) << "unit but not type";
         expect(!isCompatibleType("unit:Color;unit:RGB;uint32", "uint32", "Hz")) << "type but not unit";
@@ -200,7 +192,6 @@ const boost::ut::suite<"target_map"> targetMapTests = [] {
     };
 
     "DrawableBlockConfig toMap and fromMap are each others' inverse"_test = [] {
-        using DigitizerUi::DrawableBlockConfig;
         using ControlledProperty = DrawableBlockConfig::ControlledProperty;
         const std::vector<DrawableBlockConfig> configs{
             DrawableBlockConfig{},

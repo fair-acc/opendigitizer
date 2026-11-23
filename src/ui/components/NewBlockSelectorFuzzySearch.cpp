@@ -1,6 +1,6 @@
 #include "NewBlockSelectorFuzzySearch.hpp"
 
-#include "tolower.hpp"
+#include "stdex/tolower.hpp"
 
 #include <cassert>
 #include <cstdint>
@@ -8,10 +8,10 @@
 #include <ranges>
 
 namespace {
-bool compareChars(char a, char b) { return Digitizer::utils::safe_tolower(a) == Digitizer::utils::safe_tolower(b); }
+bool compareChars(char a, char b) { return digitizer::utils::safe_tolower(a) == digitizer::utils::safe_tolower(b); }
 } // namespace
 
-namespace DigitizerUi::components {
+namespace gr::od::components {
 std::size_t wordDistance(std::string_view a, std::string_view b) {
     if (a.size() == 0) {
         return b.size();
@@ -45,7 +45,7 @@ std::size_t wordDistance(std::string_view a, std::string_view b) {
 void FilterResult::addExactMatchesInString(std::string_view string, std::string_view filter) {
     std::string_view substring = string;
     while (!substring.empty()) {
-        const auto tolower = [](char c) { return Digitizer::utils::safe_tolower(c); };
+        const auto tolower = [](char c) { return digitizer::utils::safe_tolower(c); };
         if (auto match = std::ranges::search(substring, filter, std::ranges::equal_to{}, tolower, tolower); !match.empty()) {
             assert(match.data() >= substring.data() && match.data() < substring.data() + substring.size());
 
@@ -91,4 +91,4 @@ FilterResult filterTypename(std::string_view typenameString, std::string_view fi
     return result;
 }
 
-} // namespace DigitizerUi::components
+} // namespace gr::od::components

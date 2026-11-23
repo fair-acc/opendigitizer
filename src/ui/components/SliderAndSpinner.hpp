@@ -1,12 +1,12 @@
 #ifndef OPENDIGITIZER_UI_COMPONENTS_SLIDER_AND_SPINNER_HPP_
 #define OPENDIGITIZER_UI_COMPONENTS_SLIDER_AND_SPINNER_HPP_
 
-#include "../common/ImguiWrap.hpp"
-#include "StyledStandardWidgets.hpp"
+#include "../common/Imw.hpp"
+#include "StyledWidgets.hpp"
 
 #include <format>
 
-namespace DigitizerUi {
+namespace gr::od {
 
 template<typename T>
 requires std::is_arithmetic_v<T>
@@ -31,20 +31,20 @@ template<ImGuiNumber T>
 
 [[nodiscard]] inline float calculateSpinnerWidth() { return 2.f * (ImGui::GetFrameHeight() + ImGui::GetStyle().ItemInnerSpacing.x); }
 
-/// @returns whether the - or + button changed the value
+/// whether the - or + button changed the value
 template<ImGuiNumber T>
 bool drawSpinnerButtons(const char* label, T* value, T lower, T upper, T stepSize) {
-    IMW::ChangeStrId spinnerScope(label);
+    imw::ChangeStrId spinnerScope(label);
     ImGui::PushItemFlag(ImGuiItemFlags_ButtonRepeat, true);
     const ImVec2 buttonSize(ImGui::GetFrameHeight(), ImGui::GetFrameHeight());
     bool         changed = false;
     ImGui::SameLine(0.f, ImGui::GetStyle().ItemInnerSpacing.x);
-    if (DigitizerUi::Button("-", buttonSize)) {
+    if (button("-", buttonSize)) {
         *value  = std::clamp(roundDoubleToMultipleOfNumber(static_cast<double>(*value) - static_cast<double>(stepSize), stepSize), lower, upper);
         changed = true;
     }
     ImGui::SameLine(0.f, ImGui::GetStyle().ItemInnerSpacing.x);
-    if (DigitizerUi::Button("+", buttonSize)) {
+    if (button("+", buttonSize)) {
         *value  = std::clamp(roundDoubleToMultipleOfNumber(static_cast<double>(*value) + static_cast<double>(stepSize), stepSize), lower, upper);
         changed = true;
     }
@@ -68,8 +68,7 @@ template<ImGuiNumber T>
     }
 }
 
-/// How much space to reserve for the number label of a slider given the min value, max value, and step size (these are used
-/// to figure out the number of significant digits) and the format (to include any truncation of the number, and the unit)
+/// the space for a slider's number label: `min`, `max` and `step` give the significant digits, `format` any truncation and the unit
 template<ImGuiNumber T>
 [[nodiscard]] float calculateNumberLabelWidthForRange(T min, T max, T stepSize, const char* format) {
     const char*       numberStart      = ImParseFormatFindStart(format);
@@ -101,7 +100,7 @@ SliderAction sliderAndSpinner(const char* label, T* value, const SliderAndSpinne
     T           lower  = parameters.min;
     T           upper  = std::max(parameters.min, parameters.max);
 
-    IMW::Group group;
+    imw::Group group;
     ImGui::SetNextItemWidth(ImGui::CalcItemWidth() - (parameters.showSpinner ? calculateSpinnerWidth() : 0.f));
     const SliderScalarParameters sliderParameters{
         .dataType         = imguiDataType<T>(),
@@ -111,7 +110,7 @@ SliderAction sliderAndSpinner(const char* label, T* value, const SliderAndSpinne
         .format           = format,
         .numberLabelWidth = calculateNumberLabelWidthForRange(lower, upper, parameters.stepSize, format),
     };
-    SliderAction action = SliderScalar(label, sliderParameters);
+    SliderAction action = sliderScalar(label, sliderParameters);
     if (action == SliderAction::DraggedSlider) {
         *value = std::clamp(roundDoubleToMultipleOfNumber(static_cast<double>(*value), parameters.stepSize), lower, upper);
     }
@@ -121,6 +120,6 @@ SliderAction sliderAndSpinner(const char* label, T* value, const SliderAndSpinne
     return action;
 }
 
-} // namespace DigitizerUi
+} // namespace gr::od
 
 #endif // OPENDIGITIZER_UI_COMPONENTS_SLIDER_AND_SPINNER_HPP_

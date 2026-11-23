@@ -6,8 +6,8 @@
 
 #include "charts/Chart.hpp"
 
-#include "components/ColourManager.hpp"
 #include "components/Docking.hpp"
+#include "components/SignalColours.hpp"
 
 #include "utils/TransparentStringHash.hpp"
 
@@ -21,12 +21,8 @@
 
 #include <cmrc/cmrc.hpp>
 
-#ifdef __EMSCRIPTEN__
-#include "utils/emscripten_compat.hpp"
-#endif
-#include <plf_colony.h>
-
 #include <cstdint>
+#include <expected>
 #include <functional>
 #include <string>
 #include <string_view>
@@ -35,104 +31,80 @@
 
 CMRC_DECLARE(sample_dashboards);
 
-namespace detail {
-[[maybe_unused]] inline static opendigitizer::ColourManager& _colourManager = opendigitizer::ColourManager::instance();
-}
-
 namespace gr {
 class Graph;
 class BlockModel;
 } // namespace gr
 
-namespace opendigitizer {
-struct SignalSink; // forward declaration
-}
+namespace gr::od {
 
-namespace DigitizerUi {
-
+struct SignalSink;
 struct DashboardDescription;
 struct SignalData;
 
-// Use axis types from charts namespace (avoid duplication)
-using AxisScale   = opendigitizer::charts::AxisScale;
-using LabelFormat = opendigitizer::charts::LabelFormat;
+using AxisScale   = charts::AxisScale;
+using LabelFormat = charts::LabelFormat;
+
+enum class StorageKind { Memory, Remote, Example, File };
+
+[[nodiscard]] constexpr bool isRemotePath(std::string_view path) noexcept { return path.starts_with("http://") || path.starts_with("https://"); }
 
 struct DashboardStorageInfo {
-    struct PrivateTag {};
-
     std::string path;
     bool        isEnabled = true;
 
-    DashboardStorageInfo(std::string _path, PrivateTag) : path(std::move(_path)) {}
     ~DashboardStorageInfo() noexcept;
 
     static std::shared_ptr<DashboardStorageInfo>             get(std::string_view path);
     static std::vector<std::weak_ptr<DashboardStorageInfo>>& knownDashboardStorage();
     static std::shared_ptr<DashboardStorageInfo>             memoryDashboardStorage();
 
-    bool isInMemoryDashboardStorage() const { return this == memoryDashboardStorage().get(); }
+    [[nodiscard]] bool        isInMemoryDashboardStorage() const { return this == memoryDashboardStorage().get(); }
+    [[nodiscard]] StorageKind kind() const {
+        if (isInMemoryDashboardStorage()) {
+            return StorageKind::Memory;
+        }
+        if (isRemotePath(path)) {
+            return StorageKind::Remote;
+        }
+        return path.starts_with("example://") ? StorageKind::Example : StorageKind::File;
+    }
 };
 
 struct DashboardDescription {
-    struct PrivateTag {};
     using OptionalTimePoint = std::optional<std::chrono::time_point<std::chrono::system_clock>>;
-    using StringMap         = std::unordered_map<std::string, std::string, opendigitizer::TransparentStringHash, std::equal_to<>>;
+    using StringMap         = std::unordered_map<std::string, std::string, TransparentStringHash, std::equal_to<>>;
 
-    static constexpr const char* fileExtension = ".ddd";
+    static constexpr const char* kFileExtension = ".ddd";
 
     std::string                           name;
     std::shared_ptr<DashboardStorageInfo> storageInfo;
     std::string                           filename;
-    mutable bool                          isFavorite;
-    mutable OptionalTimePoint             lastUsed;
+    bool                                  isFavorite = false;
+    OptionalTimePoint                     lastUsed;
     std::vector<std::string>              tags;
     StringMap                             keyValueTags;
 
-    DashboardDescription(PrivateTag, std::string _name, std::shared_ptr<DashboardStorageInfo> _storageInfo, std::string _filename, bool _isFavorite, OptionalTimePoint _lastUsed) : name(std::move(_name)), storageInfo(std::move(_storageInfo)), filename(std::move(_filename)), isFavorite(_isFavorite), lastUsed(std::move(_lastUsed)) {}
-
-    void save();
-
-    static void                                        loadAndThen(std::shared_ptr<opencmw::client::RestClient> client, const std::shared_ptr<DashboardStorageInfo>& storageInfo, const std::string& filename, const std::function<void(std::shared_ptr<const DashboardDescription>&&)>& cb);
-    static void                                        loadFlowgraphAndThen(std::shared_ptr<opencmw::client::RestClient> client, const std::shared_ptr<DashboardStorageInfo>& storageInfo, const std::string& filename, std::function<void(std::string&&)>&& cb, std::function<void()>&& errCb);
-    static std::shared_ptr<const DashboardDescription> createEmpty(const std::string& name);
+    static void                                  loadAndThen(std::shared_ptr<opencmw::client::RestClient> client, const std::shared_ptr<DashboardStorageInfo>& storageInfo, const std::string& filename, const std::function<void(std::shared_ptr<DashboardDescription>&&)>& cb);
+    static void                                  loadFlowgraphAndThen(std::shared_ptr<opencmw::client::RestClient> client, const std::shared_ptr<DashboardStorageInfo>& storageInfo, const std::string& filename, std::function<void(std::string&&)>&& cb, std::function<void()>&& errCb);
+    static std::shared_ptr<DashboardDescription> createEmpty(const std::string& name);
 };
 
 struct Dashboard {
-    using AxisConfig = opendigitizer::charts::AxisConfig;
-    struct PrivateTag {};
-    struct DeserializeTag {};
+    using AxisConfig = charts::AxisConfig;
 
     struct UIWindow {
         std::shared_ptr<DockSpace::Window> window;
         std::shared_ptr<gr::BlockModel>    block;
-
-        UIWindow() = default;
-        explicit UIWindow(DeserializeTag, std::shared_ptr<gr::BlockModel> blk, std::string_view name = "");
     };
 
     struct PropertyControlWindow {
         std::shared_ptr<DockSpace::Window> window;
-        std::string                        label; // chosen by user
-
-        PropertyControlWindow(DeserializeTag, std::string_view labelView, std::string_view windowName);
-    };
-
-    struct Service {
-        std::shared_ptr<opencmw::client::RestClient> restClient;
-        std::string                                  name;
-        std::string                                  uri;
-        std::string                                  layout;
-        std::string                                  grc;
-
-        Service(std::shared_ptr<opencmw::client::RestClient> client, std::string n, std::string u) : restClient{std::move(client)}, name(std::move(n)), uri(std::move(u)) {}
-
-        void reload();
-        void execute();
-        void emplaceBlock(std::string type, std::string params);
+        std::string                        label;
     };
 
     std::shared_ptr<gr::PluginLoader> pluginLoader = [] {
-        auto pluginPaths = Digitizer::resolvePluginSearchPaths();
+        auto pluginPaths = digitizer::resolvePluginSearchPaths();
         return std::make_shared<gr::PluginLoader>(gr::globalBlockRegistry(), gr::globalSchedulerRegistry(), std::span<const std::string>(pluginPaths));
     }();
 
@@ -140,24 +112,19 @@ struct Dashboard {
     std::function<void(Dashboard*)> requestClose;
 
     std::shared_ptr<opencmw::client::RestClient>           restClient;
-    std::shared_ptr<const DashboardDescription>            description = nullptr;
+    std::shared_ptr<DashboardDescription>                  description = nullptr;
     std::vector<UIWindow>                                  uiWindows;
     std::unordered_map<std::size_t, PropertyControlWindow> propertyControlWindows;
     DockingLayoutType                                      layoutType  = DockingLayoutType::Grid;
     bool                                                   schedulerUi = false; // .grc dashboard.scheduler_ui
     bool                                                   editable    = true;  // .grc dashboard.editable: false starts locked
     gr::property_map                                       windowLayout;
-    std::unordered_map<std::string, std::string>           flowgraphUriByRemoteSource;
-    plf::colony<Service>                                   services;
     std::atomic<bool>                                      isInitialised = false;
     GraphSession                                           session;
     std::unordered_map<std::string, gr::property_map>      pendingCharts; // by chart_name, until in the graph
     std::uint64_t                                          boundChartsTopology = 0;
 
-    explicit Dashboard(PrivateTag, std::shared_ptr<opencmw::client::RestClient> client, const std::shared_ptr<const DashboardDescription>& desc);
-    ~Dashboard();
-
-    static std::unique_ptr<Dashboard> create(std::shared_ptr<opencmw::client::RestClient> client, const std::shared_ptr<const DashboardDescription>& desc);
+    Dashboard(std::shared_ptr<opencmw::client::RestClient> client, std::shared_ptr<DashboardDescription> desc);
 
     void                                                        load();
     void                                                        loadAndThen(std::string_view grcData, std::function<void(gr::Graph&&)> assignScheduler);
@@ -165,7 +132,7 @@ struct Dashboard {
     void                                                        save(DockingLayoutType liveLayoutType, const gr::property_map& liveWindowLayout);
     [[nodiscard]] std::pair<gr::property_map, gr::property_map> serialise();
     void                                                        saveStore(const gr::property_map& headerYaml, const gr::property_map& graphYaml);
-    void                                                        doLoad(const gr::property_map& dashboard, gr::Graph& graph);
+    [[nodiscard]] std::expected<void, gr::Error>                doLoad(const gr::property_map& dashboard, gr::Graph& graph);
 
     void newUIBlock(std::string_view chartType = "XYChart", const gr::property_map& chartInitialParameters = {});
     void deleteChart(UIWindow* uiWindow);
@@ -177,17 +144,10 @@ struct Dashboard {
 
     std::shared_ptr<gr::BlockModel> emplaceChartBlock(gr::Graph& graph, std::string_view chartTypeName, const std::string& chartName, const gr::property_map& chartParameters = {});
     [[nodiscard]] std::string       resolveChartTypeName(std::string_view chartTypeName) const;
-    void                            removeSinkFromPlots(std::string_view sinkName);
     void                            addRemoteSignal(const SignalData& signalData);
     void                            loadUIWindowSources();
 
     void setNewDescription(const std::shared_ptr<DashboardDescription>& desc);
-    void registerRemoteService(std::string_view blockName, std::optional<opencmw::URI<>> uri);
-    void unregisterRemoteService(std::string_view blockName);
-    void removeUnusedRemoteServices();
-    void saveRemoteServiceFlowgraph(Service* s);
-
-    void handleMessages() { session.handleMessages(); }
 
     [[nodiscard]] UIWindow* findUIWindow(const std::shared_ptr<gr::BlockModel>& block) noexcept {
         if (!block) {
@@ -210,7 +170,7 @@ struct Dashboard {
         return nullptr;
     }
 };
-} // namespace DigitizerUi
+} // namespace gr::od
 
 namespace grc_compat {
 

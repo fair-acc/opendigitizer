@@ -11,24 +11,21 @@
 
 #include "GraphSession.hpp"
 
-namespace DigitizerUi {
+namespace gr::od {
 
-class PaneBlocks {
-public:
-    explicit PaneBlocks(gr::UICategory category) noexcept : _category(category) {}
-
-    const std::vector<std::shared_ptr<gr::BlockModel>>& of(const GraphSession& session);
-
-private:
+struct PaneBlocks {
     gr::UICategory                               _category;
     const GraphSession*                          _session = nullptr;
     std::optional<std::uint64_t>                 _topologyGeneration;
     std::vector<std::shared_ptr<gr::BlockModel>> _blocks;
+
+    explicit PaneBlocks(gr::UICategory category) noexcept : _category(category) {}
+
+    const std::vector<std::shared_ptr<gr::BlockModel>>& of(const GraphSession& session);
 };
 
-/// Find the actual block model representation for a drawable/UI block with a given unique name
 [[nodiscard]] std::shared_ptr<gr::BlockModel> findDrawableBlock(const GraphSession& session, gr::UICategory category, std::string_view uniqueName);
 
-} // namespace DigitizerUi
+} // namespace gr::od
 
 #endif

@@ -266,7 +266,7 @@ blocks:
       decay: 0
       sustain_fraction: 1
       release: 0.5
-  - id: gr::filter::BasicFilterProto<float32, gr::Resampling<1, 1, false>, gr::Stride<0, false>>
+  - id: gr::filter::BasicFilterProto<float32, gr::Resampling<1, 1, false>>
     parameters:
       name: pianoLowPass
       sample_rate: 48000

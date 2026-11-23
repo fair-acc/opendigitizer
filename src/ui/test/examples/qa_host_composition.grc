@@ -1,0 +1,26 @@
+blocks:
+  - id: gr::basic::ClockSource
+    parameters:
+      name: ClockSource1
+      n_samples_max: 0
+      sample_rate: 4096
+  - id: gr::basic::SignalGenerator<float32>
+    parameters:
+      name: SignalGenerator1
+      sample_rate: 4096
+  - id: opendigitizer::test::TestPropertySetterButton
+    parameters:
+      name: host_button
+      label: Amplify
+      target_block: SignalGenerator1
+      payload:
+        amplitude: 7.0
+  - id: DigitizerUi::SchedulerStateIndicator
+    parameters:
+      name: host_indicator
+  - id: opendigitizer::ImPlotSink<float32>
+    parameters:
+      name: HostSink
+connections:
+  - [ClockSource1, 0, SignalGenerator1, 0]
+  - [SignalGenerator1, 0, HostSink, 0]

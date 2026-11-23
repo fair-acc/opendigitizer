@@ -1,7 +1,8 @@
-#include "common/ImguiWrap.hpp"
+#include "common/Imw.hpp"
 
 #include <misc/cpp/imgui_stdlib.h>
 
+#include "common/Events.hpp"
 #include "common/LookAndFeel.hpp"
 
 #include "DashboardPage.hpp"
@@ -9,11 +10,17 @@
 
 #include "OAuthSession.hpp"
 #include "components/Dialog.hpp"
-#include "components/HoverRevealedTrashButton.hpp"
 #include "components/NewBlockSelectorFuzzySearch.hpp"
-#include "components/StyledStandardWidgets.hpp"
+#include "components/StyledWidgets.hpp"
 #include "components/VirtualScrollTable.hpp"
 #include "settings.hpp"
+
+#include <opencmw.hpp>
+
+#include <ClientCommon.hpp>
+#include <IoSerialiserJson.hpp>
+#include <MdpMessage.hpp>
+#include <RestClient.hpp>
 
 #include <gnuradio-4.0/meta/utils.hpp>
 
@@ -28,12 +35,116 @@
 #include <utility>
 #include <variant>
 
-namespace DigitizerUi {
+namespace gr::od {
+
+struct DashboardsCollection {
+    std::function<void()> onChanged;
+
+    std::vector<std::shared_ptr<DashboardDescription>> _dashboards;
+    std::vector<std::shared_ptr<DashboardStorageInfo>> _sources;
+    std::shared_ptr<opencmw::client::RestClient>       _restClient;
+
+    explicit DashboardsCollection(std::shared_ptr<opencmw::client::RestClient> restClient) : _restClient{std::move(restClient)} {}
+
+    void addSource(std::string_view path) {
+        _sources.push_back(DashboardStorageInfo::get(path));
+        auto& storageInfo = _sources.back();
+
+        if (storageInfo->kind() == StorageKind::Remote) {
+            opencmw::client::Command command;
+            command.command = opencmw::mdp::Command::Subscribe;
+            command.topic   = opencmw::URI<opencmw::STRICT>::UriFactory().path(path).build();
+
+            command.callback = [this, storageInfo](const opencmw::mdp::Message& rep) {
+                if (rep.data.size() == 0) {
+                    return;
+                }
+
+                auto                     buf = rep.data;
+                std::vector<std::string> names;
+                opencmw::IoSerialiser<opencmw::Json, decltype(names)>::deserialise(buf, opencmw::FieldDescriptionShort{}, names);
+
+                EventLoop::instance().executeLater([this, storageInfo, names = std::move(names)]() {
+                    for (const auto& n : names) {
+                        loadDashboard(storageInfo, n);
+                    }
+                });
+            };
+
+            // the current list too, not only its changes
+            command.command = opencmw::mdp::Command::Get;
+            _restClient->request(command);
+#ifndef OD_DISABLE_DEMO_FLOWGRAPHS
+        } else if (storageInfo->kind() == StorageKind::Example) {
+            auto fs  = cmrc::sample_dashboards::get_filesystem();
+            auto dir = fs.iterate_directory("assets/sampleDashboards/");
+            for (auto d : dir) {
+                if (d.is_file() && d.filename().ends_with(".grc")) {
+                    loadDashboard(storageInfo, d.filename().substr(0, d.filename().size() - 4));
+                }
+            }
+#endif
+        } else {
+#ifndef __EMSCRIPTEN__
+            namespace fs = std::filesystem;
+            const fs::path rootPath{path};
+            if (!fs::is_directory(rootPath)) {
+                return;
+            }
+
+            for (auto it = fs::recursive_directory_iterator(rootPath, fs::directory_options::skip_permission_denied); it != fs::recursive_directory_iterator(); ++it) {
+                if (it->is_directory() && it->path().filename().native().starts_with(".")) {
+                    it.disable_recursion_pending();
+                    continue;
+                }
+                if (it->is_regular_file() && it->path().extension() == DashboardDescription::kFileExtension) {
+                    loadDashboard(storageInfo, it->path().lexically_relative(rootPath).native());
+                }
+            }
+#endif
+        }
+    }
+
+    void removeSource(const std::shared_ptr<DashboardStorageInfo>& source) {
+        std::erase_if(_dashboards, [&source](const auto& dashboard) { return dashboard->storageInfo == source; });
+        if (source->kind() == StorageKind::Remote) {
+            opencmw::client::Command command;
+            command.command = opencmw::mdp::Command::Unsubscribe;
+            command.topic   = opencmw::URI<opencmw::STRICT>::UriFactory().path(source->path).build();
+            _restClient->request(command);
+        }
+        std::erase(_sources, source);
+        if (onChanged) {
+            onChanged();
+        }
+    }
+
+    void addDashboard(std::shared_ptr<DashboardDescription> dashboard) {
+        _dashboards.push_back(std::move(dashboard));
+        if (onChanged) {
+            onChanged();
+        }
+    }
+
+    void loadDashboard(const std::shared_ptr<DashboardStorageInfo>& storageInfo, const std::string& filename) {
+        DashboardDescription::loadAndThen(_restClient, storageInfo, filename, [this, storageInfo](std::shared_ptr<DashboardDescription>&& desc) {
+            if (desc) {
+                auto it = std::ranges::find_if(_dashboards, [&](const auto& d) { return d->storageInfo.get() == storageInfo.get() && d->name == desc->name; });
+                if (it == _dashboards.end()) {
+                    addDashboard(std::move(desc));
+                }
+            }
+        });
+    }
+
+    [[nodiscard]] const std::vector<std::shared_ptr<DashboardDescription>>& dashboards() const { return _dashboards; }
+    [[nodiscard]] const std::vector<std::shared_ptr<DashboardStorageInfo>>& sources() const { return _sources; }
+};
 
 namespace {
 
-constexpr const char*                  addSourcePopupId = "Include path in dashboard search##addSourcePopup";
-[[maybe_unused]] constexpr const char* oauthPopupId     = "OAuth/RBAC"; // unused in emscripten builds
+constexpr const char*                  kAddSourcePopupId = "Include path in dashboard search##addSourcePopup";
+[[maybe_unused]] constexpr const char* kOauthPopupId     = "OAuth/RBAC"; // unused in emscripten builds
 
 constexpr const char* kIconSave           = "\u{f0c7}";
 constexpr const char* kIconSaveAs         = "\u{f56e}";
@@ -63,27 +174,27 @@ void wrapIfTooLarge(float nextItemWidth, float availableWidth = ImGui::GetConten
 [[nodiscard]] bool drawPlusButton(bool enabled) {
     const ImVec2 squareButtonSize{ImGui::GetFrameHeight(), ImGui::GetFrameHeight()};
 
-    IMW::Disabled disabled(!enabled);
+    imw::Disabled disabled(!enabled);
     ImGui::PushFont(LookAndFeel::instance().fontIcons, squareButtonSize.y / 2.f);
-    const bool pressed = DigitizerUi::Button(kIconPlus, squareButtonSize);
+    const bool pressed = button(kIconPlus, squareButtonSize);
     ImGui::PopFont();
     return pressed;
 }
 
-// draw custom star button. it is different from a regular button/selectable in that it does not get highlighted and instead just toggles the star being filled in
+// a star button: not highlighted like a button or selectable, it only fills or empties the star
 [[nodiscard]] bool drawFavoriteButton(bool isFavorite) {
     const ImVec2 squareButtonSize{ImGui::GetFrameHeight(), ImGui::GetFrameHeight()};
 
     ImGui::PushFont(isFavorite ? LookAndFeel::instance().fontIconsSolid : LookAndFeel::instance().fontIcons, squareButtonSize.y / 2.f);
-    IMW::StyleColor background(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_FrameBg));
-    IMW::StyleColor hoveredBackground(ImGuiCol_ButtonHovered, ImGui::GetStyleColorVec4(ImGuiCol_FrameBgHovered));
-    IMW::StyleColor activeBackground(ImGuiCol_ButtonActive, ImGui::GetStyleColorVec4(ImGuiCol_FrameBgActive));
+    imw::StyleColor background(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_FrameBg));
+    imw::StyleColor hoveredBackground(ImGuiCol_ButtonHovered, ImGui::GetStyleColorVec4(ImGuiCol_FrameBgHovered));
+    imw::StyleColor activeBackground(ImGuiCol_ButtonActive, ImGui::GetStyleColorVec4(ImGuiCol_FrameBgActive));
     const bool      pressed = ImGui::Button(kIconStar, squareButtonSize);
     ImGui::PopFont();
     return pressed;
 }
 
-/// A selectable which uses framehight size, supports rounded corners, and respects style options
+/// frame-height selectable with rounded corners, respecting the style options
 [[nodiscard]] bool frameHeightSelectable(const char* label, bool selected) {
     const ImGuiStyle& style    = ImGui::GetStyle();
     const char*       textEnd  = ImGui::FindRenderedTextEnd(label);
@@ -93,9 +204,9 @@ void wrapIfTooLarge(float nextItemWidth, float availableWidth = ImGui::GetConten
     const bool        held     = ImGui::IsItemActive();
     ImDrawList*       drawList = ImGui::GetWindowDrawList();
     if (selected || hovered || held) {
-        drawList->AddRectFilled(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), ImGui::GetColorU32(SelectableBackgroundColor(selected, hovered, held)), style.FrameRounding);
+        drawList->AddRectFilled(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), ImGui::GetColorU32(selectableBackgroundColor(selected, hovered, held)), style.FrameRounding);
     }
-    drawList->AddText(ImGui::GetItemRectMin() + style.FramePadding, ImGui::GetColorU32(SelectableTextColor(selected)), label, textEnd);
+    drawList->AddText(ImGui::GetItemRectMin() + style.FramePadding, ImGui::GetColorU32(selectableTextColor(selected)), label, textEnd);
     return clicked;
 }
 
@@ -106,68 +217,27 @@ void drawRowLabel(const char* label) {
     ImGui::SameLine();
 }
 
+[[nodiscard]] bool hoverRevealedTrashButton(bool revealed, ImVec2 size) {
+    constexpr const char* kIconTrash = "\u{f2ed}";
+
+    imw::StyleFloatVar alpha(ImGuiStyleVar_Alpha, revealed ? ImGui::GetStyle().Alpha : 0.F);
+    ImGui::PushFont(LookAndFeel::instance().fontIcons, size.y / 2.F);
+    const bool pressed = button(kIconTrash, size);
+    ImGui::PopFont();
+    return pressed;
+}
+
 bool doIconButton(const char* tooltip, const char* icon, ImVec2 size) {
     bool pressed = false;
     {
-        IMW::Font iconFont(LookAndFeel::instance().fontIconsSolidLarge);
-        pressed = DigitizerUi::Button(std::format("{}###{}", icon, tooltip).c_str(), size);
+        imw::Font iconFont(LookAndFeel::instance().fontIconsSolidLarge);
+        pressed = button(std::format("{}###{}", icon, tooltip).c_str(), size);
     }
     ImGui::SetItemTooltip("%s", tooltip);
     return pressed;
 }
 
-using DashboardList = std::vector<std::shared_ptr<const DashboardDescription>>;
-
-struct FavoriteFilter {
-    FavoritesFilter shown;
-};
-struct BeforeFilter {
-    std::chrono::time_point<std::chrono::system_clock> date;
-};
-struct AfterFilter {
-    std::chrono::time_point<std::chrono::system_clock> date;
-};
-struct TagFilter {
-    std::string tag;
-};
-struct KeyValueFilter {
-    std::string key;
-    std::string value;
-};
-using DashboardFilterData = std::variant<FavoriteFilter, BeforeFilter, AfterFilter, TagFilter, KeyValueFilter>;
-
-struct DashboardFilter final : components::SortFilterModelFilter {
-    const DashboardList& dashboards;
-    DashboardFilterData  filterData;
-
-    DashboardFilter(const DashboardList& _viewedDashboards, DashboardFilterData _filterData) : dashboards(_viewedDashboards), filterData(std::move(_filterData)) {}
-
-    bool matches(std::size_t itemIndex) const override {
-        const DashboardDescription& dashboard = *dashboards[itemIndex];
-        return std::visit(gr::meta::overloaded{
-                              [&](const FavoriteFilter& filter) { return dashboard.isFavorite == (filter.shown == FavoritesFilter::ShowFavorited); },
-                              [&](const BeforeFilter& filter) { return dashboard.lastUsed < filter.date; },
-                              [&](const AfterFilter& filter) { return dashboard.lastUsed > filter.date; },
-                              [&](const TagFilter& filter) { return std::ranges::contains(dashboard.tags, filter.tag); },
-                              [&](const KeyValueFilter& filter) {
-                                  const auto valueIt = dashboard.keyValueTags.find(filter.key);
-                                  return valueIt != dashboard.keyValueTags.end() && valueIt->second == filter.value;
-                              },
-                          },
-            filterData);
-    }
-};
-
-template<typename Kind>
-bool sortModelFilterIsType(const std::unique_ptr<components::SortFilterModelFilter>& filter) {
-    return std::holds_alternative<Kind>(static_cast<const DashboardFilter&>(*filter).filterData);
-}
-
-enum class DashboardSortKind {
-    lastUsed, // most recently used first, never used last
-    name,     // lexicographically by dashboard name
-    source,   // lexicographically by source URI
-};
+using DashboardList = std::vector<std::shared_ptr<DashboardDescription>>;
 
 bool dashboardLess(const DashboardDescription& lhs, const DashboardDescription& rhs, DashboardSortKind kind) {
     switch (kind) {
@@ -178,66 +248,14 @@ bool dashboardLess(const DashboardDescription& lhs, const DashboardDescription& 
     std::unreachable();
 }
 
-struct DashboardComparator final : components::SortFilterModelSortByComparisonStrategy {
-    const DashboardList& dashboards;
-    DashboardSortKind    kind;
-    bool                 reversed;
-
-    DashboardComparator(const DashboardList& viewedDashboards, DashboardSortKind sortKind, bool sortReversed = false) : dashboards(viewedDashboards), kind(sortKind), reversed(sortReversed) {}
-
-    bool less(std::size_t lhsIndex, std::size_t rhsIndex) const override {
-        if (reversed) {
-            std::swap(lhsIndex, rhsIndex);
-        }
-        return dashboardLess(*dashboards[lhsIndex], *dashboards[rhsIndex], kind);
+bool dashboardIndexLess(const DashboardList& dashboards, const DashboardSort& sort, std::size_t lhs, std::size_t rhs) {
+    if (sort.reversed) {
+        std::swap(lhs, rhs);
     }
-};
-
-struct DashboardTreeComparator final : components::SortFilterTreeModelSortByComparisonStrategy {
-    const DashboardList& dashboards;
-    DashboardSortKind    kind;
-    bool                 reversed;
-
-    DashboardTreeComparator(const DashboardList& viewedDashboards, DashboardSortKind sortKind, bool sortReversed = false) : dashboards(viewedDashboards), kind(sortKind), reversed(sortReversed) {}
-
-    bool less(const components::SortFilterTreeModelNode& lhs, const components::SortFilterTreeModelNode& rhs) const override {
-        // for now, branches just sort before leaves and otherwise this is the same as the regular filter
-        if (lhs.isBranch() != rhs.isBranch()) {
-            return lhs.isBranch();
-        }
-        if (lhs.isBranch()) {
-            return lhs.name < rhs.name;
-        }
-        if (reversed) {
-            return dashboardLess(*dashboards[*rhs.index], *dashboards[*lhs.index], kind);
-        }
-        return dashboardLess(*dashboards[*lhs.index], *dashboards[*rhs.index], kind);
-    }
-};
+    return dashboardLess(*dashboards[lhs], *dashboards[rhs], sort.kind);
+}
 
 bool isDashboardSourceEnabled(const DashboardList& dashboards, std::size_t index) { return index < dashboards.size() && dashboards[index]->storageInfo->isEnabled; }
-
-/// when we get std::polymorphic we can use that for filters and this can be removed
-components::ModelFilters copyModelFilters(const components::ModelFilters& filters) {
-    const auto copyUniquePtr = [](const auto& uniquePtr) -> std::unique_ptr<components::SortFilterModelFilter> { return std::make_unique<DashboardFilter>(static_cast<const DashboardFilter&>(*uniquePtr)); };
-    auto       copiedFilters = filters.filterObjects | std::views::transform(copyUniquePtr) | std::ranges::to<std::vector>();
-    return {
-        .filterObjects  = std::move(copiedFilters),
-        .requiredFilter = filters.requiredFilter,
-        .requiresAll    = filters.requiresAll,
-    };
-}
-
-std::string filterTagLabel(const components::SortFilterModelFilter& filter) {
-    return std::visit(gr::meta::overloaded{
-                          [](const FavoriteFilter& favoriteFilter) -> std::string { return favoriteFilter.shown == FavoritesFilter::ShowFavorited ? "favorited" : "not favorited"; },
-                          [](const BeforeFilter& beforeFilter) { return std::format("used before {}", formatDate(beforeFilter.date)); },
-                          [](const AfterFilter& afterFilter) { return std::format("used after {}", formatDate(afterFilter.date)); },
-                          [](const TagFilter& tagFilter) { return std::format("tag: {}", tagFilter.tag); },
-                          [](const KeyValueFilter& keyValueFilter) { return std::format("{} = {}", keyValueFilter.key, keyValueFilter.value); },
-                      },
-        static_cast<const DashboardFilter&>(filter).filterData);
-}
 
 void saveWithLiveLayout(Dashboard& dashboard, const DashboardPage* page) {
     const auto [layoutType, windowLayout] = page ? page->saveLayoutConfiguration() : std::pair{dashboard.layoutType, dashboard.windowLayout};
@@ -245,31 +263,72 @@ void saveWithLiveLayout(Dashboard& dashboard, const DashboardPage* page) {
 }
 } // namespace
 
-components::SortFilterModelParams OpenDashboardPage::defaultFilterParams() {
-    return {
-        .numViewedItems = dashboards().size(),
-        .filters        = {.filterObjects = {}, .requiredFilter = [this](std::size_t idx) { return isDashboardSourceEnabled(dashboards(), idx); }},
-        .sortStrategy   = std::make_unique<DashboardComparator>(dashboards(), DashboardSortKind::lastUsed),
-    };
+bool DashboardFilter::matches(const DashboardDescription& dashboard) const {
+    return std::visit(gr::meta::overloaded{
+                          [&](const FavoriteFilter& filter) { return dashboard.isFavorite == (filter.shown == FavoritesFilter::ShowFavorited); },
+                          [&](const BeforeFilter& filter) { return dashboard.lastUsed < filter.date; },
+                          [&](const AfterFilter& filter) { return dashboard.lastUsed > filter.date; },
+                          [&](const TagFilter& filter) { return std::ranges::contains(dashboard.tags, filter.tag); },
+                          [&](const KeyValueFilter& filter) {
+                              const auto valueIt = dashboard.keyValueTags.find(filter.key);
+                              return valueIt != dashboard.keyValueTags.end() && valueIt->second == filter.value;
+                          },
+                      },
+        data);
+}
+
+std::string DashboardFilter::label() const {
+    return std::visit(gr::meta::overloaded{
+                          [](const FavoriteFilter& favoriteFilter) -> std::string { return favoriteFilter.shown == FavoritesFilter::ShowFavorited ? "favorited" : "not favorited"; },
+                          [](const BeforeFilter& beforeFilter) { return std::format("used before {}", formatDate(beforeFilter.date)); },
+                          [](const AfterFilter& afterFilter) { return std::format("used after {}", formatDate(afterFilter.date)); },
+                          [](const TagFilter& tagFilter) { return std::format("tag: {}", tagFilter.tag); },
+                          [](const KeyValueFilter& keyValueFilter) { return std::format("{} = {}", keyValueFilter.key, keyValueFilter.value); },
+                      },
+        data);
+}
+
+bool OpenDashboardPage::matchesFilters(std::size_t index) const {
+    if (!isDashboardSourceEnabled(dashboards(), index)) {
+        return false;
+    }
+    if (_filters.empty()) {
+        return true;
+    }
+    const auto matches = [&dashboard = *dashboards()[index]](const DashboardFilter& filter) { return filter.matches(dashboard); };
+    return _requireAllFilters ? std::ranges::all_of(_filters, matches) : std::ranges::any_of(_filters, matches);
+}
+
+components::SortFilterModelParams OpenDashboardPage::makeSortFilterModelParams() {
+    components::SortFilterModelParams params{.numViewedItems = dashboards().size(), .filter = [this](std::size_t index) { return matchesFilters(index); }, .less = {}, .score = {}};
+    if (_sort.byRelevance) {
+        params.score = [this](std::size_t index) { return static_cast<float>(components::filterTypename(dashboards()[index]->name, _searchInput.text).score); };
+    } else {
+        params.less = [this, sort = _sort](std::size_t lhs, std::size_t rhs) { return dashboardIndexLess(dashboards(), sort, lhs, rhs); };
+    }
+    return params;
 }
 
 components::SortFilterTreeModelParams OpenDashboardPage::makeSortFilterTreeModelParamsThatMatchListModel() {
-    components::SortFilterTreeModelParams params{.numItems = dashboards().size(), .getItemPathFunction = {}, .filters = {}, .sortStrategy = {}};
-    if (m_viewMode == ListViewMode::CustomTree) {
+    components::SortFilterTreeModelParams params{.numItems = dashboards().size(), .getItemPathFunction = {}, .filter = [this](std::size_t index) { return matchesFilters(index); }, .less = {}, .score = {}};
+    if (_viewMode == ListViewMode::CustomTree) {
         params.getItemPathFunction = [this](std::size_t index) { return customDashboardTreePath(index); };
     } else {
         params.getItemPathFunction = [this](std::size_t index) { return dashboardTreePath(index); };
     }
-    params.filters = copyModelFilters(m_sortFilterModel.filters());
-
-    if (const auto* tableComparator = m_sortFilterModel.comparisonOperator()) {
-        const auto* dashboardComparator = static_cast<const DashboardComparator*>(tableComparator);
-        params.sortStrategy             = std::make_unique<DashboardTreeComparator>(dashboards(), dashboardComparator->kind, dashboardComparator->reversed);
-    } else if (m_sortFilterModel.scoreEvaluator() != nullptr) {
-        // do the fuzzy search + scoring for every tree node, leaves and branches/folders
-        params.sortStrategy = components::makeSimpleSortFilterTreeModelSortByScoreStrategy([this](const components::SortFilterTreeModelNode& node) { //
-            return static_cast<float>(components::filterTypename(node.name, m_searchInput.text).score);
-        });
+    if (_sort.byRelevance) {
+        params.score = [this](const components::SortFilterTreeModelNode& node) { return static_cast<float>(components::filterTypename(node.name, _searchInput.text).score); };
+    } else {
+        // branches sort before leaves, and by name
+        params.less = [this, sort = _sort](const components::SortFilterTreeModelNode& lhs, const components::SortFilterTreeModelNode& rhs) {
+            if (lhs.isBranch() != rhs.isBranch()) {
+                return lhs.isBranch();
+            }
+            if (lhs.isBranch()) {
+                return lhs.name < rhs.name;
+            }
+            return dashboardIndexLess(dashboards(), sort, *lhs.index, *rhs.index);
+        };
     }
     return params;
 }
@@ -279,8 +338,7 @@ std::vector<std::string> OpenDashboardPage::dashboardTreePath(std::size_t index)
     std::vector<std::string>    path{dashboard.storageInfo->path};
     std::filesystem::path       parentPath = std::filesystem::path(dashboard.filename).parent_path();
 #ifndef NDEBUG
-    // keeping testdata in the testing directory is nice for organization, but it is annoying to
-    // unfold many tree nodes. so pretend these entries are in root level `testdata/` instead
+    // test data stays in the testing directory, but shows as a root-level `testdata/`: no unfolding of many tree nodes
     constexpr std::string_view kTestdataDir = "src/ui/test/testdata/dashboards";
     if (const std::string parentStr = parentPath.generic_string(); parentStr.starts_with(kTestdataDir)) {
         parentPath = "testdata" + parentStr.substr(kTestdataDir.size());
@@ -297,7 +355,7 @@ std::vector<std::string> OpenDashboardPage::dashboardTreePath(std::size_t index)
 std::vector<std::string> OpenDashboardPage::customDashboardTreePath(std::size_t index) const {
     const DashboardDescription& dashboard = *dashboards()[index];
     std::vector<std::string>    path;
-    for (const std::string& key : m_customTreeKeys) {
+    for (const std::string& key : _customTreeKeys) {
         const auto valueIt = dashboard.keyValueTags.find(key);
         if (valueIt == dashboard.keyValueTags.end()) {
             return {};
@@ -308,15 +366,15 @@ std::vector<std::string> OpenDashboardPage::customDashboardTreePath(std::size_t 
     return path;
 }
 
-void OpenDashboardPage::forceRecalculateSortingAndFilteringOfTreeModel() { m_sortFilterTreeModel = components::SortFilterTreeModel(makeSortFilterTreeModelParamsThatMatchListModel()); }
+void OpenDashboardPage::forceRecalculateSortingAndFilteringOfTreeModel() { _sortFilterTreeModel = components::SortFilterTreeModel(makeSortFilterTreeModelParamsThatMatchListModel()); }
 
 OpenDashboardPage::OpenDashboardPage(std::shared_ptr<opencmw::client::RestClient> restClient) //
-    : m_dashboardsCollection(restClient),                                                     //
-      m_previewCache{std::move(restClient), {}},                                              //
-      m_sortFilterModel(defaultFilterParams()),                                               //
-      m_sortFilterTreeModel(makeSortFilterTreeModelParamsThatMatchListModel())                //
+    : _dashboardsCollection(std::make_unique<DashboardsCollection>(restClient)),              //
+      _previewCache{std::move(restClient), {}},                                               //
+      _sortFilterModel(makeSortFilterModelParams()),                                          //
+      _sortFilterTreeModel(makeSortFilterTreeModelParamsThatMatchListModel())                 //
 {
-    m_dashboardsCollection.onChanged = [this] { forceRecalculateSortingAndFilteringOfListModel(); };
+    _dashboardsCollection->onChanged = [this] { forceRecalculateSortingAndFilteringOfListModel(); };
 #ifndef __EMSCRIPTEN__
     addDashboard(".");
 #endif
@@ -324,11 +382,13 @@ OpenDashboardPage::OpenDashboardPage(std::shared_ptr<opencmw::client::RestClient
 
 OpenDashboardPage::~OpenDashboardPage() = default;
 
-void OpenDashboardPage::addDashboard(std::string_view path) { m_dashboardsCollection.addSource(path); }
+const std::vector<std::shared_ptr<DashboardDescription>>& OpenDashboardPage::dashboards() const { return _dashboardsCollection->dashboards(); }
+
+void OpenDashboardPage::addDashboard(std::string_view path) { _dashboardsCollection->addSource(path); }
 
 void OpenDashboardPage::drawSaveAsDialog(Dashboard* optionalDashboard, DashboardPage* optionalDashboardPage) {
     ImGui::SetNextWindowSize(LookAndFeel::instance().openDashboardPageStyle.saveAsPopupSize, ImGuiCond_Once);
-    auto popup = IMW::ModalPopup("saveAsDialog", nullptr, 0);
+    auto popup = imw::ModalPopup("saveAsDialog", nullptr, 0);
     if (!popup) {
         return;
     }
@@ -336,12 +396,12 @@ void OpenDashboardPage::drawSaveAsDialog(Dashboard* optionalDashboard, Dashboard
     ImGui::AlignTextToFramePadding();
     ImGui::Text("Name:");
     ImGui::SameLine();
-    auto                                         desc = optionalDashboard != nullptr && optionalDashboard->isInitialised ? optionalDashboard->description : nullptr;
-    static std::string                           name;
-    static std::shared_ptr<DashboardStorageInfo> storageInfo;
+    auto                                   desc        = optionalDashboard != nullptr && optionalDashboard->isInitialised ? optionalDashboard->description : nullptr;
+    std::string&                           name        = _saveAsName;
+    std::shared_ptr<DashboardStorageInfo>& storageInfo = _saveAsStorage;
     if (ImGui::IsWindowAppearing() && desc != nullptr) {
         name        = desc->name;
-        storageInfo = !desc->storageInfo->isInMemoryDashboardStorage() || m_dashboardsCollection.sources().empty() ? desc->storageInfo : m_dashboardsCollection.sources().front();
+        storageInfo = !desc->storageInfo->isInMemoryDashboardStorage() || _dashboardsCollection->sources().empty() ? desc->storageInfo : _dashboardsCollection->sources().front();
     }
     ImGui::InputText("##name", &name);
 
@@ -349,27 +409,27 @@ void OpenDashboardPage::drawSaveAsDialog(Dashboard* optionalDashboard, Dashboard
     ImGui::SameLine();
 
     {
-        IMW::Group group;
-        for (const auto& s : m_dashboardsCollection.sources()) {
+        imw::Group group;
+        for (const auto& s : _dashboardsCollection->sources()) {
             bool enabled = s == storageInfo;
-            if (DigitizerUi::Checkbox(s->path.c_str(), &enabled)) {
+            if (checkbox(s->path.c_str(), &enabled)) {
                 storageInfo = s;
             }
         }
-        if (DigitizerUi::TextButton("Add new")) {
-            ImGui::OpenPopup(addSourcePopupId);
+        if (textButton("Add new")) {
+            ImGui::OpenPopup(kAddSourcePopupId);
         }
     }
 
     drawAddSourcePopup();
 
     bool okEnabled = !name.empty() && !storageInfo->isInMemoryDashboardStorage();
-    if (components::DialogButtons(okEnabled) == components::DialogButton::Ok && desc != nullptr) {
+    if (components::dialogButtons(okEnabled) == components::DialogButton::Ok && desc != nullptr) {
         auto newDesc         = std::make_shared<DashboardDescription>(*desc);
         newDesc->name        = name;
         newDesc->storageInfo = storageInfo;
-        newDesc->filename    = storageInfo->path.starts_with("http://") || storageInfo->path.starts_with("https://") ? name : name + DashboardDescription::fileExtension;
-        m_dashboardsCollection.addDashboard(newDesc);
+        newDesc->filename    = storageInfo->kind() == StorageKind::Remote ? name : name + DashboardDescription::kFileExtension;
+        _dashboardsCollection->addDashboard(newDesc);
 
         if (optionalDashboard != nullptr && optionalDashboard->isInitialised) {
             optionalDashboard->setNewDescription(newDesc);
@@ -382,7 +442,7 @@ void OpenDashboardPage::drawSaveAsDialog(Dashboard* optionalDashboard, Dashboard
 void OpenDashboardPage::drawSourcesSection() {
     ImGui::SeparatorText("Available Sources");
 
-    IMW::Font font(LookAndFeel::instance().fontSmall());
+    imw::Font font(LookAndFeel::instance().fontSmall());
 
     const ImVec2 trashButtonSize{ImGui::GetFrameHeight(), ImGui::GetFrameHeight()};
 
@@ -391,18 +451,18 @@ void OpenDashboardPage::drawSourcesSection() {
     bool                                  isFirstItem = true;
 
     const auto drawSource = [this, trashButtonSize, &sourceToRemove](const std::shared_ptr<DashboardStorageInfo>& source, const std::string& displayName) {
-        IMW::Group sourceGroup;
-        if (DigitizerUi::Checkbox(displayName.c_str(), &source->isEnabled)) {
+        imw::Group sourceGroup;
+        if (checkbox(displayName.c_str(), &source->isEnabled)) {
             forceRecalculateSortingAndFilteringOfListModel(); // we have a filter that removes things that are not enabled
         }
         ImGui::SameLine();
 
-        if (components::hoverRevealedTrashButton(m_storageInfoHovered == source.get(), trashButtonSize)) {
+        if (hoverRevealedTrashButton(_storageInfoHovered == source.get(), trashButtonSize)) {
             sourceToRemove = source;
         }
     };
 
-    for (const auto& source : m_dashboardsCollection.sources()) {
+    for (const auto& source : _dashboardsCollection->sources()) {
         const static std::string cwdPath     = "Current application directory (.)";
         const static std::string parentPath  = "Current application parent directory (..)";
         const std::string&       displayPath = [&source] {
@@ -414,9 +474,9 @@ void OpenDashboardPage::drawSourcesSection() {
             return source->path;
         }();
 
-        IMW::ChangeStrId id(displayPath.c_str());
+        imw::ChangeStrId id(displayPath.c_str());
 
-        const float itemWidth = IMW::CalcCheckboxSize(displayPath.c_str()).preferred.x + ImGui::GetStyle().ItemSpacing.x + trashButtonSize.x;
+        const float itemWidth = imw::calcCheckboxSize(displayPath.c_str()).preferred.x + ImGui::GetStyle().ItemSpacing.x + trashButtonSize.x;
         if (!isFirstItem) {
             wrapIfTooLarge(itemWidth);
         }
@@ -428,92 +488,82 @@ void OpenDashboardPage::drawSourcesSection() {
             newHovered = source.get();
         }
     }
-    m_storageInfoHovered = newHovered;
+    _storageInfoHovered = newHovered;
 
     if (sourceToRemove) {
-        m_dashboardsCollection.removeSource(sourceToRemove);
+        _dashboardsCollection->removeSource(sourceToRemove);
     }
 
     if (!isFirstItem) {
-        wrapIfTooLarge(DigitizerUi::CalcButtonSize("Add new source").x);
+        wrapIfTooLarge(calcTextButtonSize("Add new source").x);
     }
-    if (DigitizerUi::TextButton("Add new source")) {
-        ImGui::OpenPopup(addSourcePopupId);
+    if (textButton("Add new source")) {
+        ImGui::OpenPopup(kAddSourcePopupId);
     }
 }
 
 void OpenDashboardPage::drawDateFilter() {
-    if (const auto committed = m_dateFilterRow.draw("dateFilterRow", kLastUsedText)) {
+    if (const auto committed = _dateFilterRow.draw("dateFilterRow", kLastUsedText)) {
         // only one Before and one After filter can be active at a time
-        auto params = std::move(m_sortFilterModel).takeParams();
         if (committed->direction == components::DateFilterRow::Direction::Before) {
-            std::erase_if(params.filters.filterObjects, sortModelFilterIsType<BeforeFilter>);
-            params.filters.filterObjects.emplace_back(std::make_unique<DashboardFilter>(dashboards(), BeforeFilter{committed->date}));
+            replaceFilter(BeforeFilter{committed->date});
         } else {
-            std::erase_if(params.filters.filterObjects, sortModelFilterIsType<AfterFilter>);
-            params.filters.filterObjects.emplace_back(std::make_unique<DashboardFilter>(dashboards(), AfterFilter{committed->date}));
+            replaceFilter(AfterFilter{committed->date});
         }
-        useSortFilterParams(std::move(params));
     }
 }
 
 void OpenDashboardPage::drawFavoritesFilter() {
-    IMW::Font        font(LookAndFeel::instance().fontSmall());
-    IMW::ChangeStrId rowId("favoritesFilterRow");
+    imw::Font        font(LookAndFeel::instance().fontSmall());
+    imw::ChangeStrId rowId("favoritesFilterRow");
 
     // the plus button is only enabled while pressing it would change the active filter
-    if (drawPlusButton(hasActiveFavoritesFilter() != m_pendingFavoritesFilter)) {
+    if (drawPlusButton(hasActiveFavoritesFilter() != _pendingFavoritesFilter)) {
         // only one favourites filter can be active at a time
-        auto params = std::move(m_sortFilterModel).takeParams();
-        std::erase_if(params.filters.filterObjects, sortModelFilterIsType<FavoriteFilter>);
-        params.filters.filterObjects.emplace_back(std::make_unique<DashboardFilter>(dashboards(), FavoriteFilter{m_pendingFavoritesFilter}));
-        useSortFilterParams(std::move(params));
+        replaceFilter(FavoriteFilter{_pendingFavoritesFilter});
     }
     drawRowLabel("Items that are");
 
     const auto favoritesFilterToString = [](FavoritesFilter filter) { return filter == FavoritesFilter::ShowFavorited ? "favorited" : "not favorited"; };
 
-    ImGui::SetNextItemWidth(IMW::CalcComboSize("##favoritesFilterCombo", favoritesFilterToString(FavoritesFilter::ShowUnfavorited), ImGuiComboFlags_None).preferred.x);
-    if (auto comboBox = DigitizerUi::ComboBox{"##favoritesFilterCombo", favoritesFilterToString(m_pendingFavoritesFilter), ImGuiComboFlags_None}) {
-        if (DigitizerUi::Selectable(favoritesFilterToString(FavoritesFilter::ShowFavorited))) {
-            m_pendingFavoritesFilter = FavoritesFilter::ShowFavorited;
+    ImGui::SetNextItemWidth(imw::calcComboSize("##favoritesFilterCombo", favoritesFilterToString(FavoritesFilter::ShowUnfavorited), ImGuiComboFlags_None).preferred.x);
+    if (auto comboBox = ComboBox{"##favoritesFilterCombo", favoritesFilterToString(_pendingFavoritesFilter), ImGuiComboFlags_None}) {
+        if (selectable(favoritesFilterToString(FavoritesFilter::ShowFavorited))) {
+            _pendingFavoritesFilter = FavoritesFilter::ShowFavorited;
         }
-        if (DigitizerUi::Selectable(favoritesFilterToString(FavoritesFilter::ShowUnfavorited))) {
-            m_pendingFavoritesFilter = FavoritesFilter::ShowUnfavorited;
+        if (selectable(favoritesFilterToString(FavoritesFilter::ShowUnfavorited))) {
+            _pendingFavoritesFilter = FavoritesFilter::ShowUnfavorited;
         }
     }
 }
 
 void OpenDashboardPage::drawTagFilter() {
-    if (auto tag = m_tagFilterRow.draw("tagFilterRow", "Tag: ")) {
-        auto params = std::move(m_sortFilterModel).takeParams();
-        params.filters.filterObjects.emplace_back(std::make_unique<DashboardFilter>(dashboards(), TagFilter{std::move(*tag)}));
-        useSortFilterParams(std::move(params));
+    if (auto tag = _tagFilterRow.draw("tagFilterRow", "Tag: ")) {
+        _filters.emplace_back(TagFilter{std::move(*tag)});
+        forceRecalculateSortingAndFilteringOfListModel();
     }
 }
 
 void OpenDashboardPage::drawKeyValueFilter() {
-    if (auto committed = m_keyValueFilterRow.draw("keyValueFilterRow")) {
-        auto params = std::move(m_sortFilterModel).takeParams();
-        params.filters.filterObjects.emplace_back(std::make_unique<DashboardFilter>(dashboards(), KeyValueFilter{std::move(committed->key), std::move(committed->value)}));
-        useSortFilterParams(std::move(params));
+    if (auto committed = _keyValueFilterRow.draw("keyValueFilterRow")) {
+        _filters.emplace_back(KeyValueFilter{std::move(committed->key), std::move(committed->value)});
+        forceRecalculateSortingAndFilteringOfListModel();
     }
 }
 
 void OpenDashboardPage::drawViewOptionsSection() {
-    IMW::Font font(LookAndFeel::instance().fontSmall());
+    imw::Font font(LookAndFeel::instance().fontSmall());
 
     const auto drawModeSelectable = [this](const char* label, ListViewMode mode) {
         const ImVec2 padding   = ImGui::GetStyle().FramePadding * 2.f;
         const ImVec2 labelSize = ImGui::CalcTextSize(label);
-        // use SelectableTextAlign to position text at a distance (padding) from the left edge, requires some math to convert to percentage of available space
+        // SelectableTextAlign is a fraction of the leftover width: the padding converts to one
         const float   leftoverWidth = std::max(1.f, ImGui::GetContentRegionAvail().x - labelSize.x);
-        IMW::StyleVar textAlign(ImGuiStyleVar_SelectableTextAlign, ImVec2{std::min(1.f, padding.x / leftoverWidth), 0.5f});
-        // use the size parameter of Selectable to add padding vertically
-        if (DigitizerUi::Selectable(label, m_viewMode == mode, ImGuiSelectableFlags_None, ImVec2{0.f, labelSize.y + 2.f * padding.y}) && m_viewMode != mode) {
-            const bool customTreeChanged = (m_viewMode == ListViewMode::CustomTree) != (mode == ListViewMode::CustomTree);
-            m_viewMode                   = mode;
-            m_scrollToSelected           = true;
+        imw::StyleVar textAlign(ImGuiStyleVar_SelectableTextAlign, ImVec2{std::min(1.f, padding.x / leftoverWidth), 0.5f});
+        if (selectable(label, _viewMode == mode, ImGuiSelectableFlags_None, ImVec2{0.f, labelSize.y + 2.f * padding.y}) && _viewMode != mode) {
+            const bool customTreeChanged = (_viewMode == ListViewMode::CustomTree) != (mode == ListViewMode::CustomTree);
+            _viewMode                    = mode;
+            _scrollToSelected            = true;
             if (customTreeChanged) {
                 forceRecalculateSortingAndFilteringOfTreeModel(); // the path function depends on the view mode
             }
@@ -522,85 +572,76 @@ void OpenDashboardPage::drawViewOptionsSection() {
     drawModeSelectable("Table", ListViewMode::Table);
     drawModeSelectable("File Tree", ListViewMode::FileTree);
     drawModeSelectable("Custom Tree", ListViewMode::CustomTree);
-    if (m_viewMode == ListViewMode::CustomTree) {
+    if (_viewMode == ListViewMode::CustomTree) {
         drawCustomTreeKeyInputs();
     }
 }
 
 void OpenDashboardPage::drawCustomTreeKeyInputs() {
     ImGui::Indent();
-    m_customTreeKeyEditor.draw("##customTreeKeys");
+    _customTreeKeyEditor.draw("##customTreeKeys");
     ImGui::Unindent();
 
-    if (auto nonEmptyKeys = m_customTreeKeyEditor.nonEmptyEntries(); nonEmptyKeys != m_customTreeKeys) {
-        m_customTreeKeys = std::move(nonEmptyKeys);
+    if (auto nonEmptyKeys = _customTreeKeyEditor.nonEmptyEntries(); nonEmptyKeys != _customTreeKeys) {
+        _customTreeKeys = std::move(nonEmptyKeys);
         forceRecalculateSortingAndFilteringOfTreeModel();
     }
 }
 
 void OpenDashboardPage::drawActiveFilterTags() {
-    if (const auto removedIndex = components::drawFilterTags("##dashboardFilterTags", m_sortFilterModel.filters().filterObjects, filterTagLabel); removedIndex.has_value()) {
-        auto params = std::move(m_sortFilterModel).takeParams();
-        params.filters.filterObjects.erase(params.filters.filterObjects.begin() + static_cast<std::ptrdiff_t>(*removedIndex));
-        useSortFilterParams(std::move(params));
+    const auto labels = _filters | std::views::transform(&DashboardFilter::label) | std::ranges::to<std::vector>();
+    if (const auto removedIndex = components::drawFilterTags("##dashboardFilterTags", labels); removedIndex.has_value()) {
+        _filters.erase(_filters.begin() + static_cast<std::ptrdiff_t>(*removedIndex));
+        forceRecalculateSortingAndFilteringOfListModel();
     }
 }
 
-/// Sometimes we change the mutable fields in dashboards, in which case we force refilter everything
 std::optional<FavoritesFilter> OpenDashboardPage::hasActiveFavoritesFilter() {
-    for (const auto& filter : m_sortFilterModel.filters().filterObjects) {
-        if (const auto* favoriteFilter = std::get_if<FavoriteFilter>(&static_cast<const DashboardFilter&>(*filter).filterData)) {
+    for (const auto& filter : _filters) {
+        if (const auto* favoriteFilter = std::get_if<FavoriteFilter>(&filter.data)) {
             return favoriteFilter->shown;
         }
     }
     return std::nullopt;
 }
 
-void OpenDashboardPage::forceRecalculateSortingAndFilteringOfListModel() { useSortFilterParams(std::move(m_sortFilterModel).takeParams()); }
-
-void OpenDashboardPage::useSortFilterParams(components::SortFilterModelParams&& params) {
-    params.numViewedItems = dashboards().size();
-    if (const auto* comparisonOperator = std::get_if<std::unique_ptr<components::SortFilterModelSortByComparisonStrategy>>(&params.sortStrategy); comparisonOperator != nullptr && *comparisonOperator == nullptr) {
-        params.sortStrategy = std::make_unique<DashboardComparator>(dashboards(), DashboardSortKind::lastUsed);
-    }
-    components::SortFilterModel newModel(std::move(params));
-    m_sortFilterModel = std::move(newModel);
+void OpenDashboardPage::forceRecalculateSortingAndFilteringOfListModel() {
+    _sortFilterModel = components::SortFilterModel(makeSortFilterModelParams());
     forceRecalculateSortingAndFilteringOfTreeModel();
 }
 
-void OpenDashboardPage::setDashboardsSort(components::SortFilterModelSortStrategy strategy) {
-    auto params         = std::move(m_sortFilterModel).takeParams();
-    params.sortStrategy = std::move(strategy);
-    useSortFilterParams(std::move(params));
+template<typename Kind>
+void OpenDashboardPage::replaceFilter(Kind filter) {
+    std::erase_if(_filters, [](const DashboardFilter& existing) { return std::holds_alternative<Kind>(existing.data); });
+    _filters.push_back({std::move(filter)});
+    forceRecalculateSortingAndFilteringOfListModel();
+}
+
+void OpenDashboardPage::setDashboardsSort(DashboardSort sort) {
+    _sort = sort;
+    forceRecalculateSortingAndFilteringOfListModel();
 }
 
 void OpenDashboardPage::drawSearchInput() {
-    const bool  sortingBySearch = m_sortFilterModel.scoreEvaluator() != nullptr;
-    const bool  compact         = LookAndFeel::instance().compact;
+    const bool  sortingBySearch = _sort.byRelevance;
+    const bool  compact         = gAppState.compact;
     const float toggleSize      = [] {
-        IMW::Font font(LookAndFeel::instance().fontBig());
+        imw::Font font(LookAndFeel::instance().fontBig());
         return ImGui::GetFrameHeight();
     }();
-    const auto event = m_searchInput.draw("##dashboardSearch", "Search dashboards...", sortingBySearch, compact ? toggleSize + ImGui::GetStyle().ItemSpacing.x : 0.f);
+    const auto event = _searchInput.draw("##dashboardSearch", "Search dashboards...", sortingBySearch, compact ? toggleSize + ImGui::GetStyle().ItemSpacing.x : 0.f);
     if (compact) {
         ImGui::SameLine();
-        IMW::StyleColor shown(ImGuiCol_Button, ImGui::GetStyleColorVec4(_filtersShown ? ImGuiCol_ButtonActive : ImGuiCol_Button));
+        imw::StyleColor shown(ImGuiCol_Button, ImGui::GetStyleColorVec4(_filtersShown ? ImGuiCol_ButtonActive : ImGuiCol_Button));
         if (doIconButton("Filter and view options", kIconFilter, ImVec2{toggleSize, toggleSize})) {
             _filtersShown = !_filtersShown;
         }
     }
     switch (event) {
     case components::SearchSortInput::Event::none: break;
-    case components::SearchSortInput::Event::wantsDefaultSort: setDashboardsSort(std::make_unique<DashboardComparator>(dashboards(), DashboardSortKind::lastUsed)); break;
-    case components::SearchSortInput::Event::wantsRelevanceSort: setDashboardsSort(makeRelevanceSortStrategy()); break;
+    case components::SearchSortInput::Event::wantsDefaultSort: setDashboardsSort({}); break;
+    case components::SearchSortInput::Event::wantsRelevanceSort: setDashboardsSort({.byRelevance = true}); break;
     }
-}
-
-components::SortFilterModelSortStrategy OpenDashboardPage::makeRelevanceSortStrategy() {
-    auto scoreFunction = [dashboards = &this->dashboards(), searchString = &m_searchInput.text](std::size_t index) { //
-        return static_cast<float>(components::filterTypename((*dashboards)[index]->name, *searchString).score);
-    };
-    return components::makeSimpleSortFilterModelSortByScoreStrategy(std::move(scoreFunction));
 }
 
 void OpenDashboardPage::drawSortByCombo(const char* rowLabel) {
@@ -612,18 +653,17 @@ void OpenDashboardPage::drawSortByCombo(const char* rowLabel) {
         {"reverse alphabetically by name"},
         {"alphabetically by source URI"},
         {"reverse alphabetically by source URI"},
-        {"by relevance of names to the search", !m_searchInput.text.empty()},
+        {"by relevance of names to the search", !_searchInput.text.empty()},
     }};
 
     std::size_t currentIndex = mostRecentlyUsed;
-    if (m_sortFilterModel.scoreEvaluator() != nullptr) {
+    if (_sort.byRelevance) {
         currentIndex = byRelevance;
-    } else if (const auto* comparator = m_sortFilterModel.comparisonOperator()) {
-        const auto* dashboardComparator = static_cast<const DashboardComparator*>(comparator);
-        switch (dashboardComparator->kind) {
-        case DashboardSortKind::lastUsed: currentIndex = dashboardComparator->reversed ? leastRecentlyUsed : mostRecentlyUsed; break;
-        case DashboardSortKind::name: currentIndex = dashboardComparator->reversed ? byNameReversed : byName; break;
-        case DashboardSortKind::source: currentIndex = dashboardComparator->reversed ? bySourceReversed : bySource; break;
+    } else {
+        switch (_sort.kind) {
+        case DashboardSortKind::lastUsed: currentIndex = _sort.reversed ? leastRecentlyUsed : mostRecentlyUsed; break;
+        case DashboardSortKind::name: currentIndex = _sort.reversed ? byNameReversed : byName; break;
+        case DashboardSortKind::source: currentIndex = _sort.reversed ? bySourceReversed : bySource; break;
         }
     }
 
@@ -632,21 +672,21 @@ void OpenDashboardPage::drawSortByCombo(const char* rowLabel) {
         return;
     }
     switch (*chosen) {
-    case mostRecentlyUsed: setDashboardsSort(std::make_unique<DashboardComparator>(dashboards(), DashboardSortKind::lastUsed, false)); break;
-    case leastRecentlyUsed: setDashboardsSort(std::make_unique<DashboardComparator>(dashboards(), DashboardSortKind::lastUsed, true)); break;
-    case byName: setDashboardsSort(std::make_unique<DashboardComparator>(dashboards(), DashboardSortKind::name, false)); break;
-    case byNameReversed: setDashboardsSort(std::make_unique<DashboardComparator>(dashboards(), DashboardSortKind::name, true)); break;
-    case bySource: setDashboardsSort(std::make_unique<DashboardComparator>(dashboards(), DashboardSortKind::source, false)); break;
-    case bySourceReversed: setDashboardsSort(std::make_unique<DashboardComparator>(dashboards(), DashboardSortKind::source, true)); break;
-    case byRelevance: setDashboardsSort(makeRelevanceSortStrategy()); break;
+    case mostRecentlyUsed: setDashboardsSort({.kind = DashboardSortKind::lastUsed, .reversed = false}); break;
+    case leastRecentlyUsed: setDashboardsSort({.kind = DashboardSortKind::lastUsed, .reversed = true}); break;
+    case byName: setDashboardsSort({.kind = DashboardSortKind::name, .reversed = false}); break;
+    case byNameReversed: setDashboardsSort({.kind = DashboardSortKind::name, .reversed = true}); break;
+    case bySource: setDashboardsSort({.kind = DashboardSortKind::source, .reversed = false}); break;
+    case bySourceReversed: setDashboardsSort({.kind = DashboardSortKind::source, .reversed = true}); break;
+    case byRelevance: setDashboardsSort({.byRelevance = true}); break;
     }
 }
 
 OpenDashboardPage::ViewResult OpenDashboardPage::drawDashboardTable(const Dashboard* optionalDashboard, ImVec2 size) {
-    m_sortFilterModel.work();
+    _sortFilterModel.work();
 
-    const auto shownItems  = m_sortFilterModel.items();
-    const auto dashboardAt = [this](const components::SortFilterModel::ScoredIndex& item) -> const std::shared_ptr<const DashboardDescription>& { return dashboards()[item.second]; };
+    const auto shownItems  = _sortFilterModel.items();
+    const auto dashboardAt = [this](const components::SortFilterModel::ScoredIndex& item) -> const std::shared_ptr<DashboardDescription>& { return dashboards()[item.second]; };
 
     ViewResult result;
 
@@ -655,9 +695,8 @@ OpenDashboardPage::ViewResult OpenDashboardPage::drawDashboardTable(const Dashbo
     const float cellPaddingY  = ImGui::GetStyle().CellPadding.y;
     const float rowHeight     = std::max(ImGui::GetFrameHeight(), ImGui::GetTextLineHeightWithSpacing() * 3.f);
     const float previewHeight = rowHeight - 2.f * cellPaddingY;
-    const float previewWidth  = previewHeight * DashboardPreview::preferredAspectRatio;
+    const float previewWidth  = previewHeight * DashboardPreview::kPreferredAspectRatio;
 
-    // text vertically centered within a table row
     const auto drawCenteredText = [rowHeight](const char* text) {
         ImGui::SetCursorPosY(ImGui::GetCursorPosY() + std::max(0.f, (rowHeight - ImGui::GetTextLineHeight()) * 0.5f));
         ImGui::TextUnformatted(text);
@@ -666,17 +705,17 @@ OpenDashboardPage::ViewResult OpenDashboardPage::drawDashboardTable(const Dashbo
     const float elementHeight = rowHeight + 2.f * cellPaddingY;
 
     std::optional<std::size_t> scrollToRow;
-    if (m_scrollToTop) {
+    if (_scrollToTop) {
         scrollToRow = 0UZ;
-    } else if (m_scrollToSelected && m_selectedDashboard != nullptr) {
-        if (const auto selectedIt = std::ranges::find(shownItems, m_selectedDashboard, dashboardAt); selectedIt != shownItems.end()) {
+    } else if (_scrollToSelected && _selectedDashboard != nullptr) {
+        if (const auto selectedIt = std::ranges::find(shownItems, _selectedDashboard, dashboardAt); selectedIt != shownItems.end()) {
             scrollToRow = static_cast<std::size_t>(std::distance(shownItems.begin(), selectedIt));
         }
     }
-    m_scrollToTop      = false;
-    m_scrollToSelected = false;
+    _scrollToTop      = false;
+    _scrollToSelected = false;
 
-    const bool                         withSource                  = !(LookAndFeel::instance().compact && LookAndFeel::instance().portrait);
+    const bool                         withSource                  = !(gAppState.compact && gAppState.portrait);
     constexpr static auto              kColumnHeaderLabels         = std::to_array<std::string>({"", "", "Dashboard", "Source", kLastUsedText});
     constexpr static auto              kColumnHeaderLabelsNoSource = std::to_array<std::string>({"", "", "Dashboard", kLastUsedText});
     const std::array                   fixedColumnWidths{starButtonWidth + 2.f * ImGui::GetStyle().CellPadding.x, previewWidth + 2.f * ImGui::GetStyle().CellPadding.x, 0.f, 0.f, 0.f};
@@ -688,15 +727,14 @@ OpenDashboardPage::ViewResult OpenDashboardPage::drawDashboardTable(const Dashbo
 
     using SortMarker = components::VirtualScrollTableParams::SortMarker;
     std::optional<SortMarker> sortMarker;
-    if (const auto* comparator = m_sortFilterModel.comparisonOperator()) {
-        const auto* dashboardComparator = static_cast<const DashboardComparator*>(comparator);
-        const auto  flipIfReversed      = [reversed = dashboardComparator->reversed](ImGuiSortDirection direction) {
+    if (!_sort.byRelevance) {
+        const auto flipIfReversed = [reversed = _sort.reversed](ImGuiSortDirection direction) {
             if (!reversed) {
                 return direction;
             }
             return direction == ImGuiSortDirection_Ascending ? ImGuiSortDirection_Descending : ImGuiSortDirection_Ascending;
         };
-        switch (dashboardComparator->kind) {
+        switch (_sort.kind) {
         case DashboardSortKind::lastUsed: sortMarker = SortMarker{.columnIndex = lastUsedColumn, .direction = flipIfReversed(ImGuiSortDirection_Descending)}; break;
         case DashboardSortKind::name: sortMarker = SortMarker{.columnIndex = kNameColumn, .direction = flipIfReversed(ImGuiSortDirection_Ascending)}; break;
         case DashboardSortKind::source:
@@ -719,31 +757,28 @@ OpenDashboardPage::ViewResult OpenDashboardPage::drawDashboardTable(const Dashbo
         },
         ImVec2{0.f, size.y});
 
-    result.contentAreaVerticalOffset = table.columnHeaderRowHeight;
-
     while (auto visibleRange = table.step()) {
         for (std::size_t row = visibleRange->first; row < visibleRange->second; ++row) {
             const auto& description = dashboardAt(shownItems[row]);
 
-            IMW::ChangeStrId outerId(description->storageInfo->path.c_str());
-            IMW::ChangeStrId innerId(description->name.c_str());
+            imw::ChangeStrId outerId(description->storageInfo->path.c_str());
+            imw::ChangeStrId innerId(description->name.c_str());
 
             table.beginRow();
             ImGui::TableNextColumn();
 
             const ImVec2 rowCursor     = ImGui::GetCursorPos();
             const float  starCellWidth = ImGui::GetContentRegionAvail().x;
-            const bool   rowSelected   = m_selectedDashboard == description;
-            if (DigitizerUi::Selectable("##dashboardRow", rowSelected, ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowOverlap, {0.f, rowHeight})) {
-                m_selectedDashboard = description;
+            const bool   rowSelected   = _selectedDashboard == description;
+            if (selectable("##dashboardRow", rowSelected, ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowOverlap, {0.f, rowHeight})) {
+                _selectedDashboard = description;
             }
             if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
                 result.dashboardToLoad = description;
             }
 
             if (optionalDashboard != nullptr && optionalDashboard->isInitialised && optionalDashboard->description && description->name == optionalDashboard->description->name && description->storageInfo == optionalDashboard->description->storageInfo) {
-                // this dashboard is the loaded dashboard
-                const float rounding = 0.f; // selectable doesn't currently support rounded corners so if we drew this with rounded corners it would lead to weird pixel artifacts on the corners when selected
+                const float rounding = 0.f; // selectable does not support rounded corners yet: rounded, the corners would show pixel artefacts when selected
                 ImGui::GetWindowDrawList()->AddRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), ImGui::GetColorU32(ImGuiCol_HeaderActive), rounding, 0, LookAndFeel::instance().openDashboardPageStyle.loadedDashboardIndicatorBorderThickness);
             }
 
@@ -754,7 +789,7 @@ OpenDashboardPage::ViewResult OpenDashboardPage::drawDashboardTable(const Dashbo
                     result.dashboardAction = DashboardAction::favoriteChanged;
                 }
             }
-            IMW::StyleColor rowText(ImGuiCol_Text, SelectableTextColor(rowSelected)); // after the star button, which keeps the normal text colour on its own background
+            imw::StyleColor rowText(ImGuiCol_Text, selectableTextColor(rowSelected)); // after the star button, which keeps the normal text colour on its own background
 
             ImGui::TableNextColumn();
             {
@@ -763,9 +798,8 @@ OpenDashboardPage::ViewResult OpenDashboardPage::drawDashboardTable(const Dashbo
                 const ImVec2 previewTop{cellTop.x + std::max(0.f, (ImGui::GetContentRegionAvail().x - previewSize.x) * 0.5f), cellTop.y + std::max(0.f, (rowHeight - previewSize.y) * 0.5f)};
                 ImGui::SetCursorScreenPos(previewTop);
 
-                // NOTE: this is potentially doing IO, it is important that list virtualization is working otherwise we would dispatch
-                // a request for every single dashboard on the first frame and potentially parse them all at once as well
-                const DashboardPreview* preview = m_previewCache.findOrStartLoading(description);
+                // potentially IO: without list virtualisation, the first frame would request and parse every dashboard at once
+                const DashboardPreview* preview = _previewCache.findOrStartLoading(description);
                 ImGui::Dummy(previewSize);
                 if (preview != nullptr) {
                     preview->draw(previewTop, {previewTop.x + previewSize.x, previewTop.y + previewSize.y});
@@ -810,11 +844,7 @@ OpenDashboardPage::ViewResult OpenDashboardPage::drawDashboardTable(const Dashbo
 
 void OpenDashboardPage::applyDashboardAction(DashboardAction change) {
     // clicking the column of the already active sort reverses its direction
-    const auto sortByColumn = [this](DashboardSortKind kind) {
-        const auto* comparator = static_cast<const DashboardComparator*>(m_sortFilterModel.comparisonOperator());
-        const bool  reversed   = comparator != nullptr && comparator->kind == kind && !comparator->reversed;
-        setDashboardsSort(std::make_unique<DashboardComparator>(dashboards(), kind, reversed));
-    };
+    const auto sortByColumn = [this](DashboardSortKind kind) { setDashboardsSort({.kind = kind, .reversed = !_sort.byRelevance && _sort.kind == kind && !_sort.reversed}); };
     switch (change) {
     case DashboardAction::none: break;
     case DashboardAction::favoriteChanged: forceRecalculateSortingAndFilteringOfListModel(); break;
@@ -825,40 +855,39 @@ void OpenDashboardPage::applyDashboardAction(DashboardAction change) {
 }
 
 OpenDashboardPage::ViewResult OpenDashboardPage::drawDashboardFileTree(ImVec2 size) {
-    m_sortFilterTreeModel.work();
+    _sortFilterTreeModel.work();
 
-    // force open item if we are scrolling to it
     std::optional<std::size_t> selectedIndex;
     std::vector<std::string>   selectedPath;
-    if (m_scrollToSelected && m_selectedDashboard != nullptr) {
-        if (const auto selectedIt = std::ranges::find(dashboards(), m_selectedDashboard); selectedIt != dashboards().end()) {
+    if (_scrollToSelected && _selectedDashboard != nullptr) {
+        if (const auto selectedIt = std::ranges::find(dashboards(), _selectedDashboard); selectedIt != dashboards().end()) {
             selectedIndex = static_cast<std::size_t>(selectedIt - dashboards().begin());
-            selectedPath  = m_viewMode == ListViewMode::CustomTree ? customDashboardTreePath(*selectedIndex) : dashboardTreePath(*selectedIndex);
+            selectedPath  = _viewMode == ListViewMode::CustomTree ? customDashboardTreePath(*selectedIndex) : dashboardTreePath(*selectedIndex);
         }
     }
 
     ViewResult result;
 
     {
-        IMW::Child treeChild("##dashboardFileTree", size, 0, ImGuiWindowFlags_HorizontalScrollbar);
-        if (m_scrollToTop) {
+        imw::Child treeChild("##dashboardFileTree", size, 0, ImGuiWindowFlags_HorizontalScrollbar);
+        if (_scrollToTop) {
             ImGui::SetScrollY(0.f);
         }
 
-        // draw date, might be unreadable but the user can scroll horizontally to it
+        // may clip, the user can scroll horizontally to it
         const float dateColumnWidth      = ImGui::CalcTextSize("00/00/0000").x;
         const auto  drawRightAlignedDate = [dateColumnWidth](const char* dateText) {
             ImGui::SameLine();
             const float  visibleRightEdge = ImGui::GetWindowPos().x + ImGui::GetWindowSize().x - ImGui::GetStyle().ScrollbarSize - ImGui::GetStyle().WindowPadding.x;
             const ImVec2 cursor           = ImGui::GetCursorScreenPos();
             ImGui::SetCursorScreenPos(ImVec2{std::max(cursor.x + ImGui::GetStyle().ItemSpacing.x, visibleRightEdge - dateColumnWidth), cursor.y});
-            IMW::StyleColor dimmedDate(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+            imw::StyleColor dimmedDate(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
             ImGui::TextUnformatted(dateText);
         };
 
         const auto drawLeafRow = [this, &result, selectedIndex, &drawRightAlignedDate](std::size_t itemIndex) {
             const auto&   description = dashboards()[itemIndex];
-            IMW::ChangeId leafId(static_cast<int>(itemIndex));
+            imw::ChangeId leafId(static_cast<int>(itemIndex));
 
             if (drawFavoriteButton(description->isFavorite)) {
                 description->isFavorite = !description->isFavorite;
@@ -868,14 +897,14 @@ OpenDashboardPage::ViewResult OpenDashboardPage::drawDashboardFileTree(ImVec2 si
             }
             ImGui::SameLine();
 
-            const bool isSelected = m_selectedDashboard == description;
+            const bool isSelected = _selectedDashboard == description;
             if (frameHeightSelectable(description->name.c_str(), isSelected)) {
-                m_selectedDashboard = description;
+                _selectedDashboard = description;
                 if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
                     result.dashboardToLoad = description;
                 }
             }
-            if (m_scrollToSelected && selectedIndex == itemIndex) {
+            if (_scrollToSelected && selectedIndex == itemIndex) {
                 ImGui::SetScrollHereY(0.5f);
             }
 
@@ -887,16 +916,16 @@ OpenDashboardPage::ViewResult OpenDashboardPage::drawDashboardFileTree(ImVec2 si
         };
 
         const auto drawBranchNode = [this, &selectedPath](const components::SortFilterTreeModelNode& node) {
-            if (m_treeSetAllOpen.has_value()) {
-                ImGui::SetNextItemOpen(*m_treeSetAllOpen, ImGuiCond_Always);
+            if (_treeSetAllOpen.has_value()) {
+                ImGui::SetNextItemOpen(*_treeSetAllOpen, ImGuiCond_Always);
             }
             if (node.path.size() + 1UZ < selectedPath.size()   //
                 && node.name == selectedPath[node.path.size()] //
                 && std::ranges::equal(node.path, std::span{selectedPath}.first(node.path.size()))) {
-                // this is on the path to the selected node, so keep it open
+                // on the path to the selected node
                 ImGui::SetNextItemOpen(true, ImGuiCond_Always);
             }
-            return DigitizerUi::TreeNodeEx(node.name.data(), ImGuiTreeNodeFlags_SpanAvailWidth);
+            return treeNodeEx(node.name.data(), ImGuiTreeNodeFlags_SpanAvailWidth);
         };
 
         const auto beginDraw = [&drawBranchNode, &drawLeafRow](const components::SortFilterTreeModelNode& node) {
@@ -907,60 +936,58 @@ OpenDashboardPage::ViewResult OpenDashboardPage::drawDashboardFileTree(ImVec2 si
             return false;
         };
         const auto endDraw = [](const components::SortFilterTreeModelNode&) { ImGui::TreePop(); };
-        m_sortFilterTreeModel.visitAllItemsDepthFirst(beginDraw, endDraw);
+        _sortFilterTreeModel.visitAllItemsDepthFirst(beginDraw, endDraw);
     }
 
-    m_scrollToTop      = false;
-    m_scrollToSelected = false;
-    m_treeSetAllOpen.reset();
+    _scrollToTop      = false;
+    _scrollToSelected = false;
+    _treeSetAllOpen.reset();
 
     return result;
 }
 
 void OpenDashboardPage::drawMatchAnyOrAllFiltersCombo() {
-    if (const auto matchAllFilters = components::drawMatchAnyOrAllFiltersCombo("##matchModeCombo", m_sortFilterModel.requiresAllFilters())) {
-        auto params                = std::move(m_sortFilterModel).takeParams();
-        params.filters.requiresAll = *matchAllFilters;
-        useSortFilterParams(std::move(params));
+    if (const auto matchAllFilters = components::drawMatchAnyOrAllFiltersCombo("##matchModeCombo", _requireAllFilters); matchAllFilters.has_value()) {
+        _requireAllFilters = *matchAllFilters;
+        forceRecalculateSortingAndFilteringOfListModel();
     }
 }
 
 void OpenDashboardPage::drawViewOverlayButtons(ImVec2 viewTopLeft, ImVec2 viewSize) {
-    // Overlay buttons are drawn small, the default imgui size with little padding around the text. However the text nearly clips that way,
-    // so at least add some horizontal padding while keeping the buttons unobtrusive
-    IMW::StyleVar framePadding(ImGuiStyleVar_FramePadding, ImVec2{ImGui::GetStyle().FramePadding.x * 2.f, ImGui::GetStyle().FramePadding.y});
+    // overlay buttons are small, the default ImGui size with little padding, where the text nearly clips: some horizontal padding keeps them unobtrusive
+    imw::StyleVar framePadding(ImGuiStyleVar_FramePadding, ImVec2{ImGui::GetStyle().FramePadding.x * 2.f, ImGui::GetStyle().FramePadding.y});
 
     const float  frameHeight = ImGui::GetFrameHeight();
     const ImVec2 squareButtonSize{frameHeight, frameHeight};
     const float  spacing = ImGui::GetStyle().ItemSpacing.x;
 
     float overlayWidth = squareButtonSize.x;
-    if (m_viewMode != ListViewMode::Table) {
-        overlayWidth += DigitizerUi::CalcButtonSize("collapse all").x + DigitizerUi::CalcButtonSize("expand all").x + 2.f * spacing;
+    if (_viewMode != ListViewMode::Table) {
+        overlayWidth += calcTextButtonSize("collapse all").x + calcTextButtonSize("expand all").x + 2.f * spacing;
     }
 
     const ImVec2 oldCursorScreenPosition = ImGui::GetCursorScreenPos();
     ImGui::SetCursorScreenPos(ImVec2{viewTopLeft.x + viewSize.x - overlayWidth - ImGui::GetStyle().ScrollbarSize - spacing, viewTopLeft.y + viewSize.y - frameHeight - spacing});
 
-    // with a background you can see text scrolling behind the buttons, which is kind of noisy looking
-    IMW::StyleColor overlayBg(ImGuiCol_ChildBg, ImGui::GetStyleColorVec4(ImGuiCol_WindowBg));
+    // opaque: text scrolling behind the buttons looks noisy
+    imw::StyleColor overlayBg(ImGuiCol_ChildBg, ImGui::GetStyleColorVec4(ImGuiCol_WindowBg));
 
     {
-        IMW::Child overlay("##viewOverlayButtons", ImVec2{overlayWidth, frameHeight}, 0, ImGuiWindowFlags_NoScrollbar);
-        if (m_viewMode != ListViewMode::Table) {
-            if (DigitizerUi::TextButton("collapse all")) {
-                m_treeSetAllOpen = false;
+        imw::Child overlay("##viewOverlayButtons", ImVec2{overlayWidth, frameHeight}, 0, ImGuiWindowFlags_NoScrollbar);
+        if (_viewMode != ListViewMode::Table) {
+            if (textButton("collapse all")) {
+                _treeSetAllOpen = false;
             }
             ImGui::SameLine();
-            if (DigitizerUi::TextButton("expand all")) {
-                m_treeSetAllOpen = true;
+            if (textButton("expand all")) {
+                _treeSetAllOpen = true;
             }
             ImGui::SameLine();
         }
         ImGui::PushFont(LookAndFeel::instance().fontIconsSolid, frameHeight / 2.f);
-        IMW::StyleVar noHorizontalPadding(ImGuiStyleVar_FramePadding, ImVec2{0.f, ImGui::GetStyle().FramePadding.y}); // the doubled padding is wider than the square leaves for the icon
-        if (DigitizerUi::Button(kIconArrowUp, squareButtonSize)) {
-            m_scrollToTop = true;
+        imw::StyleVar noHorizontalPadding(ImGuiStyleVar_FramePadding, ImVec2{0.f, ImGui::GetStyle().FramePadding.y}); // the doubled padding is wider than the square leaves for the icon
+        if (button(kIconArrowUp, squareButtonSize)) {
+            _scrollToTop = true;
         }
         ImGui::PopFont();
     }
@@ -971,36 +998,33 @@ void OpenDashboardPage::drawViewOverlayButtons(ImVec2 viewTopLeft, ImVec2 viewSi
 void OpenDashboardPage::drawOAuthPopup() {
 #ifndef __EMSCRIPTEN__
     ImGui::SetNextWindowSize({LookAndFeel::instance().openDashboardPageStyle.oauthPopupWidth, 0.f}, ImGuiCond_Once);
-    if (auto popup = IMW::ModalPopup(oauthPopupId, nullptr, 0)) {
-        auto& session = DigitizerUi::OAuthSession::instance();
+    if (auto popup = imw::ModalPopup(kOauthPopupId, nullptr, 0)) {
+        auto& session = OAuthSession::instance();
 
         ImGui::AlignTextToFramePadding();
         ImGui::TextUnformatted("Scope:");
         ImGui::SameLine();
-        static std::string scope = "openid";
-        ImGui::InputText("##scope", &scope);
+        ImGui::InputText("##scope", &_oauthScope);
 
         ImGui::AlignTextToFramePadding();
         ImGui::TextUnformatted("Client ID:");
         ImGui::SameLine();
-        static std::string clientid = "testclientid";
-        ImGui::InputText("##clientid", &clientid);
+        ImGui::InputText("##clientid", &_oauthClientId);
 
         ImGui::AlignTextToFramePadding();
         ImGui::TextUnformatted("Endpoint:");
         ImGui::SameLine();
-        static std::string endpoint = "mdp://127.0.0.1:12340/oauth";
-        ImGui::InputText("##endpoint", &endpoint);
+        ImGui::InputText("##endpoint", &_oauthEndpoint);
 
-        if (DigitizerUi::TextButton("Sign in")) {
-            session.signIn(scope, clientid, endpoint);
+        if (textButton("Sign in")) {
+            session.signIn(_oauthScope, _oauthClientId, _oauthEndpoint);
         }
 
         ImGui::AlignTextToFramePadding();
         ImGui::Text("Roles: %s", session.availableRoles().empty() ? "N/A" : session.availableRoles().c_str());
 
         ImGui::Separator();
-        if (DigitizerUi::TextButton("Close") || ImGui::IsKeyPressed(ImGuiKey_Escape)) {
+        if (textButton("Close") || ImGui::IsKeyPressed(ImGuiKey_Escape)) {
             ImGui::CloseCurrentPopup();
         }
     }
@@ -1016,18 +1040,18 @@ void OpenDashboardPage::drawCurrentDashboardPanel(Dashboard* optionalDashboard, 
     float titleHeight    = 0.f;
     float subtitleHeight = 0.f;
     {
-        IMW::Font titleFont(LookAndFeel::instance().fontBigger());
+        imw::Font titleFont(LookAndFeel::instance().fontBigger());
         titleHeight = ImGui::GetTextLineHeightWithSpacing();
     }
     {
-        IMW::Font subtitleFont(LookAndFeel::instance().fontBig());
+        imw::Font subtitleFont(LookAndFeel::instance().fontBig());
         subtitleHeight = ImGui::GetTextLineHeightWithSpacing();
     }
 
     const char* title      = hasDashboardAndDescription ? optionalDashboard->description->name.c_str() : "No dashboard currently open";
     float       titleWidth = 0.f;
     {
-        IMW::Font titleFont(LookAndFeel::instance().fontBigger());
+        imw::Font titleFont(LookAndFeel::instance().fontBigger());
         titleWidth = ImGui::CalcTextSize(title).x;
     }
 
@@ -1036,18 +1060,17 @@ void OpenDashboardPage::drawCurrentDashboardPanel(Dashboard* optionalDashboard, 
     const ImVec2 panelStart    = ImGui::GetCursorScreenPos();
     const float  panelWidth    = ImGui::GetContentRegionAvail().x;
     const float  previewHeight = std::max(titleHeight + subtitleHeight, ImGui::GetFrameHeight() * 2.f);
-    const float  previewWidth  = previewHeight * DashboardPreview::preferredAspectRatio;
+    const float  previewWidth  = previewHeight * DashboardPreview::kPreferredAspectRatio;
     const bool   buttonsBelow  = panelPadding + previewWidth + panelItemSpacing + titleWidth + panelItemSpacing + buttonsWidth + panelPadding > panelWidth;
     const float  panelHeight   = previewHeight + 2.f * panelPadding + (buttonsBelow ? panelItemSpacing + buttonSide : 0.f);
 
     ImGui::GetWindowDrawList()->AddRectFilled(panelStart, panelStart + ImVec2{panelWidth, panelHeight}, ImGui::ColorConvertFloat4ToU32(LookAndFeel::instance().palette().currentDashboardPanelBg), ImGui::GetStyle().ChildRounding);
 
-    // draw preview, or else a grey placeholder
     bool         previewDrawn = false;
     const ImVec2 previewStart = panelStart + ImVec2{panelPadding, panelPadding};
     const ImVec2 previewEnd   = previewStart + ImVec2{previewWidth, previewHeight};
     if (hasDashboardAndDescription) {
-        if (const auto* preview = m_previewCache.findOrStartLoading(optionalDashboard->description)) {
+        if (const auto* preview = _previewCache.findOrStartLoading(optionalDashboard->description)) {
             preview->draw(previewStart, previewEnd);
             previewDrawn = true;
         }
@@ -1056,32 +1079,30 @@ void OpenDashboardPage::drawCurrentDashboardPanel(Dashboard* optionalDashboard, 
         ImGui::GetWindowDrawList()->AddRectFilled(previewStart, previewEnd, ImGui::GetColorU32(ImGuiCol_FrameBg), LookAndFeel::instance().openDashboardPageStyle.dashboardPreviewRounding);
     }
 
-    // vertically centered title and optional "Currently open" subtitle
     {
         const float  textBlockHeight = hasDashboardAndDescription ? titleHeight + subtitleHeight : titleHeight;
         const ImVec2 textStart{previewEnd.x + panelItemSpacing, previewStart.y + std::max(0.f, (previewHeight - textBlockHeight) / 2.f)};
         {
-            IMW::Font titleFont(LookAndFeel::instance().fontBigger());
+            imw::Font titleFont(LookAndFeel::instance().fontBigger());
             ImGui::SetCursorScreenPos(textStart);
             ImGui::TextUnformatted(title);
         }
         if (hasDashboardAndDescription) {
-            IMW::Font subtitleFont(LookAndFeel::instance().fontBig());
+            imw::Font subtitleFont(LookAndFeel::instance().fontBig());
             ImGui::SetCursorScreenPos(textStart + ImVec2{0, titleHeight});
             ImGui::TextUnformatted("Currently open");
         }
     }
 
-    // save / save as / close buttons
     const ImVec2 buttonSize{buttonSide, buttonSide};
     const ImVec2 buttonStart{panelStart.x + panelWidth - panelPadding - buttonsWidth, buttonsBelow ? previewEnd.y + panelItemSpacing : previewStart.y + 0.5f * (previewHeight - buttonSide)};
 
     {
         const bool dashboardLoaded = optionalDashboard != nullptr && optionalDashboard->isInitialised;
 
-        IMW::Disabled disabled(!dashboardLoaded);
+        imw::Disabled disabled(!dashboardLoaded);
         {
-            IMW::Disabled inMemoryDisabled(dashboardLoaded && optionalDashboard->description->storageInfo->isInMemoryDashboardStorage());
+            imw::Disabled inMemoryDisabled(dashboardLoaded && optionalDashboard->description->storageInfo->isInMemoryDashboardStorage());
             ImGui::SetCursorScreenPos(buttonStart);
             if (doIconButton("Save", kIconSave, buttonSize) && dashboardLoaded) {
                 saveWithLiveLayout(*optionalDashboard, optionalDashboardPage);
@@ -1101,7 +1122,7 @@ void OpenDashboardPage::drawCurrentDashboardPanel(Dashboard* optionalDashboard, 
 
     drawSaveAsDialog(optionalDashboard, optionalDashboardPage);
 
-    // we did everything else with custom draw so we have to register the actual space this took up with the layout
+    // custom drawn: the space taken is registered with the layout
     ImGui::SetCursorScreenPos(panelStart);
     ImGui::Dummy(ImVec2{panelWidth, panelHeight});
 }
@@ -1120,24 +1141,24 @@ void OpenDashboardPage::draw(Dashboard* optionalDashboard, DashboardPage* option
     const float sidebarRatio    = LookAndFeel::instance().openDashboardPageStyle.sidebarWidthRatio;
     const float sidebarMaxWidth = LookAndFeel::instance().openDashboardPageStyle.sidebarMaxWidth;
 
-    const bool  compact          = LookAndFeel::instance().compact;
-    const bool  compactPortrait  = compact && LookAndFeel::instance().portrait;
+    const bool  compact          = gAppState.compact;
+    const bool  compactPortrait  = compact && gAppState.portrait;
     const float sidebarWidth     = compact ? 0.f : std::max(components::DateFilterRow::rowWidth(kLastUsedText), std::min(ImGui::GetContentRegionAvail().x * sidebarRatio, sidebarMaxWidth));
     const float mainContentWidth = compact ? ImGui::GetContentRegionAvail().x : ImGui::GetContentRegionAvail().x - sidebarWidth - ImGui::GetStyle().ItemSpacing.x;
 
     if (compact && _filtersShown) {
         ImGui::SetNextWindowSizeConstraints(ImVec2{0.f, 0.f}, ImVec2{mainContentWidth, ImGui::GetContentRegionAvail().y * LookAndFeel::instance().openDashboardPageStyle.compactFiltersMaxHeightRatio});
-        IMW::Child filters("##dashboardFilters", ImVec2{mainContentWidth, 0.f}, ImGuiChildFlags_AutoResizeY, 0);
+        imw::Child filters("##dashboardFilters", ImVec2{mainContentWidth, 0.f}, ImGuiChildFlags_AutoResizeY, 0);
         drawFilterAndViewOptions();
     }
 
-    std::shared_ptr<const DashboardDescription> dashboardToLoad;
+    std::shared_ptr<DashboardDescription> dashboardToLoad;
 
     {
-        IMW::Child mainContent("##dashboardMainContent", ImVec2{mainContentWidth, 0.f}, 0, 0);
+        imw::Child mainContent("##dashboardMainContent", ImVec2{mainContentWidth, 0.f}, 0, 0);
 
         {
-            IMW::Font font(LookAndFeel::instance().fontSmall());
+            imw::Font font(LookAndFeel::instance().fontSmall());
 
             drawActiveFilterTags();
 
@@ -1152,23 +1173,21 @@ void OpenDashboardPage::draw(Dashboard* optionalDashboard, DashboardPage* option
         }
         ImGui::Spacing();
 
-        // leave space for buttons below the table
         const float  tableHeight = ImGui::GetContentRegionAvail().y - (buttonHeight + ImGui::GetStyle().ItemSpacing.y);
         const ImVec2 viewSize{mainContentWidth, tableHeight};
         const ImVec2 viewTopLeft = ImGui::GetCursorScreenPos();
         ViewResult   viewResult;
-        switch (m_viewMode) {
+        switch (_viewMode) {
         case ListViewMode::Table: viewResult = drawDashboardTable(optionalDashboard, viewSize); break;
         case ListViewMode::FileTree:
         case ListViewMode::CustomTree: viewResult = drawDashboardFileTree(viewSize); break;
         }
-        // okay, iteration and drawing is done, it is safe to change the models
+        // iteration and drawing done: the models may change
         applyDashboardAction(viewResult.dashboardAction);
         dashboardToLoad = std::move(viewResult.dashboardToLoad);
 
-        // draw loading bar for models that are incomplete
-        if (m_viewMode == ListViewMode::Table ? !m_sortFilterModel.isComplete() : !m_sortFilterTreeModel.isComplete()) {
-            const float progress                = m_viewMode == ListViewMode::Table ? m_sortFilterModel.progress() : m_sortFilterTreeModel.progress();
+        if (_viewMode == ListViewMode::Table ? !_sortFilterModel.isComplete() : !_sortFilterTreeModel.isComplete()) {
+            const float progress                = _viewMode == ListViewMode::Table ? _sortFilterModel.progress() : _sortFilterTreeModel.progress();
             const float progressBarHeight       = ImGui::GetFrameHeight();
             const auto  oldCursorScreenPosition = ImGui::GetCursorScreenPos();
             ImGui::SetCursorScreenPos(viewTopLeft + ImVec2{0, viewSize.y - progressBarHeight});
@@ -1180,19 +1199,19 @@ void OpenDashboardPage::draw(Dashboard* optionalDashboard, DashboardPage* option
 
         const ImVec2 buttonSize{buttonHeight, buttonHeight};
         {
-            IMW::Disabled disabled(m_selectedDashboard == nullptr);
-            if (doIconButton("Load", kIconLoad, buttonSize) && m_selectedDashboard != nullptr) {
-                // it is okay to override dashboardToLoad because there is only one interaction per frame
-                dashboardToLoad = m_selectedDashboard;
+            imw::Disabled disabled(_selectedDashboard == nullptr);
+            if (doIconButton("Load", kIconLoad, buttonSize) && _selectedDashboard != nullptr) {
+                // one interaction per frame: overriding dashboardToLoad is safe
+                dashboardToLoad = _selectedDashboard;
             }
         }
         ImGui::SameLine();
 
         float openButtonsTotalWidth = 2.f * buttonSize.x + ImGui::GetStyle().ItemSpacing.x;
 #ifndef __EMSCRIPTEN__
-        constexpr const char* openOAuthPopupLabel = "OAuth/RBAC";
-        if (LookAndFeel::instance().prototypeMode) {
-            openButtonsTotalWidth += ImGui::GetStyle().ItemSpacing.x + DigitizerUi::CalcButtonSize(openOAuthPopupLabel).x;
+        constexpr const char* kOpenOAuthPopupLabel = "OAuth/RBAC";
+        if (gAppState.prototypeMode) {
+            openButtonsTotalWidth += ImGui::GetStyle().ItemSpacing.x + calcTextButtonSize(kOpenOAuthPopupLabel).x;
         }
 #endif
         ImGui::SetCursorPos(ImGui::GetCursorPos() + ImVec2{std::max(0.f, ImGui::GetContentRegionAvail().x - openButtonsTotalWidth), 0});
@@ -1201,16 +1220,13 @@ void OpenDashboardPage::draw(Dashboard* optionalDashboard, DashboardPage* option
             requestLoadDashboard(nullptr);
         }
         ImGui::SameLine();
-        if (doIconButton("Open a new Digitizer Window", kIconNewWindow, buttonSize)) {
-            // TODO: ivan
-            // app->openNewWindow();
-        }
+        doIconButton("Open a new Digitizer Window", kIconNewWindow, buttonSize);
 
 #ifndef __EMSCRIPTEN__
-        if (LookAndFeel::instance().prototypeMode) {
+        if (gAppState.prototypeMode) {
             ImGui::SameLine();
-            if (DigitizerUi::TextButton(openOAuthPopupLabel, ImVec2{0.f, buttonHeight})) {
-                ImGui::OpenPopup(oauthPopupId);
+            if (textButton(kOpenOAuthPopupLabel, ImVec2{0.f, buttonHeight})) {
+                ImGui::OpenPopup(kOauthPopupId);
             }
         }
         drawOAuthPopup();
@@ -1219,7 +1235,7 @@ void OpenDashboardPage::draw(Dashboard* optionalDashboard, DashboardPage* option
 
     if (!compact) {
         ImGui::SameLine();
-        IMW::Child sidebar("##dashboardSidebar", ImVec2{0.f, 0.f}, 0, 0);
+        imw::Child sidebar("##dashboardSidebar", ImVec2{0.f, 0.f}, 0, 0);
         drawFilterAndViewOptions();
     }
 
@@ -1246,11 +1262,11 @@ void OpenDashboardPage::drawFilterAndViewOptions() {
 
 void OpenDashboardPage::drawAddSourcePopup() {
     ImGui::SetNextWindowSize({LookAndFeel::instance().openDashboardPageStyle.addSourcePopupWidth, ImGui::GetFrameHeight() * 4.F}, ImGuiCond_Once); // 4 line heights: window top bar, path entry, buttons, and some extra spacing
-    if (auto popup = IMW::ModalPopup(addSourcePopupId, nullptr, 0)) {
+    if (auto popup = imw::ModalPopup(kAddSourcePopupId, nullptr, 0)) {
         ImGui::AlignTextToFramePadding();
         ImGui::Text("Path:");
         ImGui::SameLine();
-        static std::string path;
+        std::string& path = _addSourcePath;
         if (ImGui::IsWindowAppearing()) {
             path = {};
         }
@@ -1258,21 +1274,21 @@ void OpenDashboardPage::drawAddSourcePopup() {
 
 #ifdef __EMSCRIPTEN__
         // on emscripten we cannot use local sources
-        const bool okEnabled = path.starts_with("https://") || path.starts_with("http://");
+        const bool okEnabled = isRemotePath(path);
 #else
         const bool okEnabled = !path.empty();
 #endif
-        if (components::DialogButtons(okEnabled) == components::DialogButton::Ok) {
+        if (components::dialogButtons(okEnabled) == components::DialogButton::Ok) {
             addDashboard(path);
         }
     }
 }
 
-std::shared_ptr<const DashboardDescription> OpenDashboardPage::get(const size_t index) {
+std::shared_ptr<DashboardDescription> OpenDashboardPage::get(const size_t index) {
     if (dashboards().size() > index) {
         return {dashboards().at(index)};
     }
     return {};
 }
 
-} // namespace DigitizerUi
+} // namespace gr::od

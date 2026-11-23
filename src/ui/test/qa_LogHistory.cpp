@@ -9,6 +9,8 @@
 #include <thread>
 #include <vector>
 
+using namespace gr::od;
+
 using namespace boost::ut;
 using gr::log::Level;
 
@@ -37,12 +39,12 @@ gr::log::LogRecord makeRecord(Level level, std::string_view text) {
 
 std::string textOf(const gr::log::LogRecord& record) { return std::string(record.text, record.textLength); }
 
-std::uint64_t countOf(const DigitizerUi::LogHistory& history, Level level) { return history.counts()[static_cast<std::size_t>(level)]; }
+std::uint64_t countOf(const LogHistory& history, Level level) { return history.counts()[static_cast<std::size_t>(level)]; }
 
-const suite<"LogHistory"> _logHistory = [] {
+const suite<"LogHistory"> logHistoryTests = [] {
     "every record reaches the next backend and is kept in order"_test = [] {
-        CountingBackend         console;
-        DigitizerUi::LogHistory history(console);
+        CountingBackend console;
+        LogHistory      history(console);
         std::ignore = history.publish(makeRecord(Level::warning, "first"));
         std::ignore = history.publish(makeRecord(Level::info, "second"));
         std::ignore = history.publish(makeRecord(Level::error, "third"));
@@ -57,8 +59,8 @@ const suite<"LogHistory"> _logHistory = [] {
     };
 
     "the bar's entry is the latest warning or worse, not a later info or debug record"_test = [] {
-        CountingBackend         console;
-        DigitizerUi::LogHistory history(console);
+        CountingBackend console;
+        LogHistory      history(console);
         expect(!history.latestWarningOrWorse().has_value());
         std::ignore = history.publish(makeRecord(Level::warning, "low disk"));
         std::ignore = history.publish(makeRecord(Level::info, "started"));
@@ -69,22 +71,22 @@ const suite<"LogHistory"> _logHistory = [] {
     };
 
     "beyond the capacity the oldest records go, the newest stay in order"_test = [] {
-        CountingBackend         console;
-        DigitizerUi::LogHistory history(console);
-        const std::size_t       total = DigitizerUi::LogHistory::kCapacity + 44UZ;
+        CountingBackend   console;
+        LogHistory        history(console);
+        const std::size_t total = LogHistory::kCapacity + 44UZ;
         for (std::size_t i = 0UZ; i < total; ++i) {
             std::ignore = history.publish(makeRecord(Level::warning, std::format("{}", i)));
         }
         const auto records = history.snapshot();
-        expect(eq(records.size(), DigitizerUi::LogHistory::kCapacity)) << fatal;
+        expect(eq(records.size(), LogHistory::kCapacity)) << fatal;
         expect(textOf(records.front()) == "44") << textOf(records.front());
         expect(textOf(records.back()) == std::format("{}", total - 1UZ)) << textOf(records.back());
         expect(eq(countOf(history, Level::warning), total)) << "counts include the records no longer retained";
     };
 
     "clear empties the history, the counts and the bar's entry"_test = [] {
-        CountingBackend         console;
-        DigitizerUi::LogHistory history(console);
+        CountingBackend console;
+        LogHistory      history(console);
         std::ignore = history.publish(makeRecord(Level::error, "x"));
         history.clear();
         expect(history.snapshot().empty());
@@ -94,7 +96,7 @@ const suite<"LogHistory"> _logHistory = [] {
 
     "records published from several threads all reach the console; the history keeps or counts each as dropped"_test = [] {
         CountingBackend          console;
-        DigitizerUi::LogHistory  history(console);
+        LogHistory               history(console);
         constexpr std::size_t    kThreads   = 4UZ;
         constexpr std::size_t    kPerThread = 1000UZ;
         std::vector<std::thread> threads;
@@ -116,13 +118,13 @@ const suite<"LogHistory"> _logHistory = [] {
     };
 
     "the process-wide history sits in front of the active backend and sees gr::log records"_test = [] {
-        DigitizerUi::LogHistory& history = DigitizerUi::logHistory();
+        LogHistory& history = logHistory();
         history.clear();
         gr::log::warning("status bar test {}", 42);
         const auto records = history.snapshot();
         expect(eq(records.size(), 1UZ)) << fatal;
         expect(textOf(records[0]) == "status bar test 42");
-        expect(&DigitizerUi::logHistory() == &history) << "installed once";
+        expect(&logHistory() == &history) << "installed once";
     };
 };
 

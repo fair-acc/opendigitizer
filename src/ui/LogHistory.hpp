@@ -12,7 +12,7 @@
 #include <gnuradio-4.0/HistoryBuffer.hpp>
 #include <gnuradio-4.0/Logger.hpp>
 
-namespace DigitizerUi {
+namespace gr::od {
 
 /// GR4 log backend keeping recent records for display; forwards to the previous backend
 class LogHistory final : public gr::log::Backend {
@@ -20,6 +20,18 @@ public:
     static constexpr std::size_t kCapacity = 256UZ;
     static constexpr std::size_t kLevels   = static_cast<std::size_t>(gr::log::Level::trace) + 1UZ;
 
+private:
+    gr::log::Backend&                                _next;
+    mutable std::mutex                               _mutex;
+    gr::HistoryBuffer<gr::log::LogRecord, kCapacity> _records;
+    std::array<std::uint64_t, kLevels>               _counts{};
+    std::optional<gr::log::LogRecord>                _latestWarningOrWorse;
+    std::uint64_t                                    _latestInfoOrDebugNanos = 0UZ;
+    std::atomic<std::uint64_t>                       _dropped{0UZ};
+
+    bool store(const gr::log::LogRecord& record) noexcept;
+
+public:
     explicit LogHistory(gr::log::Backend& next) noexcept : _next(next) {}
 
     bool        publish(const gr::log::LogRecord& record) noexcept override;
@@ -32,21 +44,10 @@ public:
     [[nodiscard]] std::uint64_t                      latestInfoOrDebugNanos() const;
     [[nodiscard]] std::uint64_t                      dropped() const noexcept { return _dropped.load(std::memory_order_relaxed); }
     void                                             clear();
-
-private:
-    gr::log::Backend&                                _next;
-    mutable std::mutex                               _mutex;
-    gr::HistoryBuffer<gr::log::LogRecord, kCapacity> _records;
-    std::array<std::uint64_t, kLevels>               _counts{};
-    std::optional<gr::log::LogRecord>                _latestWarningOrWorse;
-    std::uint64_t                                    _latestInfoOrDebugNanos = 0UZ;
-    std::atomic<std::uint64_t>                       _dropped{0UZ};
-
-    bool store(const gr::log::LogRecord& record) noexcept;
 };
 
 [[nodiscard]] LogHistory& logHistory();
 
-} // namespace DigitizerUi
+} // namespace gr::od
 
 #endif

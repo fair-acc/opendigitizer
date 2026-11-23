@@ -16,26 +16,9 @@
 #include "GraphSession.hpp"
 #include "PaneBlocks.hpp"
 
-namespace DigitizerUi {
+namespace gr::od {
 
-class StatusBarView {
-public:
-    std::string version = "app/grc version";
-    std::string versionDetails;
-
-    void draw(GraphSession* session); // nullptr: log only
-
-    [[nodiscard]] static float height() noexcept; // the bar and the item spacing above it, for the host to reserve
-    [[nodiscard]] static bool  isInfoDotLit(std::uint64_t latestInfoOrDebugNanos, std::uint64_t nowNanos) noexcept;
-
-private:
-    PaneBlocks                 _blocks{gr::UICategory::StatusBar};
-    float                      _blocksWidth = 0.f; // last frame's
-    ImGuiSelectionBasicStorage _selectedRecords;
-
-    std::optional<gr::log::Level> _levelFilter;
-    std::string                   _messageFilter;
-
+struct StatusBarView {
     struct SaveData {
         std::string                                  pendingText;
         std::string                                  path;
@@ -43,7 +26,23 @@ private:
         std::optional<gr::algorithm::fileio::Writer> writer;
     };
 
+    std::string version = "app/grc version";
+    std::string versionDetails;
+
+    PaneBlocks                 _blocks{gr::UICategory::StatusBar};
+    float                      _blocksWidth = 0.f; // last frame's
+    ImGuiSelectionBasicStorage _selectedRecords;
+
+    std::optional<gr::log::Level> _levelFilter;
+    std::string                   _messageFilter;
+    int                           _selectionId = 0;
+
     std::optional<SaveData> _saving;
+
+    void draw(GraphSession* session); // nullptr: log only
+
+    [[nodiscard]] static float height() noexcept; // the bar and the item spacing above it, for the host to reserve
+    [[nodiscard]] static bool  isInfoDotLit(std::uint64_t latestInfoOrDebugNanos, std::uint64_t nowNanos) noexcept;
 
     void drawLogLine(float width);
     void drawLogPopup();
@@ -55,6 +54,6 @@ private:
     [[nodiscard]] std::string selectedOrAllAsText(const std::vector<gr::log::LogRecord>& records, bool selectedOnly) const;
 };
 
-} // namespace DigitizerUi
+} // namespace gr::od
 
 #endif

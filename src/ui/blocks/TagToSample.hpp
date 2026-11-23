@@ -4,18 +4,20 @@
 #include <gnuradio-4.0/Block.hpp>
 #include <gnuradio-4.0/PmtTypeHelpers.hpp>
 
-namespace opendigitizer {
+namespace gr::od {
 
 template<typename T>
 struct TagToSample : public gr::Block<TagToSample<T>> {
+    using Description = gr::Doc<"Outputs the value of the latest input tag entry named by key_filter, a number or numeric string, on every sample until the next such tag.">;
+
     gr::PortIn<T>  in;
     gr::PortOut<T> out;
 
     std::string key_filter = "tag_id";
 
-    T _currentValue = T(0);
-
     GR_MAKE_REFLECTABLE(TagToSample, in, out, key_filter);
+
+    T _currentValue = T(0);
 
     T processOne(T) noexcept {
         if (this->inputTagsPresent()) {
@@ -30,8 +32,6 @@ struct TagToSample : public gr::Block<TagToSample<T>> {
     }
 };
 
-} // namespace opendigitizer
-
-auto registerTagToSample = gr::registerBlock<opendigitizer::TagToSample, float>(gr::globalBlockRegistry());
+} // namespace gr::od
 
 #endif

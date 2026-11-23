@@ -1,7 +1,7 @@
 #ifndef OPENDIGITIZER_UI_BLOCKS_IMCONTROL_HPP
 #define OPENDIGITIZER_UI_BLOCKS_IMCONTROL_HPP
 
-#include "../common/ImguiWrap.hpp"
+#include "../common/Imw.hpp"
 #include "DrawableBlockConfig.hpp"
 #include "TargetMap.hpp"
 #include "ToolbarBlock.hpp"
@@ -21,24 +21,31 @@
 #include <string>
 #include <utility>
 
-namespace DigitizerUi {
+namespace gr::od {
 
-/*
- * CRTP wrapper for class which should be a block that is an item in the
- * toolbar, drawn using ImGui. This class adds some common utilities that,
- * along with doing UI control by sending messages to other blocks.
- */
+// CRTP base of a toolbar block drawn with ImGui: common utilities for UI control by messages to other blocks
 template<typename TDerived>
 struct ImControl : gr::Block<TDerived, gr::Drawable<gr::UICategory::Toolbar, "ImGui">> {
     using DrawableBlock = gr::Block<TDerived, gr::Drawable<gr::UICategory::Toolbar, "ImGui">>;
 
-    // information about how big a control should be (its placement in the
-    // toolbar) and how its internal components should be laid out within that
-    // area
+    // how large a control is (its place in the toolbar) and how its parts are laid out within that area
     struct SizeAndLayout {
         float width            = 0.f;
         bool  showLabel        = true;
         bool  hasAnyConnection = true;
+    };
+
+    struct LabelAndFont {
+        ImControl*               _self;
+        std::optional<imw::Font> _font;
+
+        explicit LabelAndFont(ImControl& self) : _self(std::addressof(self)) {
+            if (shouldUseIcon()) {
+                _font.emplace(LookAndFeel::instance().fontIconsSolid);
+            }
+        }
+        [[nodiscard]] bool               shouldUseIcon() const { return !_self->icon.empty(); }
+        [[nodiscard]] const std::string& selectedLabel() { return shouldUseIcon() ? _self->icon : _self->label; }
     };
 
     std::string target_map; // of the form "BlockA,BlockB:property;BlockC:property;*:other_property"
@@ -48,11 +55,9 @@ struct ImControl : gr::Block<TDerived, gr::Drawable<gr::UICategory::Toolbar, "Im
 
     GR_MAKE_REFLECTABLE(ImControl, target_map, label, icon, tooltip);
 
-private:
-    // used to track whether the property we are connected to has changed, to invalidate cache
+    // a changed target invalidates the cached value
     std::string _lastDrawnTarget;
 
-public:
     explicit ImControl(gr::property_map initParameters = {}) : DrawableBlock(std::move(initParameters)) {}
 
     void settingsChanged(const gr::property_map& /*oldSettings*/, const gr::property_map& newSettings) {
@@ -63,7 +68,6 @@ public:
         if (!targets) {
             gr::log::warning("{}: invalid target_map '{}': {}", this->unique_name, target_map, targets.error());
         } else if (std::ranges::any_of(targets->entries(), &TargetEntry::isGlob)) {
-            // TODO: GR4 support
             gr::log::warning("{}: target_map '{}' tries to use glob-selector '*' but that is not implemented yet", this->unique_name, target_map);
         }
     }
@@ -72,10 +76,8 @@ public:
 
     [[nodiscard]] float labelWidth() const { return ImGui::CalcTextSize(label.c_str()).x + ImGui::GetStyle().ItemInnerSpacing.x; }
 
-    /// Setup at the start of draw(). It applies changed settings, publishes the width constraints onto the imgui
-    /// stack, and returns how to lay things out given config (the toolbar layout constraints) and the other
-    /// arguments (this widget's layout constraints)
-    /// @param labelPart is 0 for a widget such as a button, something that does not have a separate label component
+    /// at the start of draw(): applies changed settings, pushes the width constraints onto the ImGui stack and returns the layout for `config` (the toolbar's constraints) and this widget's constraints;
+    /// `labelPart` 0 for a widget without a separate label, such as a button
     [[nodiscard]] SizeAndLayout prepareDraw(const DrawableBlockConfig& config, float naturalWidget, float minimumWidget, float labelPart) {
         this->applyChangedSettings(); // no work() applies them
         const float maxWidth  = config.maxWidth.value_or(std::numeric_limits<float>::max());
@@ -84,10 +86,7 @@ public:
         return {.width = std::clamp(maxWidth - (showLabel ? labelPart : 0.f), minimumWidget, naturalWidget), .showLabel = showLabel, .hasAnyConnection = config.firstControlledProperty.has_value()};
     }
 
-    /// Update a cache @param value with the controlled property's value if the
-    /// @param config indicates that we are connected to something different
-    /// Doing this causes control blocks to load the value from their target
-    /// when initially connected, and unload it when disconnected.
+    /// loads the controlled property's value into `value` when `config` names a different target: controls load the value of a target when connected and unload it when disconnected
     template<typename TValue>
     void loadValueIfConnectionChanged(TValue& value, const DrawableBlockConfig& config) {
         const DrawableBlockConfig::ControlledProperty& controlledProperty = config.firstControlledProperty;
@@ -104,7 +103,7 @@ public:
         } else {
             return;
         }
-        std::ignore = this->settings().setStaged({{"value", value}});
+        stageValue(value);
     }
 
     template<typename TValue>
@@ -130,35 +129,8 @@ public:
         }
     }
 
-    struct LabelAndFont {
-        ImControl*               _self;
-        std::optional<IMW::Font> _font;
-
-        [[nodiscard]] bool shouldUseIcon() const { return !_self->icon.empty(); }
-        explicit LabelAndFont(ImControl& self) : _self(std::addressof(self)) {
-            if (shouldUseIcon()) {
-                _font.emplace(LookAndFeel::instance().fontIconsSolid);
-            }
-        }
-        [[nodiscard]] const std::string& selectedLabel() { return shouldUseIcon() ? _self->icon : _self->label; }
-    };
-
-    /// Draw something with a label before it and support shrinking it into a tooltip if the label wouldn't fit
-    void drawWithLabelAndTooltip(const SizeAndLayout& layout, auto drawWidget) {
-        IMW::ChangeStrId scope(this->unique_name.value().c_str());
-
-        const auto setTooltip = [this] {
-            (void)this;
-            // TODO: fix tooltips not drawing correctly in the flowgraph. this is
-            // the same issue as ImControlChoice being disabled when drawn in the
-            // flowgraph.
-            // if (!tooltip.empty()) {
-            //     IMW::Font font(LookAndFeel::instance().fontIconsSolid);
-            //     ImGui::SetItemTooltip("%s", tooltip.c_str());
-            // } else if (!label.empty() && !layout.showLabel) {
-            //     ImGui::SetItemTooltip("%s", label.c_str());
-            // }
-        };
+    void drawWithLabel(const SizeAndLayout& layout, auto drawWidget) {
+        imw::ChangeStrId scope(this->unique_name.value().c_str());
 
         {
             LabelAndFont labelAndFont(*this);
@@ -168,20 +140,24 @@ public:
                 ImGui::SameLine(0.f, ImGui::GetStyle().ItemInnerSpacing.x);
             }
         }
-        setTooltip();
 
         {
-            IMW::Group    widgets;
-            IMW::Disabled disconnected(!layout.hasAnyConnection);
+            imw::Group    widgets;
+            imw::Disabled disconnected(!layout.hasAnyConnection);
             drawWidget(layout.width);
         }
-        setTooltip();
     }
 
-    /// Send a settings update message to every block identified by the target_map
     void sendToTargets(const auto& payload) { toolbar::sendToTargets(this->msgOut, target_map, payload); } // an ill-formed map is reported during settingsChanged()
 
-    /// Sends each "BlockA,BlockB:property" key's value, every block's settings in one message
+    void stageValue(const auto& value) { std::ignore = this->settings().setStaged({{"value", value}}); }
+    void commitValue(const auto& value) {
+        stageValue(value);
+        sendToTargets(value);
+    }
+    [[nodiscard]] std::string widgetId() const { return "##" + label; }
+
+    /// sends each "BlockA,BlockB:property" key's value, every block's settings in one message
     void sendByTarget(const gr::property_map& valuesByTarget) {
         std::map<std::string, gr::property_map, std::less<>> settingsByBlock;
         for (const auto& [key, payload] : valuesByTarget) {
@@ -199,6 +175,6 @@ public:
     }
 };
 
-} // namespace DigitizerUi
+} // namespace gr::od
 
 #endif

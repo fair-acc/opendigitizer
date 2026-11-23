@@ -25,6 +25,11 @@ target_link_libraries(qa_SortFilterModels PRIVATE ut opendigitizer-uilib opendig
 target_include_directories(qa_SortFilterModels PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/..)
 add_test(NAME qa_SortFilterModels COMMAND qa_SortFilterModels)
 
+add_executable(qa_KeypadParser qa_KeypadParser.cpp)
+target_link_libraries(qa_KeypadParser PRIVATE ut opendigitizer::ui-components opendigitizer-options)
+target_include_directories(qa_KeypadParser PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/..)
+add_test(NAME qa_KeypadParser COMMAND qa_KeypadParser)
+
 add_executable(qa_FuzzySearch qa_FuzzySearch.cpp)
 target_link_libraries(qa_FuzzySearch PRIVATE ut opendigitizer-uilib opendigitizer-options)
 target_include_directories(qa_FuzzySearch PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/..)
@@ -88,33 +93,6 @@ target_link_libraries(
 target_compile_definitions(qa_PulsedPowerGrc PRIVATE OD_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../..")
 add_test(NAME qa_PulsedPowerGrc COMMAND qa_PulsedPowerGrc)
 
-add_executable(qa_play_stop_bar qa_play_stop_bar.cpp)
-target_include_directories(qa_play_stop_bar INTERFACE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include/>
-                                                      $<INSTALL_INTERFACE:include/>)
-target_link_libraries(
-  qa_play_stop_bar
-  PRIVATE ut
-          core
-          opendigitizer-options
-          gnuradio4::gnuradio-core
-          gnuradio4::gnuradio-meta
-          gnuradio4::gnuradio-algorithm
-          implot
-          implot3d
-          imgui-node-editor
-          services
-          stb
-          ui_assets
-          fonts
-          sample_dashboards
-          client
-          plf_colony)
-# workaround for getting out of source tree dependencies, should be modelled as proper targets
-target_include_directories(qa_play_stop_bar PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../acquisition) # for daq_api.hpp
-target_include_directories(qa_play_stop_bar PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../utils/include)
-
-add_test(NAME qa_play_stop_bar COMMAND qa_play_stop_bar)
-
 if(ENABLE_IMGUI_TEST_ENGINE)
 
   cmrc_add_resource_library(
@@ -141,6 +119,7 @@ if(ENABLE_IMGUI_TEST_ENGINE)
     examples/qa_uicontrol_compatibility.grc
     examples/qa_property_limits.grc
     examples/qa_toolbar.grc
+    examples/qa_host_composition.grc
     baselines/dashboard_layout.txt)
 
   # Code shared between all tests
@@ -173,13 +152,14 @@ if(ENABLE_IMGUI_TEST_ENGINE)
     add_test(NAME ${NAME} COMMAND ${NAME})
   endfunction()
 
-  add_imgui_test(qa_popup_menu)
-  add_imgui_test(qa_dialog)
-  add_imgui_test(qa_filtercomboboxes)
-  add_imgui_test(qa_keypad)
+  add_imgui_test(qa_PopupMenu)
+  add_imgui_test(qa_Dialog)
+  add_imgui_test(qa_FilterComboBoxes)
+  add_imgui_test(qa_Keypad)
   add_imgui_test(qa_chart)
   set_tests_properties(qa_chart PROPERTIES TIMEOUT 300) # a hang reports its pending wait within the CI step
   add_imgui_test(qa_ImageChart)
+  add_imgui_test(qa_SampleDashboards)
   if(OD_ACOUSTIC_CAMERA)
     cmrc_add_resources(
       ui_test_assets
@@ -202,10 +182,9 @@ if(ENABLE_IMGUI_TEST_ENGINE)
     target_compile_definitions(qa_chart PRIVATE OD_ACOUSTIC_CAMERA)
   endif()
   add_imgui_test(qa_ChartFontSize)
-  add_imgui_test(qa_chart_compatibility)
-  add_imgui_test(qa_blockneighbourspreview)
-  add_imgui_test(qa_chart_fgdipole)
-  add_imgui_test(qa_docking)
+  add_imgui_test(qa_ChartCompatibility)
+  add_imgui_test(qa_BlockNeighboursPreview)
+  add_imgui_test(qa_Docking)
   add_imgui_test(qa_FramePacer)
   add_imgui_test(qa_layout)
   add_imgui_test(qa_DashboardBaseline)
@@ -221,7 +200,7 @@ if(ENABLE_IMGUI_TEST_ENGINE)
   add_imgui_test(qa_ChartStyle)
   add_imgui_test(qa_GpuRenderer)
   add_imgui_test(qa_ZoomablePlot)
-  add_imgui_test(qa_ColourManager)
+  add_imgui_test(qa_SignalColours)
   add_imgui_test(qa_flowgraph)
   add_imgui_test(qa_GraphModel)
   add_imgui_test(qa_StyledWidgets)
@@ -253,6 +232,18 @@ if(OD_NODE
                browser
                TIMEOUT
                300
+               RUN_SERIAL
+               TRUE
+               SKIP_RETURN_CODE
+               77)
+  add_test(NAME qa_BrowserSampleDashboards
+           COMMAND ${OD_NODE} ${CMAKE_CURRENT_SOURCE_DIR}/browser/qa_BrowserSampleDashboards.mjs ${OD_WASM_WEB_DIR})
+  set_tests_properties(
+    qa_BrowserSampleDashboards
+    PROPERTIES LABELS
+               browser
+               TIMEOUT
+               900
                RUN_SERIAL
                TRUE
                SKIP_RETURN_CODE

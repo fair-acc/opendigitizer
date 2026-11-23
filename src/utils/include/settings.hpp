@@ -20,7 +20,7 @@
 #include <emscripten.h>
 #endif
 
-namespace Digitizer {
+namespace digitizer {
 
 namespace detail {
 
@@ -73,7 +73,6 @@ private:
     Settings() {
         using std::operator""sv;
         using std::operator""s;
-        // handle legacy configuration values
         if (getValueFromEnv("DIGITIZER_DISABLE_HTTPS", false)) {
             std::println("DIGITIZER_DISABLE_HTTPS is deprecated, use DIGITIZER_BIND_ADDRESSES instead, disableHttps is true");
             bindAddresses.erase("https://*:8443");
@@ -93,18 +92,18 @@ private:
         if (std::string bindAddressesString = getValueFromEnv("DIGITIZER_BIND_ADDRESSES", ""s); !bindAddressesString.empty()) {
             bindAddresses = bindAddressesString | std::views::split(';') | std::views::transform([](auto&& s) { return s | std::ranges::to<std::string>(); }) | std::ranges::to<std::set>();
         }
-        darkMode          = getValueFromEnv("DIGITIZER_DARK_MODE", darkMode);                   // enable 'dark mode'
-        theme             = getValueFromEnv("DIGITIZER_THEME", theme);                          // Classic or Advanced
-        checkCertificates = getValueFromEnv("DIGITIZER_CHECK_CERTIFICATES", checkCertificates); // disable checking validity of certificates
+        darkMode          = getValueFromEnv("DIGITIZER_DARK_MODE", darkMode);
+        theme             = getValueFromEnv("DIGITIZER_THEME", theme); // Classic or Advanced
+        checkCertificates = getValueFromEnv("DIGITIZER_CHECK_CERTIFICATES", checkCertificates);
         if (std::getenv("DIGITIZER_EDIT_MODE") != nullptr) {
             deprecatedEditable = getValueFromEnv("DIGITIZER_EDIT_MODE", true);
             gr::log::warning("DIGITIZER_EDIT_MODE is deprecated: set 'editable' in the dashboard section of the .grc");
         }
-        hostname         = getValueFromEnv("DIGITIZER_HOSTNAME", hostname);                  // hostname to set up or connect to
-        basePath         = getValueFromEnv("DIGITIZER_PATH", basePath);                      // path
-        wasmServeDir     = getValueFromEnv("DIGITIZER_WASM_SERVE_DIR", wasmServeDir);        // directory to serve wasm from
-        defaultDashboard = getValueFromEnv("DIGITIZER_DEFAULT_DASHBOARD", defaultDashboard); // Default dashboard to load from the service
-        remoteDashboards = getValueFromEnv("DIGITIZER_REMOTE_DASHBOARDS", remoteDashboards); // Directory the dashboard worker loads the dashboards from
+        hostname         = getValueFromEnv("DIGITIZER_HOSTNAME", hostname);
+        basePath         = getValueFromEnv("DIGITIZER_PATH", basePath);
+        wasmServeDir     = getValueFromEnv("DIGITIZER_WASM_SERVE_DIR", wasmServeDir);
+        defaultDashboard = getValueFromEnv("DIGITIZER_DEFAULT_DASHBOARD", defaultDashboard);
+        remoteDashboards = getValueFromEnv("DIGITIZER_REMOTE_DASHBOARDS", remoteDashboards);
 #ifdef __EMSCRIPTEN__
         auto        finalURLChar = static_cast<char*>(EM_ASM_PTR({
             var finalURL         = window.location.href;
@@ -140,7 +139,7 @@ private:
             }
             return prefix;
         };
-        basePath = extractPrefixBefore(basePath, "web/index.html"); // TODO: temporary fix to be compatible with proxy forwarding like: https://my.proxy.com/prefix/web/index.html -> https://my.localdomain.com//web/index.html'. All paths (incl. dashboard need to be relative to the 'prefix' path.
+        basePath = extractPrefixBefore(basePath, "web/index.html"); // TODO: workaround for proxy forwarding https://my.proxy.com/prefix/web/index.html -> https://my.localdomain.com//web/index.html; all paths (incl. dashboards) need to be relative to 'prefix'
 
         auto fragment = url.fragment().value_or("");
         for (auto param : std::ranges::split_view(fragment, "&"sv)) {
@@ -176,7 +175,7 @@ public:
         for (std::string_view bindAddress : bindAddresses) {
             if (bindAddress.starts_with("https://")) {
                 const auto bindUri = opencmw::URI<>(std::string(bindAddress));
-                // we need to set the full authority here, if we only set the port, the constructed url will have the authority of bindUrl and the port will be ignored
+                // full authority: setting only the port keeps bindUri's authority and drops the port
                 return opencmw::URI<>::UriFactory(bindUri).authority(std::format("{}:{}", hostname, bindUri.port().value_or(443)));
             }
             if (fallback.empty() && bindAddress.starts_with("http://")) {
@@ -201,6 +200,6 @@ public:
         return opencmw::URI<>::UriFactory(opencmw::URI<>(""s));
     }
 };
-} // namespace Digitizer
+} // namespace digitizer
 
 #endif // OPENDIGITIZER_SETTINGS_H

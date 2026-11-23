@@ -7,7 +7,7 @@
 #include <algorithm>
 #include <cmath>
 
-using namespace opendigitizer;
+using namespace gr::od;
 
 const boost::ut::suite<"TestSpectrumGenerator"> tests = [] {
     using namespace boost::ut;
@@ -101,7 +101,6 @@ const boost::ut::suite<"TestSpectrumGenerator"> tests = [] {
         auto ds         = gen.createSpectrum(4096);
         auto magnitudes = ds.signalValues(0);
 
-        // lines are at positions 0.12, 0.25, 0.85 of spectrum
         for (double pos : {0.12, 0.25, 0.85}) {
             auto bin = static_cast<std::size_t>(pos * 4096.0);
             expect(magnitudes[bin] > -70.f) << "interference line at pos=" << pos << " bin=" << bin;

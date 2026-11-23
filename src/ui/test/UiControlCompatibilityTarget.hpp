@@ -8,13 +8,13 @@
 #include <string>
 #include <vector>
 
-namespace opendigitizer::test {
+namespace gr::od::test {
 
 struct UiControlCompatibilityTarget : gr::Block<UiControlCompatibilityTarget> {
+    using Description = gr::Doc<"testing block to exercise different types and limits, especially for UI control block connections">;
+
     enum class Shape { Sin, Cos, Square };
     enum class Color { red, green, blue };
-
-    using Description = gr::Doc<"testing block to exercise different types and limits, especially for UI control block connections">;
 
     gr::Annotated<float, "low range", gr::Limits<0.f, 1.f>>           low_range                           = 0.5f;
     gr::Annotated<float, "high range", gr::Limits<10.f, 20.f>>        high_range                          = 15.f;
@@ -35,9 +35,8 @@ struct UiControlCompatibilityTarget : gr::Block<UiControlCompatibilityTarget> {
     gr::work::Result work(std::size_t = std::numeric_limits<std::size_t>::max(), gr::device::DeviceContext& = gr::device::hostBackend()) noexcept { return {0UZ, 0UZ, gr::work::Status::OK}; }
 };
 
-/// a device setting with the devices to choose from, listed as GR4's audio blocks list them; clocked so it applies settings
 struct UiControlDeviceTarget : gr::Block<UiControlDeviceTarget> {
-    using Description = gr::Doc<"testing block for a device picker">;
+    using Description = gr::Doc<"testing block for a device picker: a device setting with the devices to choose from, listed as GR4's audio blocks list them; clocked so that it applies settings">;
 
     gr::PortIn<std::uint8_t> clk;
     std::string              device;
@@ -50,6 +49,6 @@ struct UiControlDeviceTarget : gr::Block<UiControlDeviceTarget> {
     void processOne(std::uint8_t) {}
 };
 
-} // namespace opendigitizer::test
+} // namespace gr::od::test
 
 #endif

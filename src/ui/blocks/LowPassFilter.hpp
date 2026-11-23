@@ -11,26 +11,26 @@
 #include <limits>
 #include <numbers>
 
-namespace opendigitizer {
+namespace gr::od {
 
-GR_REGISTER_BLOCK(opendigitizer::LowPassFilter, [T], [float])
-
-/// Lowpass filter which, unlike gr::filter::BasicFilter, has interpolation and does not reconfigure itself when
-/// its settings change. This is useful for changing the cutoff value live / in real time. However, it lacks
-/// features that BasicFilter has such as decimation and support for types other than float.
-///
-/// V. Zavalishin, "The Art of VA Filter Design", rev. 2.1.2, Native Instruments, 2020, ch. 4.
-/// A. Simper, "Linear Trapezoidal Integrated State Variable Filter", Cytomic technical paper, 2013.
 template<typename T>
 struct LowPassFilter : gr::Block<LowPassFilter<T>> {
-    using Description = gr::Doc<"4th-order Butterworth lowpass filter">;
-
-    gr::PortIn<T>  in;
-    gr::PortOut<T> out;
+    using Description = gr::Doc<"4th-order Butterworth lowpass filter whose cutoff glides to a new setting without reconfiguring, unlike gr::filter::BasicFilter, for live cutoff changes; float only, without decimation.">;
 
     using NonNegative   = gr::Limits<0.f, std::numeric_limits<float>::max()>;
     using PositiveFloat = gr::Limits<std::numeric_limits<float>::min(), std::numeric_limits<float>::max()>;
     using FiniteFloat   = gr::Limits<std::numeric_limits<float>::lowest(), std::numeric_limits<float>::max()>;
+
+    struct SectionState {
+        double ic1eq = 0.;
+        double ic2eq = 0.;
+    };
+
+    // Q of the two second-order sections of a 4th-order Butterworth filter: 1 / (2 cos(pi/8)) and 1 / (2 cos(3 pi/8))
+    static constexpr std::array<double, 2> kSectionQ{0.54119610014619698, 1.3065629648763766};
+
+    gr::PortIn<T>  in;
+    gr::PortOut<T> out;
 
     gr::Annotated<float, "sample_rate", gr::Visible, gr::Unit<"Hz">, gr::Doc<"sample rate of the input">, PositiveFloat>                                sample_rate           = 48000.f;
     gr::Annotated<float, "cutoff", gr::Visible, gr::Unit<"Hz">, gr::Doc<"-3 dB frequency. Clamped to [1 Hz, 0.49 sample_rate]">, FiniteFloat>           cutoff                = 1000.f;
@@ -38,18 +38,8 @@ struct LowPassFilter : gr::Block<LowPassFilter<T>> {
 
     GR_MAKE_REFLECTABLE(LowPassFilter, in, out, sample_rate, cutoff, cutoff_smoothing_time);
 
-    struct SectionState {
-        double ic1eq = 0.;
-        double ic2eq = 0.;
-    };
-
-    // Q of the two second-order sections of a 4th-order Butterworth filter
-    // - 1 / (2 cos(pi/8))
-    // - 1 / (2 cos(3 pi/8))
-    static constexpr std::array<double, 2> kSectionQ{0.54119610014619698, 1.3065629648763766};
-
     std::array<SectionState, 2> _sections{};
-    double                      _cutoffFrequencyLn = 0.; // natural log of frequency
+    double                      _cutoffFrequencyLn = 0.;
 
     void start() { _cutoffFrequencyLn = std::log(clampedCutoff()); }
 
@@ -73,9 +63,8 @@ struct LowPassFilter : gr::Block<LowPassFilter<T>> {
         return 1. - std::exp(-1. / (static_cast<double>(cutoff_smoothing_time) * static_cast<double>(sample_rate)));
     }
 
-    /// One sample through a trapezoidal-integrated state-variable filter. Returns the output gain
-    /// g == tan(pi * cutoff / sample_rate)
-    /// k == is 1 / Q (the damping)
+    /// one sample through a trapezoidal-integrated state-variable filter with g = tan(pi cutoff / sample_rate) and k = 1 / Q (the damping); returns the output gain,
+    /// after V. Zavalishin, "The Art of VA Filter Design", rev. 2.1.2, 2020, ch. 4, and A. Simper, "Linear Trapezoidal Integrated State Variable Filter", Cytomic, 2013
     [[nodiscard]] static double lowPassSection(double input, double g, double k, SectionState& state) noexcept {
         const double a1 = 1. / (1. + g * (g + k));
         const double a2 = g * a1;
@@ -89,6 +78,6 @@ struct LowPassFilter : gr::Block<LowPassFilter<T>> {
     }
 };
 
-} // namespace opendigitizer
+} // namespace gr::od
 
 #endif // OPENDIGITIZER_BLOCKS_LOW_PASS_FILTER_HPP

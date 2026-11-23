@@ -50,19 +50,29 @@ Outputs without a microphone are silent, so `element_positions` may change while
 
     GR_MAKE_REFLECTABLE(PointSourceAudio, clk, out, element_positions, n_outputs, propagation_speed, source_position, source_motion, motion_extent, motion_period, waypoints, period, pulse_width, tone_frequency, amplitude, noise, sample_rate, tag_interval);
 
-    std::uint64_t         _samples  = 0U;
-    std::uint64_t         _anchorNs = 1'000'000'000U; // the clock's first gr:trigger_time, dating sample 0
-    bool                  _anchored = false;
-    std::size_t           _untilTag = 0UZ;
-    gr::rng::Xoshiro256pp _rng;
+    std::uint64_t                      _samples  = 0U;
+    std::uint64_t                      _anchorNs = 1'000'000'000U; // the clock's first gr:trigger_time, dating sample 0
+    bool                               _anchored = false;
+    std::size_t                        _untilTag = 0UZ;
+    std::vector<gr::rng::Xoshiro256pp> _noise; // one stream per output: a sample's noise does not depend on the chunking
 
-    void settingsChanged(const gr::property_map& /*oldSettings*/, const gr::property_map& /*newSettings*/) { out.resize(n_outputs.value > 0U ? n_outputs.value : std::min(rowsOf(element_positions.value), gr::algorithm::kMaxElements)); }
+    void settingsChanged(const gr::property_map& /*oldSettings*/, const gr::property_map& /*newSettings*/) {
+        out.resize(n_outputs.value > 0U ? n_outputs.value : std::min(rowsOf(element_positions.value), gr::algorithm::kMaxElements));
+        addNoiseStreams();
+    }
 
     void start() {
         _samples  = 0U;
         _anchored = false;
         _untilTag = 0UZ;
-        _rng      = gr::rng::Xoshiro256pp{};
+        _noise.clear();
+        addNoiseStreams();
+    }
+
+    void addNoiseStreams() {
+        for (std::size_t m = _noise.size(); m < out.size(); ++m) {
+            _noise.emplace_back(m);
+        }
     }
 
     [[nodiscard]] Point3 sourceAt(double t) const { return sourcePoint(source_motion.value, source_position.value, motion_extent.value, motion_period.value, waypoints.value, t); }
@@ -105,7 +115,7 @@ Outputs without a microphone are silent, so `element_positions` may change while
             if (m < receivers.size()) {
                 for (std::size_t i = 0UZ; i < n; ++i) {
                     const double t = static_cast<double>(_samples + i) / rate;
-                    outputs[m][i]  = amplitude.value * static_cast<float>(clickAt(t, receivers[m])) + noise.value * _rng.uniformM11<float>();
+                    outputs[m][i]  = amplitude.value * static_cast<float>(clickAt(t, receivers[m])) + noise.value * _noise[m].uniformM11<float>();
                 }
             } else {
                 std::ranges::fill_n(outputs[m].begin(), static_cast<std::ptrdiff_t>(n), 0.f);

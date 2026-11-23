@@ -28,8 +28,8 @@ using namespace opencmw::majordomo;
 
 template<units::basic_fixed_string serviceName, typename... Meta>
 class DashboardWorker : public BasicWorker<serviceName, Meta...> {
-    std::vector<std::string> names;
-    std::vector<Dashboard>   dashboards;
+    std::vector<std::string> _names;
+    std::vector<Dashboard>   _dashboards;
 
 public:
     using super_t = BasicWorker<serviceName, Meta...>;
@@ -44,11 +44,11 @@ public:
             };
 
             auto getDashboard = [&](std::string_view name) -> Dashboard* {
-                auto it = std::find(names.begin(), names.end(), name);
-                if (it != names.end()) {
+                auto it = std::find(_names.begin(), _names.end(), name);
+                if (it != _names.end()) {
                     std::string what = whatParam();
-                    auto        i    = std::size_t(it - names.begin());
-                    return &dashboards[i];
+                    auto        i    = std::size_t(it - _names.begin());
+                    return &_dashboards[i];
                 }
                 return nullptr;
             };
@@ -74,7 +74,7 @@ public:
             if (ctx.request.command == opencmw::mdp::Command::Get) {
                 if (parts.size() == 1) {
                     opencmw::IoBuffer buffer;
-                    opencmw::IoSerialiser<opencmw::Json, decltype(names)>::serialise(buffer, opencmw::FieldDescriptionShort{}, names);
+                    opencmw::IoSerialiser<opencmw::Json, decltype(_names)>::serialise(buffer, opencmw::FieldDescriptionShort{}, _names);
                     ctx.reply.data = std::move(buffer);
                 } else if (parts.size() == 2) {
                     if (auto* ds = getDashboard(parts[1])) {
@@ -82,9 +82,7 @@ public:
                         std::string_view view(what);
                         std::string      body;
 
-                        // If more than one 'what' was requested we reply with all of them in the requested order.
-                        // the reply format of a 'what' is <size>;<content> and they are all immediately following
-                        // the previous one.
+                        // one '<size>;<content>' per requested 'what', concatenated in request order
                         auto append = [&](std::string_view s) {
                             body += std::to_string(s.size());
                             body += ";";
@@ -116,10 +114,10 @@ public:
                 } else if (parts.size() == 2) {
                     auto* ds           = getDashboard(parts[1]);
                     bool  newDashboard = false;
-                    if (!ds) { // if we couldn't find a dashboard make a new one
-                        names.push_back(std::string(parts[1]));
-                        dashboards.push_back({});
-                        ds           = &dashboards.back();
+                    if (!ds) {
+                        _names.push_back(std::string(parts[1]));
+                        _dashboards.push_back({});
+                        ds           = &_dashboards.back();
                         newDashboard = true;
                     }
 
@@ -144,7 +142,7 @@ public:
                         ;
 
                         opencmw::IoBuffer buffer;
-                        opencmw::IoSerialiser<opencmw::Json, decltype(names)>::serialise(buffer, opencmw::FieldDescriptionShort{}, names);
+                        opencmw::IoSerialiser<opencmw::Json, decltype(_names)>::serialise(buffer, opencmw::FieldDescriptionShort{}, _names);
                         rawCtx.reply.data = std::move(buffer);
 
                         super_t::notify(std::move(rawCtx.reply));
@@ -165,7 +163,7 @@ public:
             contents.assign((std::istreambuf_iterator<char>(file)), (std::istreambuf_iterator<char>()));
             return;
         };
-        auto& settings = Digitizer::Settings::instance();
+        auto& settings = digitizer::Settings::instance();
         try {
             for (const auto& dir : std::filesystem::directory_iterator(settings.remoteDashboards)) {
                 if (!dir.is_directory() || !exists(dir.path() / "header") || !exists(dir.path() / "flowgraph")) {
@@ -175,10 +173,10 @@ public:
                 Dashboard   dashboard;
                 readFile(dir.path() / "header", dashboard.header);
                 readFile(dir.path() / "flowgraph", dashboard.flowgraph);
-                names.push_back(name);
-                dashboards.push_back(dashboard);
+                _names.push_back(name);
+                _dashboards.push_back(dashboard);
             }
-            std::print("DashboardWorker: loaded dashboards: {}\n", gr::join(names));
+            std::print("DashboardWorker: loaded dashboards: {}\n", gr::join(_names));
         } catch (std::filesystem::filesystem_error& e) {
             std::print("DashboardWorker: failed to load default remote Dashboards: {}\n", e.what());
         } catch (...) {

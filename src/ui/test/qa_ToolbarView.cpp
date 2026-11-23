@@ -1,12 +1,13 @@
+#include "App.hpp"
 #include "ImGuiTestApp.hpp"
+#include "TestDashboardRunner.hpp"
 #include "TestPropertySetterButton.hpp"
 
 #include <ClientCommon.hpp>
 #include <boost/ut.hpp>
 
 #include <gnuradio-4.0/BlockRegistry.hpp>
-#include <gnuradio-4.0/GrBasicBlocks.hpp>
-#include <gnuradio-4.0/GrTestingBlocks.hpp>
+#include <gnuradio-4.0/Scheduler.hpp>
 
 #include <Dashboard.hpp>
 #include <ToolbarView.hpp>
@@ -19,6 +20,8 @@
 #include <format>
 #include <memory>
 #include <vector>
+
+using namespace gr::od;
 
 CMRC_DECLARE(ui_test_assets);
 
@@ -43,44 +46,24 @@ struct ForeignToolbarBlock : gr::Block<ForeignToolbarBlock, gr::Drawable<gr::UIC
 namespace {
 constexpr ImVec2 kHostPos{100.f, 80.f};
 constexpr ImVec2 kHostSize{800.f, 200.f};
-constexpr int    kMaxFrames = 600;
 
-struct TestState {
-    std::shared_ptr<opencmw::client::RestClient> restClient;
-    std::string                                  grc;
-    std::shared_ptr<DigitizerUi::Dashboard>      dashboard;
-    DigitizerUi::ToolbarView                     view;
+struct TestState : test::TestDashboardRunner {
+    std::string grc;
+    ToolbarView view;
 };
 
-TestState* g_state = nullptr;
-
-std::shared_ptr<gr::BlockModel> schedulerBlock(std::string_view name) {
-    for (const auto& block : g_state->dashboard->session.graph().blocks()) {
-        if (block->name() == name) {
-            return block;
-        }
-    }
-    return nullptr;
-}
+TestState* gState = nullptr;
 
 template<typename T>
-bool waitForSetting(ImGuiTestContext* ctx, std::string_view blockName, const std::string& key, T expected) {
-    for (int frame = 0; frame < kMaxFrames; ++frame) {
-        if (const auto value = schedulerBlock(blockName)->settings().get(key); value && value->template value_or<T>(T{}) == expected) {
-            return true;
-        }
-        ctx->Yield();
-    }
-    return false;
+bool waitForSetting(ImGuiTestContext* ctx, std::string_view blockName, std::string_view key, T expected) {
+    return gState->waitUntil(ctx, std::format("{}.{} is set", blockName, key), [=] { return gState->blockHasBasicTypeKeyValuePair<T>(blockName, key, expected); });
 }
 } // namespace
 
 const boost::ut::suite<"planToolbar"> planTests = [] {
-    using DigitizerUi::planToolbar;
-    using DigitizerUi::ToolbarSlot;
-    constexpr DigitizerUi::toolbar::ItemWidths          kSlider{.natural = 200.f, .minimum = 100.f, .label = 30.f};
-    const std::vector<DigitizerUi::toolbar::ItemWidths> sliders(3UZ, kSlider);
-    const auto                                          slotIs = [](const ToolbarSlot& slot, std::size_t row, float width, bool label) { return slot.row == row && std::abs(slot.width - width) < 1e-3f && slot.showLabel == label; };
+    constexpr toolbar::ItemWidths          kSlider{.natural = 200.f, .minimum = 100.f, .label = 30.f};
+    const std::vector<toolbar::ItemWidths> sliders(3UZ, kSlider);
+    const auto                             slotIs = [](const ToolbarSlot& slot, std::size_t row, float width, bool label) { return slot.row == row && std::abs(slot.width - width) < 1e-3f && slot.showLabel == label; };
 
     "a row wide enough keeps the natural widths"_test = [&] { // 3·200 + 2·10 = 620 ≤ 700
         const auto slots = planToolbar(sliders, 700.f, 10.f);
@@ -110,15 +93,15 @@ const boost::ut::suite<"planToolbar"> planTests = [] {
     };
 
     "a fixed item keeps its width while the others shrink"_test = [&] { // free 500 - 30 - 340 = 130 of 300
-        std::vector<DigitizerUi::toolbar::ItemWidths> items{{.natural = 40.f, .minimum = 40.f, .label = 0.f}};
+        std::vector<toolbar::ItemWidths> items{{.natural = 40.f, .minimum = 40.f, .label = 0.f}};
         items.insert(items.end(), sliders.begin(), sliders.end());
         const auto slots = planToolbar(items, 500.f, 10.f);
         expect(slotIs(slots[0], 0UZ, 40.f, true) && slotIs(slots[1], 0UZ, 100.f + 130.f / 3.f, true));
     };
 };
 
-struct TestApp : public DigitizerUi::test::ImGuiTestApp {
-    using DigitizerUi::test::ImGuiTestApp::ImGuiTestApp;
+struct TestApp : public test::ImGuiTestApp {
+    using test::ImGuiTestApp::ImGuiTestApp;
 
     void registerTests() override {
         ImGuiTest* t = IM_REGISTER_TEST(engine(), "toolbarview", "toolbar blocks of the flowgraph");
@@ -126,24 +109,21 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
         t->GuiFunc = [](ImGuiTestContext*) {
             ImGui::SetNextWindowPos(kHostPos);
             ImGui::SetNextWindowSize(kHostSize);
-            IMW::Window window("Host", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
-            auto&       state = *g_state;
-            state.dashboard->handleMessages();
+            imw::Window window("Host", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
+            auto&       state = *gState;
+            state.dashboard->session.receiveMessages();
             if (state.dashboard->isInitialised) {
                 state.view.draw(state.dashboard->session, state.dashboard->schedulerUi);
             }
         };
 
         t->TestFunc = [](ImGuiTestContext* ctx) {
-            auto& state = *g_state;
-            for (int frame = 0; frame < kMaxFrames && !(state.dashboard->isInitialised && state.dashboard->session.graphModel.topologyGeneration > 0UZ); ++frame) {
-                ctx->Yield();
-            }
-            ctx->Yield(3);
+            auto& state = *gState;
+            state.waitUntil(ctx, "the toolbar blocks are drawn", [&] { return state.dashboard->isInitialised && state.dashboard->session.graphModel.topologyGeneration > 0UZ && ctx->ItemExists("**/Amplify") && ctx->ItemExists("**/##Hold"); });
 
             "the ImGui toolbar blocks are drawn in graph order, those of other toolkits are not"_test = [&] {
                 expect(eq(ForeignToolbarBlock::drawCount, 0UZ)) << "the Qt block is never drawn";
-                expect(schedulerBlock("toolbar_c_foreign") != nullptr) << "the Qt block is in the flowgraph";
+                expect(state.findBlockInRootGraph("toolbar_c_foreign") != nullptr) << "the Qt block is in the flowgraph";
 
                 const ImGuiTestItemInfo checkbox = ctx->ItemInfo("**/##Hold");
                 const ImGuiTestItemInfo button   = ctx->ItemInfo("**/Amplify");
@@ -176,11 +156,8 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 using enum gr::lifecycle::State;
                 const auto enabled = [ctx](const char* ref) { return (ctx->ItemInfo(ref).ItemFlags & ImGuiItemFlags_Disabled) == 0; };
                 const auto reach   = [&](gr::lifecycle::State target) {
-                    // bounded by time, not frames: test frames run much faster than a start dispatched to the IO pool
-                    for (const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10); state.dashboard->session.state() != target && std::chrono::steady_clock::now() < deadline;) {
-                        ctx->Yield();
-                    }
-                    ctx->Yield(2);
+                    state.waitUntil(ctx, std::format("the scheduler is {}", gr::meta::enumName(target).value_or("?")), [&] { return state.dashboard->session.state() == target; });
+                    ctx->Yield(); // drawn once in that state
                     return state.dashboard->session.state() == target;
                 };
                 state.dashboard->schedulerUi = true;
@@ -219,22 +196,15 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
 
                 std::string withControls = state.grc;
                 withControls.replace(withControls.find("  layout: Free"), std::string_view("  layout: Free").size(), "  layout: Free\n  scheduler_ui: true");
-                auto loaded = DigitizerUi::Dashboard::create(state.restClient, DigitizerUi::DashboardDescription::createEmpty("with controls"));
+                auto loaded = std::make_unique<Dashboard>(state.restClient, DashboardDescription::createEmpty("with controls"));
                 loaded->loadAndThen(withControls, [](gr::Graph&&) {});
                 expect(loaded->schedulerUi) << "read from the .grc";
             };
 
             "a toolbar block added to the running flowgraph appears at the end of the toolbar"_test = [&] {
-                gr::Message message;
-                message.cmd         = gr::message::Command::Set;
-                message.endpoint    = gr::scheduler::property::kEmplaceBlock;
-                message.serviceName = state.dashboard->session.graphModel.rootBlock.ownerSchedulerUniqueName();
-                message.data        = gr::property_map{{"type", std::string("opendigitizer::test::TestPropertySetterButton")}, {"properties", gr::property_map{{"name", std::string("toolbar_d_extra")}, {"label", std::string("Extra")}}}};
-                state.dashboard->session.graphModel.sendMessage(std::move(message));
+                state.dashboard->session.graphModel.send(gr::message::Command::Set, state.dashboard->session.graphModel.rootBlock.ownerSchedulerUniqueName(), std::string(gr::scheduler::property::kEmplaceBlock), {{"type", std::string("opendigitizer::test::TestPropertySetterButton")}, {"properties", gr::property_map{{"name", std::string("toolbar_d_extra")}, {"label", std::string("Extra")}}}});
 
-                for (int frame = 0; frame < kMaxFrames && !ctx->ItemExists("**/Extra"); ++frame) {
-                    ctx->Yield();
-                }
+                state.waitUntil(ctx, "the new button is drawn", [ctx] { return ctx->ItemExists("**/Extra"); });
                 const ImGuiTestItemInfo extra   = ctx->ItemInfo("**/Extra");
                 const ImGuiTestItemInfo amplify = ctx->ItemInfo("**/Amplify");
                 expect(extra.ID != 0) << fatal << "the new button is drawn";
@@ -245,31 +215,23 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
 };
 
 int main(int argc, char* argv[]) {
-    TestState state;
-    g_state = std::addressof(state);
-
-    auto options             = DigitizerUi::test::TestOptions::fromArgs(argc, argv);
+    auto options             = test::TestOptions::fromArgs(argc, argv);
     options.screenshotPrefix = "toolbar_view";
     TestApp app(options);
-    auto    restClient = std::make_shared<opencmw::client::RestClient>();
 
     app.initImGui();
+    TestState state;
+    gState = std::addressof(state);
 
     auto& registry = gr::globalBlockRegistry();
-    gr::blocklib::initGrBasicBlocks(registry);
-    gr::blocklib::initGrTestingBlocks(registry);
+    registerAppBlocks(registry);
     std::ignore = gr::registerBlock<ForeignToolbarBlock>(registry);
-    std::ignore = gr::registerBlock<opendigitizer::test::TestPropertySetterButton>(registry);
+    registerWithIdPrefix<test::TestPropertySetterButton>(registry, kOpendigitizerIdPrefix);
 
-    auto grcFile     = cmrc::ui_test_assets::get_filesystem().open("examples/qa_toolbar.grc");
-    state.grc        = std::string(grcFile.begin(), grcFile.end());
-    state.restClient = restClient;
-    state.dashboard  = DigitizerUi::Dashboard::create(restClient, DigitizerUi::DashboardDescription::createEmpty("toolbar"));
-    state.dashboard->loadAndThen(std::string(grcFile.begin(), grcFile.end()), [&](gr::Graph&& graph) { state.dashboard->session.emplaceGraph(std::move(graph)); });
+    auto grcFile = cmrc::ui_test_assets::get_filesystem().open("examples/qa_toolbar.grc");
+    state.grc    = std::string(grcFile.begin(), grcFile.end());
+    state.reloadFromYamlString(state.grc, "toolbar");
 
     const bool result = app.runTests();
-    state.view        = {};
-    state.dashboard.reset();
-    g_state = nullptr;
     return result ? 0 : 1;
 }

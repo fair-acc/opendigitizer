@@ -18,15 +18,22 @@
 #include <imgui.h>
 #include <implot.h>
 
-namespace opendigitizer::charts {
+namespace gr::od::charts {
 
-/// YYChart - Correlation plot (Y1 vs Y2) as a GR4 block.
-/// Plots Y-values from one signal against another for Lissajous figures, phase plots, I-Q diagrams.
-/// Signal modes: 1 signal = XY fallback, 2 signals = Y1 vs Y2, 3+ signals = first as X, rest as Y.
 struct YYChart : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui">>, Chart {
-    // Annotated type alias for cleaner declarations
+    using Description = gr::Doc<"One signal against another, for Lissajous figures, phase plots and I-Q diagrams: one signal plots over time, two as Y1 vs Y2, three or more against the first.">;
+
     template<typename T, gr::meta::fixed_string description = "", typename... Arguments>
     using A = gr::Annotated<T, description, Arguments...>;
+
+    static constexpr std::string_view kChartTypeName    = "YYChart";
+    static constexpr SignalKind       kSupportedSignals = SignalKind::Streaming;
+
+    struct MultiYCategories {
+        std::array<std::optional<AxisCategory>, 3> yCategories{};
+        std::array<std::vector<std::string>, 3>    yAxisGroups{};
+        std::vector<std::size_t>                   overflowSinkIndices;
+    };
 
     A<std::string, "chart name", gr::Visible>                                         chart_name;
     A<std::string, "chart title">                                                     chart_title;
@@ -45,24 +52,18 @@ struct YYChart : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui
     A<gr::Size_t, "history depth", gr::Unit<"samples">>                               n_history     = kDefaultHistorySize;
     A<bool, "scatter", gr::Doc<"markers instead of a line, the newest point larger">> scatter       = false;
 
-    static constexpr SignalKind supportedSignals = SignalKind::Streaming;
-
     GR_MAKE_REFLECTABLE(YYChart, chart_name, chart_title, data_sinks, show_legend, show_grid, anti_aliasing, x_axis_scale, y_axis_scale, x_auto_scale, y_auto_scale, x_min, x_max, y_min, y_max, n_history, scatter);
 
     mutable std::array<std::string, 6UZ> _unitStringStorage{};
     std::size_t                          _drawnMarkers = 0UZ; // in the last draw
 
-    static constexpr std::string_view kChartTypeName = "YYChart";
-
-    [[nodiscard]] static constexpr std::string_view chartTypeName() noexcept { return kChartTypeName; }
-    [[nodiscard]] std::string_view                  uniqueId() const noexcept { return this->unique_name; }
-    [[nodiscard]] std::size_t                       drawnMarkers() const noexcept { return _drawnMarkers; }
-
     explicit YYChart(gr::property_map initParameters = {}) : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui">>(std::move(initParameters)) {}
 
     gr::work::Result work(std::size_t = std::numeric_limits<std::size_t>::max(), gr::device::DeviceContext& = gr::device::hostBackend()) noexcept { return {0UZ, 0UZ, gr::work::Status::OK}; }
 
-    void settingsChanged(const gr::property_map& /*oldSettings*/, const gr::property_map& newSettings) { handleSettingsChanged(newSettings); }
+    void settingsChanged(const gr::property_map& /*oldSettings*/, const gr::property_map& newSettings) { applyChartSettings(newSettings); }
+
+    [[nodiscard]] std::size_t drawnMarkers() const noexcept { return _drawnMarkers; }
 
     gr::work::Status draw(const gr::property_map& config = {}) {
         [[maybe_unused]] auto [plotFlags, plotSize, showLegend, chartMode, showGrid, chartStyle] = prepareDrawPrologue(config);
@@ -109,7 +110,7 @@ struct YYChart : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui
             ImPlot::PlotLineG(label, getter, data, static_cast<int>(count));
             return;
         }
-        const auto& style = DigitizerUi::LookAndFeel::instance().chartStyle;
+        const auto& style = LookAndFeel::instance().chartStyle;
         ImPlot::SetNextMarkerStyle(ImPlotMarker_Circle, style.scatterMarkerSize, colour, IMPLOT_AUTO, colour);
         ImPlot::PlotScatterG(label, getter, data, static_cast<int>(count));
         const ImPlotPoint newest = getter(static_cast<int>(count - 1UZ), data);
@@ -125,43 +126,37 @@ struct YYChart : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui
             return;
         }
 
-        // Skip if signal is hidden
         if (!sinkPtr->drawEnabled()) {
             drawEmptyPlot("Signal hidden", plotFlags, size, chartMode);
             return;
         }
 
-        // Acquire lock for thread-safe data access
         DataGuard dataLock = sinkPtr->dataGuard();
         if (sinkPtr->size() == 0) {
             drawEmptyPlot("No data", plotFlags, size, chartMode);
             return;
         }
 
-        if (!DigitizerUi::TouchHandler<>::BeginZoomablePlot(chart_name.value, size, plotFlags)) {
+        if (!TouchHandler<>::beginZoomablePlot(chart_name.value, size, plotFlags)) {
             return;
         }
 
-        // X-axis: Time, Y-axis: signal name with unit
         {
-            const auto xDashCfg  = parseAxisConfig(this->ui_constraints.value, true);
-            AxisScale  xScale    = static_cast<AxisScale>(x_axis_scale.value);
-            double     xMinLimit = x_auto_scale.value[0] ? std::numeric_limits<double>::quiet_NaN() : x_min.value[0];
-            double     xMaxLimit = x_auto_scale.value[0] ? std::numeric_limits<double>::quiet_NaN() : x_max.value[0];
-            auto       xCond     = trackLimitsCond(true, xMinLimit, xMaxLimit);
+            const auto xDashCfg               = parseAxisConfig(this->ui_constraints.value, true);
+            AxisScale  xScale                 = static_cast<AxisScale>(x_axis_scale.value);
+            const auto [xMinLimit, xMaxLimit] = axisLimits(x_auto_scale.value[0], x_min.value[0], x_max.value[0], std::nullopt);
+            auto xCond                        = trackLimitsCond(true, xMinLimit, xMaxLimit);
             axis::setupAxis(ImAxis_X1, AxisCategory{.quantity = "Time", .unit = "s"}, LabelFormat::Auto, axisLabelWidthOrDefault(xDashCfg, defaultAxisLabelWidthFor(ImAxis_X1, size)), xMinLimit, xMaxLimit, 1UZ, xScale, _unitStringStorage, showGrid, /*foreground=*/false, xCond);
 
-            const auto   yDashCfg  = parseAxisConfig(this->ui_constraints.value, false);
-            AxisScale    yScale    = static_cast<AxisScale>(y_axis_scale.value);
-            double       yMinLimit = y_auto_scale.value[0] ? std::numeric_limits<double>::quiet_NaN() : y_min.value[0];
-            double       yMaxLimit = y_auto_scale.value[0] ? std::numeric_limits<double>::quiet_NaN() : y_max.value[0];
-            auto         yCond     = trackLimitsCond(false, yMinLimit, yMaxLimit);
+            const auto yDashCfg               = parseAxisConfig(this->ui_constraints.value, false);
+            AxisScale  yScale                 = static_cast<AxisScale>(y_axis_scale.value);
+            const auto [yMinLimit, yMaxLimit] = axisLimits(y_auto_scale.value[0], y_min.value[0], y_max.value[0], std::nullopt);
+            auto         yCond                = trackLimitsCond(false, yMinLimit, yMaxLimit);
             AxisCategory yCat{.quantity = std::string(sinkPtr->signalQuantity()), .unit = std::string(sinkPtr->signalUnit()), .color = sinkPtr->color()};
             axis::setupAxis(ImAxis_Y1, yCat, LabelFormat::Auto, axisLabelWidthOrDefault(yDashCfg, defaultAxisLabelWidthFor(ImAxis_Y1, size)), yMinLimit, yMaxLimit, 1UZ, yScale, _unitStringStorage, showGrid, /*foreground=*/false, yCond);
         }
         setupFinish();
 
-        // clamp to n_history: show only the most recent samples
         std::size_t totalCount = sinkPtr->size();
         std::size_t dataCount  = totalCount;
         std::size_t offset     = 0;
@@ -189,8 +184,8 @@ struct YYChart : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui
             &ctx, dataCount, sinkColor(sinkPtr->color()), seriesLineWidth(*sinkPtr));
 
         tooltip::showPlotMouseTooltip();
-        handleCommonInteractions(chartMode);
-        DigitizerUi::TouchHandler<>::EndZoomablePlot();
+        updateInteractions(chartMode);
+        TouchHandler<>::endZoomablePlot();
     }
 
     void drawCorrelation(ImPlotFlags plotFlags, const ImVec2& size, ChartMode chartMode, bool showGrid = true) {
@@ -202,16 +197,12 @@ struct YYChart : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui
             return;
         }
 
-        // Skip if any signal is hidden
         if (!sinkXPtr->drawEnabled() || !sinkYPtr->drawEnabled()) {
             drawEmptyPlot("Signal hidden", plotFlags, size, chartMode);
             return;
         }
 
-        // Acquire locks in canonical pointer order to prevent ABBA deadlock
-        const auto& [first, second] = (sinkXPtr.get() < sinkYPtr.get()) ? std::tie(sinkXPtr, sinkYPtr) : std::tie(sinkYPtr, sinkXPtr);
-        DataGuard lockFirst         = first->dataGuard();
-        DataGuard lockSecond        = second->dataGuard();
+        const std::vector<DataGuard> guards = lockAll(std::array{sinkXPtr.get(), sinkYPtr.get()});
 
         std::size_t totalCount = std::min(sinkXPtr->size(), sinkYPtr->size());
         if (totalCount == 0) {
@@ -219,35 +210,31 @@ struct YYChart : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui
             return;
         }
 
-        // clamp to n_history: show only the most recent samples
         std::size_t count  = std::min(totalCount, static_cast<std::size_t>(n_history.value));
         std::size_t offset = totalCount - count;
 
-        if (!DigitizerUi::TouchHandler<>::BeginZoomablePlot(chart_name.value, size, plotFlags)) {
+        if (!TouchHandler<>::beginZoomablePlot(chart_name.value, size, plotFlags)) {
             return;
         }
 
-        // Build axis categories from sink metadata
         {
-            const auto   xDashCfg  = parseAxisConfig(this->ui_constraints.value, true);
-            AxisScale    xScale    = static_cast<AxisScale>(x_axis_scale.value);
-            double       xMinLimit = x_auto_scale.value[0] ? std::numeric_limits<double>::quiet_NaN() : x_min.value[0];
-            double       xMaxLimit = x_auto_scale.value[0] ? std::numeric_limits<double>::quiet_NaN() : x_max.value[0];
-            auto         xCond     = trackLimitsCond(true, xMinLimit, xMaxLimit);
+            const auto xDashCfg               = parseAxisConfig(this->ui_constraints.value, true);
+            AxisScale  xScale                 = static_cast<AxisScale>(x_axis_scale.value);
+            const auto [xMinLimit, xMaxLimit] = axisLimits(x_auto_scale.value[0], x_min.value[0], x_max.value[0], std::nullopt);
+            auto         xCond                = trackLimitsCond(true, xMinLimit, xMaxLimit);
             AxisCategory xCat{.quantity = sinkXPtr->signalQuantity().empty() ? std::string(sinkXPtr->signalName()) : std::string(sinkXPtr->signalQuantity()), .unit = std::string(sinkXPtr->signalUnit()), .color = sinkXPtr->color()};
             axis::setupAxis(ImAxis_X1, xCat, LabelFormat::Auto, axisLabelWidthOrDefault(xDashCfg, defaultAxisLabelWidthFor(ImAxis_X1, size)), xMinLimit, xMaxLimit, 1UZ, xScale, _unitStringStorage, showGrid, /*foreground=*/false, xCond);
 
-            const auto   yDashCfg  = parseAxisConfig(this->ui_constraints.value, false);
-            AxisScale    yScale    = static_cast<AxisScale>(y_axis_scale.value);
-            double       yMinLimit = y_auto_scale.value[0] ? std::numeric_limits<double>::quiet_NaN() : y_min.value[0];
-            double       yMaxLimit = y_auto_scale.value[0] ? std::numeric_limits<double>::quiet_NaN() : y_max.value[0];
-            auto         yCond     = trackLimitsCond(false, yMinLimit, yMaxLimit);
+            const auto yDashCfg               = parseAxisConfig(this->ui_constraints.value, false);
+            AxisScale  yScale                 = static_cast<AxisScale>(y_axis_scale.value);
+            const auto [yMinLimit, yMaxLimit] = axisLimits(y_auto_scale.value[0], y_min.value[0], y_max.value[0], std::nullopt);
+            auto         yCond                = trackLimitsCond(false, yMinLimit, yMaxLimit);
             AxisCategory yCat{.quantity = sinkYPtr->signalQuantity().empty() ? std::string(sinkYPtr->signalName()) : std::string(sinkYPtr->signalQuantity()), .unit = std::string(sinkYPtr->signalUnit()), .color = sinkYPtr->color()};
             axis::setupAxis(ImAxis_Y1, yCat, LabelFormat::Auto, axisLabelWidthOrDefault(yDashCfg, defaultAxisLabelWidthFor(ImAxis_Y1, size)), yMinLimit, yMaxLimit, 1UZ, yScale, _unitStringStorage, showGrid, /*foreground=*/false, yCond);
         }
         setupFinish();
 
-        // Plot X signal as dummy to create legend entry for D&D
+        // the X signal's legend entry, for drag and drop
         {
             ImVec4 xColor = sinkColor(sinkXPtr->color());
             ImPlot::SetNextLineStyle(xColor);
@@ -258,8 +245,8 @@ struct YYChart : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui
         }
 
         struct CorrelationContext {
-            const SignalSink* sink_x;
-            const SignalSink* sink_y;
+            const SignalSink* sinkX;
+            const SignalSink* sinkY;
             std::size_t       offset;
         };
         CorrelationContext ctx{sinkXPtr.get(), sinkYPtr.get(), offset};
@@ -270,22 +257,16 @@ struct YYChart : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui
             [](int idx, void* user_data) -> ImPlotPoint {
                 auto*       c         = static_cast<CorrelationContext*>(user_data);
                 std::size_t actualIdx = c->offset + static_cast<std::size_t>(idx);
-                double      x         = static_cast<double>(c->sink_x->yAt(actualIdx));
-                double      y         = static_cast<double>(c->sink_y->yAt(actualIdx));
+                double      x         = static_cast<double>(c->sinkX->yAt(actualIdx));
+                double      y         = static_cast<double>(c->sinkY->yAt(actualIdx));
                 return ImPlotPoint(x, y);
             },
             &ctx, count, sinkColor(sinkYPtr->color()), seriesLineWidth(*sinkYPtr));
 
         tooltip::showPlotMouseTooltip();
-        handleCommonInteractions(chartMode);
-        DigitizerUi::TouchHandler<>::EndZoomablePlot();
+        updateInteractions(chartMode);
+        TouchHandler<>::endZoomablePlot();
     }
-
-    struct MultiYCategories {
-        std::array<std::optional<AxisCategory>, 3> yCategories{};
-        std::array<std::vector<std::string>, 3>    yAxisGroups{};
-        std::vector<std::size_t>                   overflowSinkIndices;
-    };
 
     MultiYCategories buildMultiYCategories() const {
         MultiYCategories result;
@@ -315,7 +296,6 @@ struct YYChart : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui
             return;
         }
 
-        // Check X has data (brief scoped lock)
         {
             DataGuard lockX = sinkXPtr->dataGuard();
             if (sinkXPtr->size() == 0) {
@@ -327,32 +307,29 @@ struct YYChart : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui
         auto [yCategories, yAxisGroups, overflowSinkIndices] = buildMultiYCategories();
         std::size_t nYAxes                                   = axis::activeAxisCount(yCategories);
 
-        if (!DigitizerUi::TouchHandler<>::BeginZoomablePlot(chart_name.value, size, plotFlags)) {
+        if (!TouchHandler<>::beginZoomablePlot(chart_name.value, size, plotFlags)) {
             return;
         }
 
-        // X-axis from sink[0]'s signal metadata (no data lock needed for metadata accessors)
+        // metadata accessors need no data lock
         {
             std::optional<AxisCategory> xCategory = AxisCategory{.quantity = sinkXPtr->signalQuantity().empty() ? std::string(sinkXPtr->signalName()) : std::string(sinkXPtr->signalQuantity()), .unit = std::string(sinkXPtr->signalUnit()), .color = sinkXPtr->color()};
             const auto                  xDashCfg  = parseAxisConfig(this->ui_constraints.value, true);
             AxisScale                   xScale    = static_cast<AxisScale>(x_axis_scale.value);
-            double                      xMinLimit = x_auto_scale.value[0] ? std::numeric_limits<double>::quiet_NaN() : x_min.value[0];
-            double                      xMaxLimit = x_auto_scale.value[0] ? std::numeric_limits<double>::quiet_NaN() : x_max.value[0];
-            auto                        xCond     = trackLimitsCond(true, xMinLimit, xMaxLimit);
+            const auto [xMinLimit, xMaxLimit]     = axisLimits(x_auto_scale.value[0], x_min.value[0], x_max.value[0], std::nullopt);
+            auto xCond                            = trackLimitsCond(true, xMinLimit, xMaxLimit);
             axis::setupAxis(ImAxis_X1, xCategory, LabelFormat::Auto, axisLabelWidthOrDefault(xDashCfg, defaultAxisLabelWidthFor(ImAxis_X1, size)), xMinLimit, xMaxLimit, 1UZ, xScale, _unitStringStorage, showGrid, /*foreground=*/false, xCond);
         }
 
-        // Y-axes (up to 3) grouped by quantity+unit
         AxisScale yScale = static_cast<AxisScale>(y_axis_scale.value);
         for (std::size_t i = 0; i < yCategories.size(); ++i) {
             if (!yCategories[i].has_value()) {
                 continue;
             }
-            double     yMinLimit = y_auto_scale.value[i] ? std::numeric_limits<double>::quiet_NaN() : y_min.value[i];
-            double     yMaxLimit = y_auto_scale.value[i] ? std::numeric_limits<double>::quiet_NaN() : y_max.value[i];
-            auto       yCond     = trackLimitsCond(false, yMinLimit, yMaxLimit, i);
-            auto       yDashCfg  = parseAxisConfig(this->ui_constraints.value, false, i);
-            const auto axisId    = ImAxis_Y1 + static_cast<int>(i);
+            const auto [yMinLimit, yMaxLimit] = axisLimits(y_auto_scale.value[i], y_min.value[i], y_max.value[i], std::nullopt);
+            auto       yCond                  = trackLimitsCond(false, yMinLimit, yMaxLimit, i);
+            auto       yDashCfg               = parseAxisConfig(this->ui_constraints.value, false, i);
+            const auto axisId                 = ImAxis_Y1 + static_cast<int>(i);
             axis::setupAxis(axisId, yCategories[i], LabelFormat::Auto, axisLabelWidthOrDefault(yDashCfg, defaultAxisLabelWidthFor(axisId, size)), yMinLimit, yMaxLimit, nYAxes, yScale, _unitStringStorage, showGrid, /*foreground=*/false, yCond);
         }
 
@@ -364,7 +341,7 @@ struct YYChart : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui
             ImPlot::PlotText(warning.c_str(), (limits.X.Min + limits.X.Max) / 2, limits.Y.Max - (limits.Y.Max - limits.Y.Min) * 0.05);
         }
 
-        // dummy plot for sink[0] legend entry (D&D support)
+        // the X signal's legend entry, for drag and drop
         {
             auto   lockX  = sinkXPtr->dataGuard();
             ImVec4 xColor = sinkColor(sinkXPtr->color());
@@ -391,10 +368,7 @@ struct YYChart : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui
                 continue;
             }
 
-            // Acquire locks in canonical pointer order to prevent ABBA deadlock
-            const auto& [first, second] = (sinkXPtr.get() < sinkYPtr.get()) ? std::tie(sinkXPtr, sinkYPtr) : std::tie(sinkYPtr, sinkXPtr);
-            auto lockFirst              = first->dataGuard();
-            auto lockSecond             = (first.get() != second.get()) ? second->dataGuard() : DataGuard{};
+            const std::vector<DataGuard> guards = lockAll(std::array{sinkXPtr.get(), sinkYPtr.get()});
 
             std::size_t totalCount = std::min(sinkXPtr->size(), sinkYPtr->size());
             if (totalCount == 0) {
@@ -422,15 +396,11 @@ struct YYChart : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui
         }
 
         tooltip::showPlotMouseTooltip();
-        handleCommonInteractions(chartMode);
-        DigitizerUi::TouchHandler<>::EndZoomablePlot();
+        updateInteractions(chartMode);
+        TouchHandler<>::endZoomablePlot();
     }
 };
 
-} // namespace opendigitizer::charts
-
-// Register YYChart with the GR4 block registry
-GR_REGISTER_BLOCK("opendigitizer::charts::YYChart", opendigitizer::charts::YYChart)
-inline auto registerYYChartCompatibilities = opendigitizer::charts::registerChartSignalCompatibility<opendigitizer::charts::YYChart>();
+} // namespace gr::od::charts
 
 #endif // OPENDIGITIZER_CHARTS_YYCHART_HPP

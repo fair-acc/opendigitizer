@@ -21,23 +21,21 @@ void simulateWorkJittered(std::chrono::milliseconds base, std::chrono::milliseco
     std::this_thread::sleep_for(base + std::chrono::milliseconds(dist(gen)));
 }
 
-// Demonstrates basic labeled snapshots with relative timing
 void basicLabeledSnapshots(Profiler& profiler, int iterations) {
     thread_local static PeriodicTimer tim{profiler.forThisThread(), std::format("basic_loop#{}", std::this_thread::get_id()), "diag", 100ms, true};
 
     for (int i = 0; i < iterations; ++i) {
         tim.begin();
         simulateWork(5ms);
-        tim.snapshot("blocked"); // relative to begin (previous)
+        tim.snapshot("blocked");
         simulateWork(15ms);
-        tim.snapshot("work"); // relative to blocked (previous)
+        tim.snapshot("work");
         simulateWork(2ms);
-        tim.snapshot("cleanup"); // relative to work (previous)
+        tim.snapshot("cleanup");
     }
     tim.flush();
 }
 
-// Demonstrates explicit reference indices
 void explicitReferenceIndices(Profiler& profiler, int iterations) {
     thread_local static PeriodicTimer tim{profiler.forThisThread(), "ref_loop", "diag", 100ms, true};
 
@@ -53,25 +51,24 @@ void explicitReferenceIndices(Profiler& profiler, int iterations) {
     tim.flush();
 }
 
-// Demonstrates user-defined metrics
 void userMetrics(Profiler& profiler, int iterations) {
     thread_local static PeriodicTimer tim{profiler.forThisThread(), "metrics_loop", "diag", 100ms, true};
 
     std::mt19937                          gen{42};
-    std::uniform_real_distribution<float> cpu_dist(0.1f, 0.9f);
-    std::uniform_int_distribution<int>    buf_dist(100, 10000);
+    std::uniform_real_distribution<float> cpuDist(0.1f, 0.9f);
+    std::uniform_int_distribution<int>    bufDist(100, 10000);
 
     for (int i = 0; i < iterations; ++i) {
         tim.begin();
 
-        const float cpu_usage = cpu_dist(gen);
-        const int   buf_size  = buf_dist(gen);
+        const float cpuUsage = cpuDist(gen);
+        const int   bufSize  = bufDist(gen);
 
         simulateWork(5ms);
         tim.snapshot("io");
 
-        tim.metric("cpu", cpu_usage);
-        tim.metric("buffer_size", buf_size);
+        tim.metric("cpu", cpuUsage);
+        tim.metric("buffer_size", bufSize);
 
         simulateWork(10ms);
         tim.snapshot("compute");
@@ -79,30 +76,26 @@ void userMetrics(Profiler& profiler, int iterations) {
     tim.flush();
 }
 
-// Demonstrates threshold alerts with predicates
 void thresholdAlerts(Profiler& profiler, int iterations) {
     thread_local static PeriodicTimer tim{profiler.forThisThread(), "alert_loop", "diag", 100ms, true};
 
     for (int i = 0; i < iterations; ++i) {
         tim.begin();
 
-        // simulate variable work - some iterations will exceed threshold
-        const auto work_time = (i % 5 == 0) ? 25ms : 8ms;
+        const auto workTime = (i % 5 == 0) ? 25ms : 8ms;
 
         simulateWork(5ms);
         tim.snapshot("blocked");
 
-        simulateWork(work_time);
-        tim.snapshot("work", kPrevious, [](auto d) { return d > 20ms; }); // alert if > 20ms
+        simulateWork(workTime);
+        tim.snapshot("work", kPrevious, [](auto d) { return d > 20ms; });
 
-        // metric with threshold
         const float cpu = (i % 3 == 0) ? 0.95f : 0.5f;
-        tim.metric("cpu", cpu, [](auto v) { return v > 0.9f; }); // alert if > 90%
+        tim.metric("cpu", cpu, [](auto v) { return v > 0.9f; });
     }
     tim.flush();
 }
 
-// Multi-threaded usage with independent timers per thread
 void multiThreadedWorker(Profiler& profiler, int id, int iterations) {
     thread_local static PeriodicTimer tim{profiler.forThisThread(), std::format("worker{}", id), "diag", 50ms, true};
 
@@ -123,7 +116,6 @@ void multiThreadedTest(Profiler& profiler) {
     std::jthread t3(multiThreadedWorker, std::ref(profiler), 2, 10);
 }
 
-// Demonstrates mixed absolute/relative snapshots
 void mixedReferenceSnapshots(Profiler& profiler, int iterations) {
     thread_local static PeriodicTimer tim{profiler.forThisThread(), "mixed_ref", "diag", 100ms, true};
 

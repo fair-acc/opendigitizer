@@ -20,7 +20,7 @@
 #include <imgui.h>
 #include <implot.h>
 
-namespace opendigitizer::charts {
+namespace gr::od::charts {
 
 struct SpectrumPlot : gr::Block<SpectrumPlot, gr::Drawable<gr::UICategory::Content, "ImGui">>, Chart {
     using Description = gr::Doc<"Spectrum magnitude plot with optional max-hold, min-hold, and average traces.">;
@@ -28,20 +28,21 @@ struct SpectrumPlot : gr::Block<SpectrumPlot, gr::Drawable<gr::UICategory::Conte
     template<typename T, gr::meta::fixed_string description = "", typename... Arguments>
     using A = gr::Annotated<T, description, Arguments...>;
 
+    static constexpr std::string_view kChartTypeName    = "SpectrumPlot";
+    static constexpr SignalKind       kSupportedSignals = SignalKind::Dataset1D;
+
     A<std::string, "chart name", gr::Visible>              chart_name;
     A<std::string, "chart title">                          chart_title;
     A<std::vector<std::string>, "data sinks", gr::Visible> data_sinks  = {};
     A<bool, "show legend", gr::Visible>                    show_legend = false;
     A<bool, "show grid", gr::Visible>                      show_grid   = true;
 
-    // trace toggles and accumulation
     A<bool, "show max hold", gr::Visible>                                                                                    show_max_hold    = true;
     A<bool, "show min hold", gr::Visible>                                                                                    show_min_hold    = true;
     A<bool, "show average", gr::Visible>                                                                                     show_average     = false;
     A<std::uint32_t, "trace color", gr::Visible, gr::Unit<"Color">, gr::Doc<"RGB colour for accumulated traces (0xRRGGBB)">> trace_color      = 0x8855BBU;
     A<gr::Size_t, "decay tau frames", gr::Doc<"exponential decay time constant in frames (0 = infinite hold)">>              decay_tau_frames = 100U;
 
-    // axis limits
     A<bool, "X auto-scale"> x_auto_scale = true;
     A<bool, "Y auto-scale"> y_auto_scale = true;
     A<double, "X-axis min"> x_min        = std::numeric_limits<double>::lowest();
@@ -65,22 +66,17 @@ struct SpectrumPlot : gr::Block<SpectrumPlot, gr::Drawable<gr::UICategory::Conte
     RangeLabelsSetting     show_range_labels = true;
     F0LabelsSetting        show_f0_labels    = true;
 
-    static constexpr SignalKind supportedSignals = SignalKind::Dataset1D;
-
     GR_MAKE_REFLECTABLE(SpectrumPlot, chart_name, chart_title, data_sinks, show_legend, show_grid, show_max_hold, show_min_hold, show_average, trace_color, decay_tau_frames, x_auto_scale, y_auto_scale, x_min, x_max, y_min, y_max, range_style, range_min, range_max, range_min_width, range_color, range_min_targets, range_max_targets, f0_style, f0, f0_color, f0_targets, follow_inputs, snap_to_bins, show_range_labels, show_f0_labels);
 
     std::unordered_map<std::string, TraceAccumulator> _tracesPerSink;
     std::unordered_map<std::string, std::size_t>      _lastSampleCountPerSink;
     std::array<std::string, 6UZ>                      _unitStore{};
 
-    static constexpr std::string_view kChartTypeName = "SpectrumPlot";
-
-    [[nodiscard]] static constexpr std::string_view chartTypeName() noexcept { return kChartTypeName; }
-    [[nodiscard]] std::string_view                  uniqueId() const noexcept { return this->unique_name; }
+    void reset() { requestRenderReset(); }
 
     gr::work::Result work(std::size_t = std::numeric_limits<std::size_t>::max(), gr::device::DeviceContext& = gr::device::hostBackend()) noexcept { return {0UZ, 0UZ, gr::work::Status::OK}; }
 
-    void settingsChanged(const gr::property_map& /*oldSettings*/, const gr::property_map& newSettings) { handleSettingsChanged(newSettings); }
+    void settingsChanged(const gr::property_map& /*oldSettings*/, const gr::property_map& newSettings) { applyChartSettings(newSettings); }
 
     gr::work::Status draw(const gr::property_map& config = {}) {
         [[maybe_unused]] auto [plotFlags, plotSize, showLegend, chartMode, showGrid, chartStyle] = prepareDrawPrologue(config);
@@ -90,26 +86,24 @@ struct SpectrumPlot : gr::Block<SpectrumPlot, gr::Drawable<gr::UICategory::Conte
             return gr::work::Status::OK;
         }
 
-        const auto& lnf                   = DigitizerUi::LookAndFeel::instance();
+        const auto& lnf                   = LookAndFeel::instance();
         const auto [labelFace, labelSize] = chartTextFont(lnf.fontSmall());
-        DigitizerUi::IMW::FontWithSize plotFont(labelFace, labelSize);
+        imw::FontWithSize plotFont(labelFace, labelSize);
 
-        if (!DigitizerUi::TouchHandler<>::BeginZoomablePlot(chart_name.value, plotSize, plotFlags)) {
+        if (!TouchHandler<>::beginZoomablePlot(chart_name.value, plotSize, plotFlags)) {
             return gr::work::Status::OK;
         }
 
         setupAxes(plotSize, showGrid);
         setupFinish();
-        drawSpectrumSignals();
+        drawSpectrumSignals(*this, _lastSampleCountPerSink);
         drawFrequencyMarkers(0UZ);
         tooltip::showPlotMouseTooltip();
-        handleCommonInteractions(chartMode);
-        DigitizerUi::TouchHandler<>::EndZoomablePlot();
+        updateInteractions(chartMode);
+        TouchHandler<>::endZoomablePlot();
 
         return gr::work::Status::OK;
     }
-
-    void reset() { requestRenderReset(); }
 
     void resetRenderState() {
         _tracesPerSink.clear();
@@ -120,24 +114,8 @@ struct SpectrumPlot : gr::Block<SpectrumPlot, gr::Drawable<gr::UICategory::Conte
         setupSingleAxis(true, ImAxis_X1, plotSize, showGrid, LabelFormat::MetricInline);
         setupSingleAxis(false, ImAxis_Y1, plotSize, showGrid);
     }
-
-    void drawSpectrumSignals() {
-        forEachValidSpectrum(_signalSinks, [&](const auto& sink, const SpectrumFrame& f) {
-            if (sink.drawEnabled()) {
-                plotTrace(plotLabel(sink).c_str(), f.xValues, f.yValues, f.nBins, sinkColor(sink.color()), seriesLineWidth(sink));
-            }
-            const std::string sinkKey = std::string(sink.uniqueName());
-            auto&             traces  = _tracesPerSink[sinkKey];
-            const std::size_t nNew    = consumeNewData(_lastSampleCountPerSink[sinkKey], sink.totalSampleCount());
-            drawTraceOverlays(traces, f, nNew, static_cast<double>(decay_tau_frames), sinkColor(trace_color), show_max_hold, show_min_hold, show_average);
-            return true;
-        });
-    }
 };
 
-} // namespace opendigitizer::charts
-
-GR_REGISTER_BLOCK("opendigitizer::charts::SpectrumPlot", opendigitizer::charts::SpectrumPlot)
-inline auto registerSpectrumPlotCompatibilities = opendigitizer::charts::registerChartSignalCompatibility<opendigitizer::charts::SpectrumPlot>();
+} // namespace gr::od::charts
 
 #endif // OPENDIGITIZER_CHARTS_SPECTRUMPLOT_HPP

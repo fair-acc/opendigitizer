@@ -22,7 +22,7 @@
 #include <imgui.h>
 #include <implot.h>
 
-namespace opendigitizer::charts {
+namespace gr::od::charts {
 
 enum class TopPaneMode : int {
     Spectrum = 0, // magnitude line traces (max/min hold, average)
@@ -35,7 +35,9 @@ struct SpectrumView : gr::Block<SpectrumView, gr::Drawable<gr::UICategory::Conte
     template<typename T, gr::meta::fixed_string description = "", typename... Arguments>
     using A = gr::Annotated<T, description, Arguments...>;
 
-    // identity
+    static constexpr std::string_view kChartTypeName    = "SpectrumView";
+    static constexpr SignalKind       kSupportedSignals = SignalKind::Dataset1D;
+
     A<std::string, "chart name", gr::Visible>              chart_name;
     A<std::vector<std::string>, "data sinks", gr::Visible> data_sinks  = {};
     A<bool, "show legend", gr::Visible>                    show_legend = false;
@@ -43,27 +45,22 @@ struct SpectrumView : gr::Block<SpectrumView, gr::Drawable<gr::UICategory::Conte
 
     A<TopPaneMode, "top pane mode", gr::Visible> top_pane_mode = TopPaneMode::Spectrum;
 
-    // spectrum trace settings (top pane mode 0)
     A<bool, "show max hold", gr::Visible>                                                                                    show_max_hold    = true;
     A<bool, "show min hold", gr::Visible>                                                                                    show_min_hold    = true;
     A<bool, "show average", gr::Visible>                                                                                     show_average     = false;
     A<std::uint32_t, "trace color", gr::Visible, gr::Unit<"Color">, gr::Doc<"RGB colour for accumulated traces (0xRRGGBB)">> trace_color      = 0x8855BBU;
     A<gr::Size_t, "decay tau frames", gr::Doc<"exponential decay time constant in frames (0 = infinite hold)">>              decay_tau_frames = 100U;
 
-    // density settings (top pane mode 1)
     A<gr::Size_t, "amplitude bins", gr::Visible, gr::Limits<4U, 1024U>>                       amplitude_bins             = 256U;
     A<gr::Size_t, "histogram decay tau", gr::Doc<"histogram decay in frames (0 = infinite)">> histogram_decay_tau_frames = 100U;
     A<bool, "show current overlay", gr::Visible>                                              show_current_overlay       = true;
 
-    // waterfall settings (bottom pane)
     A<gr::Size_t, "history depth", gr::Visible, gr::Limits<16U, 4096U>>                                      n_history        = 256U;
     A<ImPlotColormap_, "colormap", gr::Visible>                                                              colormap         = ImPlotColormap_Viridis;
     A<bool, "GPU acceleration", gr::Doc<"use GPU texture for rendering (falls back to CPU if unavailable)">> gpu_acceleration = true;
 
-    // pane layout
     A<float, "top pane ratio", gr::Limits<0.2f, 0.8f>, gr::Doc<"fraction of height for top pane">> top_pane_ratio = 0.4f;
 
-    // axis limits
     A<bool, "X auto-scale"> x_auto_scale = true;
     A<bool, "Y auto-scale"> y_auto_scale = true;
     A<double, "X-axis min"> x_min        = std::numeric_limits<double>::lowest();
@@ -87,40 +84,27 @@ struct SpectrumView : gr::Block<SpectrumView, gr::Drawable<gr::UICategory::Conte
     RangeLabelsSetting     show_range_labels = true;
     F0LabelsSetting        show_f0_labels    = true;
 
-    static constexpr SignalKind supportedSignals = SignalKind::Dataset1D;
-
     GR_MAKE_REFLECTABLE(SpectrumView, chart_name, data_sinks, show_legend, show_grid, top_pane_mode, show_max_hold, show_min_hold, show_average, trace_color, decay_tau_frames, amplitude_bins, histogram_decay_tau_frames, show_current_overlay, n_history, colormap, gpu_acceleration, top_pane_ratio, x_auto_scale, y_auto_scale, x_min, x_max, y_min, y_max, range_style, range_min, range_max, range_min_width, range_color, range_min_targets, range_max_targets, f0_style, f0, f0_color, f0_targets, follow_inputs, snap_to_bins, show_range_labels, show_f0_labels);
 
     std::unordered_map<std::string, TraceAccumulator> _tracesPerSink;
     std::unordered_map<std::string, std::size_t>      _topPaneSampleCountPerSink;
     DensityHistogram                                  _density;
     WaterfallBuffer                                   _waterfall;
-    std::vector<float>                                _logRow; // scratch: linear spectrum re-binned onto log-spaced columns
-    std::size_t                                       _lastSpectrumSize         = 0;
     std::size_t                                       _lastWaterfallSampleCount = std::numeric_limits<std::size_t>::max();
     std::array<float, 2UZ>                            _rowRatios                = {0.4f, 0.6f};
     std::array<std::string, 6UZ>                      _unitStore{};
-    std::array<std::string, 6UZ>                      _waterfallUnitStore{};
+    std::string                                       _waterfallTimeUnit;
 
-    struct RenderInfo {
-        double freqMin;
-        double freqMax;
-    };
-    std::optional<RenderInfo> _lastRenderInfo;
-    ImPlotCond                _sharedXCond = ImPlotCond_Once; // computed once per frame, shared across both panes
-    double                    _topPaneYMin = -120.0;          // captured from the displayed top-pane Y-axis range
-    double                    _topPaneYMax = 0.0;
+    std::optional<FrequencySpan> _lastRenderInfo;
+    ImPlotCond                   _sharedXCond = ImPlotCond_Once; // computed once per frame, shared across both panes
+    double                       _topPaneYMin = -120.0;          // captured from the displayed top-pane Y-axis range
+    double                       _topPaneYMax = 0.0;
 
-    static constexpr std::string_view kChartTypeName = "SpectrumView";
-
-    [[nodiscard]] static constexpr std::string_view chartTypeName() noexcept { return kChartTypeName; }
-    [[nodiscard]] std::string_view                  uniqueId() const noexcept { return this->unique_name; }
+    void reset() { requestRenderReset(); }
 
     gr::work::Result work(std::size_t = std::numeric_limits<std::size_t>::max(), gr::device::DeviceContext& = gr::device::hostBackend()) noexcept { return {0UZ, 0UZ, gr::work::Status::OK}; }
 
-    void settingsChanged(const gr::property_map& /*oldSettings*/, const gr::property_map& newSettings) { handleSettingsChanged(newSettings); }
-
-    void reset() { requestRenderReset(); }
+    void settingsChanged(const gr::property_map& /*oldSettings*/, const gr::property_map& newSettings) { applyChartSettings(newSettings); }
 
     void resetRenderState() {
         _tracesPerSink.clear();
@@ -146,21 +130,13 @@ struct SpectrumView : gr::Block<SpectrumView, gr::Drawable<gr::UICategory::Conte
         _rowRatios[0] = top_pane_ratio;
         _rowRatios[1] = 1.0f - top_pane_ratio;
 
-        // precompute x-axis limit condition once — both panes share x-axis via LinkAllX
-        {
-            const auto dashCfg = parseAxisConfig(this->ui_constraints.value, true);
-            double     xMinLim = x_auto_scale.value ? std::numeric_limits<double>::quiet_NaN() : static_cast<double>(x_min.value);
-            double     xMaxLim = x_auto_scale.value ? std::numeric_limits<double>::quiet_NaN() : static_cast<double>(x_max.value);
-            if (dashCfg && x_auto_scale.value) {
-                xMinLim = std::isfinite(dashCfg->min) ? static_cast<double>(dashCfg->min) : xMinLim;
-                xMaxLim = std::isfinite(dashCfg->max) ? static_cast<double>(dashCfg->max) : xMaxLim;
-            }
-            _sharedXCond = trackLimitsCond(true, xMinLim, xMaxLim);
-        }
+        // once for both panes: they share the x-axis via LinkAllX
+        const auto [xMinLim, xMaxLim] = axisLimits(x_auto_scale.value, x_min.value, x_max.value, parseAxisConfig(this->ui_constraints.value, true));
+        _sharedXCond                  = trackLimitsCond(true, xMinLim, xMaxLim);
 
-        const auto& lnf                   = DigitizerUi::LookAndFeel::instance();
+        const auto& lnf                   = LookAndFeel::instance();
         const auto [labelFace, labelSize] = chartTextFont(lnf.fontSmall());
-        DigitizerUi::IMW::FontWithSize plotFont(labelFace, labelSize);
+        imw::FontWithSize plotFont(labelFace, labelSize);
 
         ImPlotSubplotFlags subplotFlags = ImPlotSubplotFlags_LinkCols | ImPlotSubplotFlags_LinkAllX;
         auto               subplotId    = std::format("##combined_{}", chart_name.value);
@@ -175,8 +151,6 @@ struct SpectrumView : gr::Block<SpectrumView, gr::Drawable<gr::UICategory::Conte
         return gr::work::Status::OK;
     }
 
-    void setupFrequencyAxis(const ImVec2& plotSize, bool showGrid) { setupSingleAxis(true, ImAxis_X1, plotSize, showGrid, LabelFormat::MetricInline, /*foreground=*/true, _sharedXCond); }
-
     void drawTopPane(ImPlotFlags plotFlags, const ImVec2& plotSize, bool showGrid, ChartMode chartMode) {
         const bool   isDensity = (top_pane_mode.value == TopPaneMode::Density);
         const ImVec2 paneSize{plotSize.x, plotSize.y * _rowRatios[0]};
@@ -186,21 +160,21 @@ struct SpectrumView : gr::Block<SpectrumView, gr::Drawable<gr::UICategory::Conte
             ImPlot::PushStyleColor(ImPlotCol_AxisGrid, contrastingGridColor(colormap.value));
         }
 
-        ImPlot::PushStyleVar(ImPlotStyleVar_FitPadding, DigitizerUi::LookAndFeel::instance().chartStyle.spectrumFitPadding);
+        ImPlot::PushStyleVar(ImPlotStyleVar_FitPadding, LookAndFeel::instance().chartStyle.spectrumFitPadding);
         if (ImPlot::BeginPlot("##spectrum", ImVec2(0, 0), plotFlags)) {
-            setupFrequencyAxis(paneSize, showGrid);
-            setupMagnitudeAxis(paneSize, showGrid);
+            setupSingleAxis(true, ImAxis_X1, paneSize, showGrid, LabelFormat::MetricInline, /*foreground=*/true, _sharedXCond);
+            setupSingleAxis(false, ImAxis_Y1, paneSize, showGrid);
             setupFinish();
 
             if (isDensity) {
                 drawDensitySignals();
             } else {
-                drawSpectrumSignals();
+                drawSpectrumSignals(*this, _topPaneSampleCountPerSink);
             }
             drawFrequencyMarkers(0UZ);
 
             tooltip::showPlotMouseTooltip();
-            handleCommonInteractions(chartMode);
+            updateInteractions(chartMode);
 
             auto yLimits = ImPlot::GetPlotLimits(ImAxis_X1, ImAxis_Y1).Y;
             _topPaneYMin = yLimits.Min;
@@ -216,20 +190,6 @@ struct SpectrumView : gr::Block<SpectrumView, gr::Drawable<gr::UICategory::Conte
         ImGui::PopID();
     }
 
-    void setupMagnitudeAxis(const ImVec2& plotSize, bool showGrid) { setupSingleAxis(false, ImAxis_Y1, plotSize, showGrid); }
-
-    void drawSpectrumSignals() {
-        forEachValidSpectrum(_signalSinks, [&](const auto& sink, const SpectrumFrame& f) {
-            if (sink.drawEnabled()) {
-                plotTrace(plotLabel(sink).c_str(), f.xValues, f.yValues, f.nBins, sinkColor(sink.color()), seriesLineWidth(sink));
-            }
-            const std::string sinkKey = std::string(sink.uniqueName());
-            const std::size_t nNew    = consumeNewData(_topPaneSampleCountPerSink[sinkKey], sink.totalSampleCount());
-            drawTraceOverlays(_tracesPerSink[sinkKey], f, nNew, static_cast<double>(decay_tau_frames), sinkColor(trace_color), show_max_hold, show_min_hold, show_average);
-            return true;
-        });
-    }
-
     void drawDensitySignals() {
         const auto logRange = logFreqRange(parseAxisConfig(this->ui_constraints.value, AxisKind::X));
         forEachValidSpectrum(_signalSinks, [&](const auto& sink, const SpectrumFrame& f) {
@@ -239,17 +199,7 @@ struct SpectrumView : gr::Block<SpectrumView, gr::Drawable<gr::UICategory::Conte
 
             const std::string sinkKey = std::string(sink.uniqueName());
             const std::size_t nNew    = consumeNewData(_topPaneSampleCountPerSink[sinkKey], sink.totalSampleCount());
-            if (logRange) {
-                forEachNewSpectrum(f, nNew, [&](const SpectrumFrame& s) {
-                    _logRow.resize(kLogSpectrumColumns);
-                    buildLogBinnedRow(s.xValues, s.yValues, s.nBins, logRange->min, logRange->max, _logRow);
-                    _density.update(_logRow, kLogSpectrumColumns, ampBins, static_cast<double>(histogram_decay_tau_frames), effYMin, effYMax, colormap.value, gpu_acceleration);
-                });
-                _density.plot(logRange->min, logRange->max, effYMin, effYMax);
-            } else {
-                forEachNewSpectrum(f, nNew, [&](const SpectrumFrame& s) { _density.update(s.yValues, s.nBins, ampBins, static_cast<double>(histogram_decay_tau_frames), effYMin, effYMax, colormap.value, gpu_acceleration); });
-                _density.plot(f.xValues, effYMin, effYMax);
-            }
+            _density.accumulateAndPlot(f, nNew, logRange, ampBins, static_cast<double>(histogram_decay_tau_frames), effYMin, effYMax, colormap.value, gpu_acceleration);
 
             ImVec4 traceBase = sinkColor(trace_color);
             drawTraceOverlays(_tracesPerSink[sinkKey], f, nNew, static_cast<double>(decay_tau_frames), traceBase, show_max_hold, show_min_hold, show_average);
@@ -267,16 +217,19 @@ struct SpectrumView : gr::Block<SpectrumView, gr::Drawable<gr::UICategory::Conte
 
         ImGui::PushID("bottom");
         ImPlot::PushStyleColor(ImPlotCol_AxisGrid, contrastingGridColor(colormap.value));
-        ImPlot::PushStyleVar(ImPlotStyleVar_FitPadding, DigitizerUi::LookAndFeel::instance().chartStyle.spectrumFitPadding);
+        ImPlot::PushStyleVar(ImPlotStyleVar_FitPadding, LookAndFeel::instance().chartStyle.spectrumFitPadding);
 
         if (ImPlot::BeginPlot("##waterfall", ImVec2(0, 0), plotFlags | ImPlotFlags_NoLegend)) {
-            setupBottomFrequencyAxis(paneSize, showGrid);
-            setupWaterfallYAxis(showGrid);
+            setupSingleAxis(true, ImAxis_X1, paneSize, showGrid, LabelFormat::None, /*foreground=*/true, _sharedXCond);
+            setupTimeAxis(ImAxis_Y1, AxisScale::LinearReverse, showGrid, _waterfallTimeUnit);
 
-            auto renderInfo = fetchAndPushData();
+            const auto renderInfo = _waterfall.pushNewSpectra(_signalSinks, _lastWaterfallSampleCount, logFreqRange(parseAxisConfig(this->ui_constraints.value, AxisKind::X)), static_cast<std::size_t>(n_history), gpu_acceleration, colormap.value, [&] { return std::pair{_topPaneYMin, _topPaneYMax}; });
+            if (renderInfo) {
+                _lastRenderInfo = renderInfo;
+            }
 
             auto [tOldest, tNewest] = _waterfall.rawTimeBounds();
-            auto [yLo, yHi]         = transformedYBounds(tOldest, tNewest);
+            auto [yLo, yHi]         = timeAxisBounds(tOldest, tNewest, AxisScale::LinearReverse);
 
             if (_waterfall.filledRows() > 0 && yHi > yLo) {
                 ImPlot::SetupAxisLimits(ImAxis_Y1, yLo, yHi, ImPlotCond_Always);
@@ -284,18 +237,18 @@ struct SpectrumView : gr::Block<SpectrumView, gr::Drawable<gr::UICategory::Conte
 
             setupFinish();
 
-            constexpr bool newestAtTop = true;
+            constexpr bool kNewestAtTop = true;
             if (renderInfo) {
-                _waterfall.render(renderInfo->freqMin, renderInfo->freqMax, yLo, yHi, newestAtTop);
+                _waterfall.render(renderInfo->freqMin, renderInfo->freqMax, yLo, yHi, kNewestAtTop);
             } else if (_waterfall.filledRows() > 0 && _lastRenderInfo) {
-                _waterfall.render(_lastRenderInfo->freqMin, _lastRenderInfo->freqMax, yLo, yHi, newestAtTop);
+                _waterfall.render(_lastRenderInfo->freqMin, _lastRenderInfo->freqMax, yLo, yHi, kNewestAtTop);
             }
             drawFrequencyMarkers(1UZ);
 
             tooltip::showPlotMouseTooltip();
             drawContextMenu(chartMode, "SpectrumViewBottom");
             if (chartMode == ChartMode::Interaction) {
-                handlePlotDropTarget();
+                acceptPlotDrop();
             }
             ImPlot::EndPlot();
         }
@@ -304,56 +257,8 @@ struct SpectrumView : gr::Block<SpectrumView, gr::Drawable<gr::UICategory::Conte
         ImPlot::PopStyleColor();
         ImGui::PopID();
     }
-
-    void setupBottomFrequencyAxis(const ImVec2& plotSize, bool showGrid) { setupSingleAxis(true, ImAxis_X1, plotSize, showGrid, LabelFormat::None, /*foreground=*/true, _sharedXCond); }
-
-    void setupWaterfallYAxis(bool showGrid) {
-        ImPlotAxisFlags yFlags = (showGrid ? ImPlotAxisFlags_None : ImPlotAxisFlags_NoGridLines) | ImPlotAxisFlags_Foreground;
-        ImPlot::SetupAxis(ImAxis_Y1, "", yFlags);
-        _waterfallUnitStore[ImAxis_Y1] = "s";
-        ImPlot::SetupAxisFormat(ImAxis_Y1, axis::formatMetric, const_cast<void*>(static_cast<const void*>(_waterfallUnitStore[ImAxis_Y1].c_str())));
-        ImPlot::SetupAxisScale(ImAxis_Y1, ImPlotScale_Linear);
-    }
-
-    [[nodiscard]] static std::pair<double, double> transformedYBounds(double tOldest, double tNewest) {
-        double duration = tNewest - tOldest;
-        return {-duration, 0.0}; // newest at top (LinearReverse equivalent)
-    }
-
-    [[nodiscard]] std::optional<RenderInfo> fetchAndPushData() {
-        std::optional<RenderInfo> result;
-        const auto                logRange = logFreqRange(parseAxisConfig(this->ui_constraints.value, AxisKind::X));
-
-        auto pushSpectrum = [&](const SpectrumFrame& f) {
-            const std::size_t width = logRange ? kLogSpectrumColumns : f.nBins;
-            if (_lastSpectrumSize != width) {
-                _waterfall.init(width, static_cast<std::size_t>(n_history), gpu_acceleration);
-                _lastSpectrumSize = width;
-            }
-
-            _waterfall.updateAutoScale(f.yValues, f.nBins);
-            if (logRange) {
-                _logRow.resize(kLogSpectrumColumns);
-                buildLogBinnedRow(f.xValues, f.yValues, f.nBins, logRange->min, logRange->max, _logRow);
-                _waterfall.pushRow(_logRow, kLogSpectrumColumns, _topPaneYMin, _topPaneYMax, timestampFromNanos(f.timestamp), colormap.value);
-                _lastRenderInfo = RenderInfo{.freqMin = logRange->min, .freqMax = logRange->max};
-            } else {
-                _waterfall.pushRow(f.yValues, f.nBins, _topPaneYMin, _topPaneYMax, timestampFromNanos(f.timestamp), colormap.value);
-                _lastRenderInfo = RenderInfo{.freqMin = static_cast<double>(f.xValues.front()), .freqMax = static_cast<double>(f.xValues.back())};
-            }
-            result = _lastRenderInfo;
-        };
-        forEachValidSpectrum(_signalSinks, [&](const auto& sink, const SpectrumFrame& newest) {
-            forEachNewSpectrum(newest, consumeNewData(_lastWaterfallSampleCount, sink.totalSampleCount()), pushSpectrum);
-            return false;
-        });
-        return result;
-    }
 };
 
-} // namespace opendigitizer::charts
-
-GR_REGISTER_BLOCK("opendigitizer::charts::SpectrumView", opendigitizer::charts::SpectrumView)
-inline auto registerSpectrumViewCompatibilities = opendigitizer::charts::registerChartSignalCompatibility<opendigitizer::charts::SpectrumView>();
+} // namespace gr::od::charts
 
 #endif // OPENDIGITIZER_CHARTS_SPECTRUMVIEW_HPP

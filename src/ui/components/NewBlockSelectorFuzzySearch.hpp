@@ -7,7 +7,7 @@
 #include <utility>
 #include <vector>
 
-namespace DigitizerUi::components {
+namespace gr::od::components {
 
 std::size_t wordDistance(std::string_view a, std::string_view b);
 
@@ -42,6 +42,6 @@ struct NamespaceDelimitedSearchIterator {
 
 [[nodiscard]] FilterResult filterTypename(std::string_view typenameString, std::string_view filter);
 
-} // namespace DigitizerUi::components
+} // namespace gr::od::components
 
 #endif

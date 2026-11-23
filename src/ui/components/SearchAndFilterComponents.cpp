@@ -1,31 +1,100 @@
 #include "SearchAndFilterComponents.hpp"
 
-#include "../common/ImguiWrap.hpp"
+#include "../common/Imw.hpp"
 #include "../common/LookAndFeel.hpp"
-#include "StyledStandardWidgets.hpp"
+#include "StyledWidgets.hpp"
 
 #include <misc/cpp/imgui_stdlib.h>
 
 #include "DateInput.hpp"
-#include "FilterTagBar.hpp"
 
 #include <algorithm>
 #include <array>
 #include <cassert>
+#include <cstddef>
+#include <optional>
 #include <ranges>
 #include <utility>
 
-namespace DigitizerUi::components {
+namespace gr::od::components {
 
 namespace {
 constexpr const char* kIconPlus   = "\u{f067}";
 constexpr const char* kIconSearch = "\u{f002}";
+constexpr const char* kIconClose  = "\u{f00d}";
 
 constexpr std::array  kFilterDateLabels     = {"Before", "After"};
 constexpr const char* kFilterDateComboLabel = "##filterDateDirection";
 
+struct FilterTagBar {
+    std::optional<std::size_t> _removed;
+    std::size_t                _currentTag = 0UZ;
+    std::size_t                _tagsDrawn  = 0UZ;
+    bool                       _insideTag  = false;
+    bool                       _finished   = false;
+
+    explicit FilterTagBar(const char* strId) { ImGui::PushID(strId); }
+
+    ~FilterTagBar() {
+        if (!_finished) {
+            static_cast<void>(finish());
+        }
+    }
+
+    FilterTagBar(const FilterTagBar&)            = delete;
+    FilterTagBar& operator=(const FilterTagBar&) = delete;
+
+    void beginTag(std::size_t tagIndex) {
+        assert(!_insideTag && !_finished);
+        _insideTag  = true;
+        _currentTag = tagIndex;
+
+        if (_tagsDrawn > 0UZ) {
+            ImGui::SameLine();
+        }
+        ImGui::PushID(static_cast<int>(tagIndex));
+
+        // content goes on the foreground channel, endTag() fills the background afterwards
+        ImGui::GetWindowDrawList()->ChannelsSplit(2);
+        ImGui::GetWindowDrawList()->ChannelsSetCurrent(1);
+        ImGui::BeginGroup();
+        ImGui::AlignTextToFramePadding();
+    }
+
+    void endTag() {
+        assert(_insideTag);
+        ImGui::SameLine();
+        {
+            imw::StyleNamedColor transparentButton(ImGuiCol_Button, ImU32{0});
+            imw::Font            iconFont(LookAndFeel::instance().fontIconsSolid);
+            if (ImGui::Button(kIconClose)) {
+                _removed = _currentTag;
+            }
+        }
+        ImGui::EndGroup();
+
+        auto*        drawList = ImGui::GetWindowDrawList();
+        const ImRect tagRect{ImGui::GetItemRectMin(), ImGui::GetItemRectMax()};
+        drawList->ChannelsSetCurrent(0);
+        drawList->AddRectFilled(tagRect.Min, tagRect.Max, ImGui::GetColorU32(ImGuiCol_FrameBg), ImGui::GetStyle().FrameRounding);
+        drawList->AddRect(tagRect.Min, tagRect.Max, ImGui::GetColorU32(ImGuiCol_Border), ImGui::GetStyle().FrameRounding);
+        drawList->ChannelsMerge();
+
+        ImGui::PopID();
+        _insideTag = false;
+        ++_tagsDrawn;
+    }
+
+    [[nodiscard]] std::optional<std::size_t> finish() {
+        assert(!_insideTag && !_finished);
+        _finished = true;
+        ImGui::PopID();
+        return std::exchange(_removed, {});
+    }
+};
+
 float calcFilterDateComboWidth() { //
-    return IMW::CalcComboSize(kFilterDateComboLabel, kFilterDateLabels[0], ImGuiComboFlags_WidthFitPreview).preferred.x;
+    return imw::calcComboSize(kFilterDateComboLabel, kFilterDateLabels[0], ImGuiComboFlags_WidthFitPreview).preferred.x;
 }
 
 void drawVerticallyCenteredText(const char* label, float lineHeight) {
@@ -41,9 +110,9 @@ void drawVerticallyCenteredText(const char* label, float lineHeight) {
 [[nodiscard]] bool drawPlusButton(bool enabled) {
     const ImVec2 squareButtonSize{ImGui::GetFrameHeight(), ImGui::GetFrameHeight()};
 
-    IMW::Disabled disabled(!enabled);
+    imw::Disabled disabled(!enabled);
     ImGui::PushFont(LookAndFeel::instance().fontIcons, squareButtonSize.y / 2.f);
-    const bool pressed = DigitizerUi::Button(kIconPlus, squareButtonSize);
+    const bool pressed = button(kIconPlus, squareButtonSize);
     ImGui::PopFont();
     return pressed;
 }
@@ -57,8 +126,8 @@ void drawRowLabel(const char* label) {
 } // namespace
 
 std::optional<std::string> TagFilterRow::draw(const char* strId, const char* label) {
-    IMW::Font        font(LookAndFeel::instance().fontSmall());
-    IMW::ChangeStrId rowId(strId);
+    imw::Font        font(LookAndFeel::instance().fontSmall());
+    imw::ChangeStrId rowId(strId);
     const float      rowWidth  = ImGui::GetContentRegionAvail().x;
     bool             addFilter = drawPlusButton(!pendingInput.empty());
     drawRowLabel(label);
@@ -72,8 +141,8 @@ std::optional<std::string> TagFilterRow::draw(const char* strId, const char* lab
 }
 
 std::optional<KeyValueFilterRow::Committed> KeyValueFilterRow::draw(const char* strId) {
-    IMW::Font        font(LookAndFeel::instance().fontSmall());
-    IMW::ChangeStrId rowId(strId);
+    imw::Font        font(LookAndFeel::instance().fontSmall());
+    imw::ChangeStrId rowId(strId);
     const bool       hasKey = !pendingKey.empty();
 
     // two inputs share whatever the plus button, the two labels and the spacing between all five widgets leave over
@@ -87,11 +156,11 @@ std::optional<KeyValueFilterRow::Committed> KeyValueFilterRow::draw(const char* 
     ImGui::SetNextItemWidth(inputWidth);
     addFilter |= ImGui::InputText("##keyValueFilterKeyInput", &pendingKey, ImGuiInputTextFlags_EnterReturnsTrue);
     {
-        IMW::StyleColor labelColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(hasKey ? ImGuiCol_Text : ImGuiCol_TextDisabled));
+        imw::StyleColor labelColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(hasKey ? ImGuiCol_Text : ImGuiCol_TextDisabled));
         drawRowLabel("Value: ");
     }
     {
-        IMW::Disabled disabled(!hasKey);
+        imw::Disabled disabled(!hasKey);
         ImGui::SetNextItemWidth(inputWidth);
         addFilter |= ImGui::InputText("##keyValueFilterValueInput", &pendingValue, ImGuiInputTextFlags_EnterReturnsTrue);
     }
@@ -103,8 +172,8 @@ std::optional<KeyValueFilterRow::Committed> KeyValueFilterRow::draw(const char* 
 }
 
 std::optional<DateFilterRow::Committed> DateFilterRow::draw(const char* strId, const char* rowLabel) {
-    IMW::Font        font(LookAndFeel::instance().fontSmall());
-    IMW::ChangeStrId rowId(strId);
+    imw::Font        font(LookAndFeel::instance().fontSmall());
+    imw::ChangeStrId rowId(strId);
 
     std::optional<Committed> committed;
     if (drawPlusButton(true)) {
@@ -113,12 +182,12 @@ std::optional<DateFilterRow::Committed> DateFilterRow::draw(const char* strId, c
     drawRowLabel(rowLabel);
 
     ImGui::SetNextItemWidth(calcFilterDateComboWidth());
-    if (auto combo = DigitizerUi::ComboBox(kFilterDateComboLabel, kFilterDateLabels[static_cast<std::size_t>(pendingDirection)], 0)) {
+    if (auto combo = ComboBox(kFilterDateComboLabel, kFilterDateLabels[static_cast<std::size_t>(std::to_underlying(pendingDirection))], 0)) {
         using enum Direction;
-        if (DigitizerUi::Selectable(kFilterDateLabels[std::to_underlying(Before)])) {
+        if (selectable(kFilterDateLabels[std::to_underlying(Before)])) {
             pendingDirection = Before;
         }
-        if (DigitizerUi::Selectable(kFilterDateLabels[std::to_underlying(After)])) {
+        if (selectable(kFilterDateLabels[std::to_underlying(After)])) {
             pendingDirection = After;
         }
     }
@@ -131,23 +200,23 @@ std::optional<DateFilterRow::Committed> DateFilterRow::draw(const char* strId, c
 }
 
 float DateFilterRow::rowWidth(const char* rowLabel) {
-    IMW::Font   font(LookAndFeel::instance().fontSmall());
+    imw::Font   font(LookAndFeel::instance().fontSmall());
     const float spacing      = ImGui::GetStyle().ItemSpacing.x;
     const float squareButton = ImGui::GetFrameHeight();
     return squareButton + spacing + ImGui::CalcTextSize(rowLabel).x + spacing + calcFilterDateComboWidth() + spacing + calcDateInputWidth();
 }
 
 std::optional<bool> drawMatchAnyOrAllFiltersCombo(const char* strId, bool requiresAll) {
-    constexpr const char* matchAllLabel = "All filters";
-    constexpr const char* matchAnyLabel = "Any filter";
+    constexpr const char* kMatchAllLabel = "All filters";
+    constexpr const char* kMatchAnyLabel = "Any filter";
 
-    ImGui::SetNextItemWidth(IMW::CalcComboSize(strId, matchAllLabel, ImGuiComboFlags_None).preferred.x);
+    ImGui::SetNextItemWidth(imw::calcComboSize(strId, kMatchAllLabel, ImGuiComboFlags_None).preferred.x);
     bool matchAllFilters = requiresAll;
-    if (auto combo = DigitizerUi::ComboBox(strId, matchAllFilters ? matchAllLabel : matchAnyLabel, ImGuiComboFlags_None)) {
-        if (DigitizerUi::Selectable(matchAllLabel)) {
+    if (auto combo = ComboBox(strId, matchAllFilters ? kMatchAllLabel : kMatchAnyLabel, ImGuiComboFlags_None)) {
+        if (selectable(kMatchAllLabel)) {
             matchAllFilters = true;
         }
-        if (DigitizerUi::Selectable(matchAnyLabel)) {
+        if (selectable(kMatchAnyLabel)) {
             matchAllFilters = false;
         }
     }
@@ -165,15 +234,15 @@ std::optional<std::size_t> drawSortByCombo(const char* strId, const char* rowLab
     ImGui::TextUnformatted(rowLabel);
     ImGui::SameLine();
 
-    const auto  comboWidthFor = [strId](const SortOption& option) { return IMW::CalcComboSize(strId, option.label, ImGuiComboFlags_None).preferred.x; };
+    const auto  comboWidthFor = [strId](const SortOption& option) { return imw::calcComboSize(strId, option.label, ImGuiComboFlags_None).preferred.x; };
     const float comboWidth    = std::ranges::max(options | std::views::transform(comboWidthFor));
     ImGui::SetNextItemWidth(comboWidth);
 
     std::optional<std::size_t> chosen;
-    if (auto combo = DigitizerUi::ComboBox(strId, options[currentIndex].label, ImGuiComboFlags_None)) {
+    if (auto combo = ComboBox(strId, options[currentIndex].label, ImGuiComboFlags_None)) {
         for (std::size_t optionIndex = 0UZ; optionIndex < options.size(); ++optionIndex) {
-            IMW::Disabled disabled(!options[optionIndex].enabled);
-            if (DigitizerUi::Selectable(options[optionIndex].label, optionIndex == currentIndex)) {
+            imw::Disabled disabled(!options[optionIndex].enabled);
+            if (selectable(options[optionIndex].label, optionIndex == currentIndex)) {
                 chosen = optionIndex;
             }
         }
@@ -182,12 +251,11 @@ std::optional<std::size_t> drawSortByCombo(const char* strId, const char* rowLab
 }
 
 SearchSortInput::Event SearchSortInput::draw(const char* strId, const char* hint, bool sortingBySearch, float trailingWidth) {
-    IMW::Font font(LookAndFeel::instance().fontBig());
+    imw::Font font(LookAndFeel::instance().fontBig());
 
     const float inputFrameHeight = ImGui::GetFrameHeight();
     {
-        // TODO fix magnifying glass icon here, looks a bit weird, I think it may be more of an issue with the font
-        IMW::Font iconFont(LookAndFeel::instance().fontIconsSolidBig);
+        imw::Font iconFont(LookAndFeel::instance().fontIconsSolidBig);
         drawVerticallyCenteredText(kIconSearch, inputFrameHeight);
     }
     ImGui::SameLine();
@@ -195,8 +263,7 @@ SearchSortInput::Event SearchSortInput::draw(const char* strId, const char* hint
 
     bool edited = false;
     {
-        // grey out the search text while it is not the thing being sorted by
-        IMW::StyleColor greyedOutText(ImGuiCol_Text, ImGui::GetStyleColorVec4(sortingBySearch ? ImGuiCol_Text : ImGuiCol_TextDisabled));
+        imw::StyleColor greyedOutText(ImGuiCol_Text, ImGui::GetStyleColorVec4(sortingBySearch ? ImGuiCol_Text : ImGuiCol_TextDisabled));
         edited = ImGui::InputTextWithHint(strId, hint, &text);
     }
     const bool searchInputActive = ImGui::IsItemActive();
@@ -210,8 +277,8 @@ SearchSortInput::Event SearchSortInput::draw(const char* strId, const char* hint
     return Event::none;
 }
 
-std::optional<std::size_t> drawFilterTags(const char* strId, std::span<const std::unique_ptr<SortFilterModelFilter>> filters, const std::function<std::string(const SortFilterModelFilter&)>& labelFor) {
-    if (filters.empty()) {
+std::optional<std::size_t> drawFilterTags(const char* strId, std::span<const std::string> labels) {
+    if (labels.empty()) {
         return std::nullopt;
     }
 
@@ -219,13 +286,13 @@ std::optional<std::size_t> drawFilterTags(const char* strId, std::span<const std
     FilterTagBar tagBar(strId);
 
     std::size_t index = 0UZ;
-    for (const auto& filter : filters) {
+    for (const std::string& label : labels) {
         tagBar.beginTag(index);
-        ImGui::TextUnformatted(labelFor(*filter).c_str());
+        ImGui::TextUnformatted(label.c_str());
         tagBar.endTag();
         ++index;
     }
     return tagBar.finish();
 }
 
-} // namespace DigitizerUi::components
+} // namespace gr::od::components

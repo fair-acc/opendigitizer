@@ -3,7 +3,7 @@
 
 #include <imgui.h>
 
-namespace DigitizerUi {
+namespace gr::od {
 
 // size is a suggestion because some icons (complex numbers) will overflow slightly
 using PortShapeFunction = void (*)(ImDrawList* drawList, ImVec2 center, float size, ImU32 color);
@@ -37,6 +37,6 @@ void drawSolidHexagonPort(ImDrawList* drawList, ImVec2 center, float size, ImU32
 void drawSolidDiamondPort(ImDrawList* drawList, ImVec2 center, float size, ImU32 color);
 void drawSolidCornerRingPort(ImDrawList* drawList, ImVec2 center, float size, ImU32 color);
 
-} // namespace DigitizerUi
+} // namespace gr::od
 
 #endif // OPENDIGITIZER_COMPONENTS_PORTSHAPES_HPP

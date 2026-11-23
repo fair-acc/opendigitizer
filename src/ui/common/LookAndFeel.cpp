@@ -1,6 +1,6 @@
 #include "LookAndFeel.hpp"
 
-#include "ImguiWrap.hpp"
+#include "Imw.hpp"
 
 #include <cmrc/cmrc.hpp>
 
@@ -13,11 +13,11 @@ enum FontSizeIndex { FontSizeTiny = 0, FontSizeSmall, FontSizeNormal, FontSizeBi
 
 constexpr std::array<float, FontSizeCount> kFontSizes{12, 17, 20, 24, 28, 46};
 
-namespace DigitizerUi {
+namespace gr::od {
 
 LookAndFeel& LookAndFeel::mutableInstance() {
-    static LookAndFeel s_instance;
-    return s_instance;
+    static LookAndFeel lookAndFeel;
+    return lookAndFeel;
 }
 
 const LookAndFeel& LookAndFeel::instance() { return mutableInstance(); }
@@ -36,7 +36,6 @@ Palette classicPalette(LookAndFeel::Style style) {
     const std::uint32_t nodeEditorSelection     = 0xFFB032;
     const std::uint32_t nodeEditorSelectionRect = 0x0582FF;
     const std::uint32_t nodeEditorPinRect       = 0x3CB4FF;
-    const std::uint8_t  overlayAlpha            = 0x99;
     return Palette{
         .gridLines = dark ? quarterTransparentWhite : quarterTransparentBlack,
 
@@ -90,10 +89,6 @@ Palette classicPalette(LookAndFeel::Style style) {
         .currentDashboardPanelBg    = dark ? rgba(0xFFFFFF, 0x33) : rgba(0x000000, 0x33),
         .clearColor                 = white,
 
-        .layoutModePanel        = rgba(0x9EF7F1, overlayAlpha),
-        .layoutModePanelHovered = rgba(0x6EC9CF, overlayAlpha),
-        .layoutModePanelGrabbed = rgba(0x63E69F, overlayAlpha),
-
         .appHeaderFAIRLogoButton        = {0, 0, 0, 0},
         .appHeaderFAIRLogoButtonHovered = {.8f, .8f, .8f, .4f},
         .appHeaderFAIRLogoButtonActive  = {0, 0, 0, 0},
@@ -138,18 +133,10 @@ constexpr SpectrumSchemeKeywordColors kSpectrumLight{
     .blue500    = 0x1473E6,
     .blue600    = 0x0D66D0,
     .blue700    = 0x095ABA,
-    .red400     = 0xE34850,
     .red500     = 0xD7373F,
-    .red600     = 0xC9252D,
     .red700     = 0xBB121A,
-    .orange400  = 0xE68619,
     .orange500  = 0xDA7B11,
-    .orange600  = 0xCB6F10,
-    .orange700  = 0xBD640D,
-    .green400   = 0x2D9D78,
     .green500   = 0x268E6C,
-    .green600   = 0x12805C,
-    .green700   = 0x107154,
     .magenta500 = 0xCE2783,
 };
 
@@ -169,18 +156,10 @@ constexpr SpectrumSchemeKeywordColors kSpectrumDark{
     .blue500    = 0x378EF0,
     .blue600    = 0x4B9CF5,
     .blue700    = 0x5AA9FA,
-    .red400     = 0xE34850,
     .red500     = 0xEC5B62,
-    .red600     = 0xF76D74,
     .red700     = 0xFF7B82,
-    .orange400  = 0xE68619,
     .orange500  = 0xF29423,
-    .orange600  = 0xF9A43F,
-    .orange700  = 0xFFB55B,
-    .green400   = 0x2D9D78,
     .green500   = 0x33AB84,
-    .green600   = 0x39B990,
-    .green700   = 0x3FC89C,
     .magenta500 = 0xE2499D,
 };
 
@@ -193,10 +172,7 @@ Palette spectrumPalette(LookAndFeel::Style style) {
     return Palette{
         .gridLines = rgba(c.gray400),
 
-        // it would be nice to use white with a bright highlight color, but there are some limitations
-        // such as the imgui date picker which cannot use this component of our custom style, causing
-        // illegible buttons or clashing in that popup
-        // .buttonContents = white,
+        // white with a bright highlight would be nicer, but the ImGui date picker cannot use this part of the style, which leaves its buttons illegible
         .buttonContents = std::nullopt,
 
         .mainWindowButtonIcon       = dark ? std::make_optional(rgba(c.gray700)) : std::nullopt,
@@ -246,10 +222,6 @@ Palette spectrumPalette(LookAndFeel::Style style) {
         .successColor               = rgba(c.green500),
         .currentDashboardPanelBg    = dark ? rgba(c.gray200) : rgba(c.gray50),
         .clearColor                 = rgba(c.gray100),
-
-        .layoutModePanel        = rgba(c.blue400, 0x40),
-        .layoutModePanelHovered = rgba(c.blue500, 0x66),
-        .layoutModePanelGrabbed = rgba(c.green400, 0x80),
 
         .appHeaderFAIRLogoButton        = {},
         .appHeaderFAIRLogoButtonHovered = rgba(c.gray200),
@@ -440,19 +412,14 @@ void LookAndFeel::updateFormFactor(ImVec2 viewportSize) {
     if (shortSide <= 0.f) {
         return;
     }
-    compact                         = shortSide < (compact ? compactLeaveShortSide : compactEnterShortSide);
-    portrait                        = viewportSize.y > viewportSize.x;
-    ImGui::GetStyle().FontScaleMain = compact ? compactFontScale : 1.f;
+    gAppState.compact               = shortSide < (gAppState.compact ? compactLeaveShortSide : compactEnterShortSide);
+    gAppState.portrait              = viewportSize.y > viewportSize.x;
+    ImGui::GetStyle().FontScaleMain = gAppState.compact ? compactFontScale : 1.f;
 }
 
 [[nodiscard]] float LookAndFeel::mainWindowIconButtonSize() const noexcept { return kFontSizes[FontSizeBig] * 1.7f; }
 
 void LookAndFeel::loadFonts() {
-    // static const ImWchar fullRange[] = {
-    //     0x0020, 0XFFFF, 0, 0 // '0', '0' are the end marker
-    //     // N.B. a bit unsafe but in imgui_draw.cpp::ImFontAtlasBuildWithStbTruetype break condition is:
-    //     // 'for (const ImWchar* src_range = src_tmp.SrcRanges; src_range[0] && src_range[1]; src_range += 2)'
-    // };
     static const std::vector<ImWchar> rangeLatin             = {0x0020, 0x0080, // Basic Latin
                     0, 0};
     static const std::vector<ImWchar> rangeLatinExtended     = {0x80, 0xFFFF, 0}; // Latin-1 Supplement
@@ -477,7 +444,7 @@ void LookAndFeel::loadFonts() {
         0, 0};
 
     static ImFontConfig config;
-    // Originally oversampling of 4 was used to ensure good looking text for all zoom levels, but this led to huge texture atlas sizes, which did not work on mobile
+    // oversampling 2, not 4: 4 looks good at every zoom level, but its texture atlases are too large for mobile
     config.OversampleH          = 2;
     config.OversampleV          = 2;
     config.PixelSnapH           = true;
@@ -513,15 +480,14 @@ void LookAndFeel::loadFonts() {
 
     auto loadIconsFont = [](auto name, float iconFontSize) {
         auto file = cmrc::ui_assets::get_filesystem().open(name);
-        return ImGui::GetIO().Fonts->AddFontFromMemoryTTF(const_cast<char*>(file.begin()), static_cast<int>(file.size()), iconFontSize, &config, glyphRanges); // alt: fullRange
+        return ImGui::GetIO().Fonts->AddFontFromMemoryTTF(const_cast<char*>(file.begin()), static_cast<int>(file.size()), iconFontSize, &config, glyphRanges);
     };
 
     auto& lookAndFeel               = LookAndFeel::mutableInstance();
     lookAndFeel.fontIcons           = loadIconsFont("assets/fontawesome/fa-regular-400.otf", kFontSizes[FontSizeTiny]);
     lookAndFeel.fontIconsBig        = loadIconsFont("assets/fontawesome/fa-regular-400.otf", kFontSizes[FontSizeSmall]);
-    lookAndFeel.fontIconsLarge      = loadIconsFont("assets/fontawesome/fa-regular-400.otf", kFontSizes[FontSizeBig]);
     lookAndFeel.fontIconsSolid      = loadIconsFont("assets/fontawesome/fa-solid-900.otf", kFontSizes[FontSizeTiny]);
     lookAndFeel.fontIconsSolidBig   = loadIconsFont("assets/fontawesome/fa-solid-900.otf", kFontSizes[FontSizeSmall]);
     lookAndFeel.fontIconsSolidLarge = loadIconsFont("assets/fontawesome/fa-solid-900.otf", kFontSizes[FontSizeBig]);
 }
-} // namespace DigitizerUi
+} // namespace gr::od

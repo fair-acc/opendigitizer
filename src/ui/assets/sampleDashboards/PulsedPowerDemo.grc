@@ -30,13 +30,13 @@ blocks:
   - id: gr::testing::NullSink<float32>
     parameters: { name: NullSinkH }
   # time-domain path: 4 MS/s -> 100 kHz; decimation ratio is the Resampling<40, 1> template (decimation must match)
-  - id: gr::filter::BasicFilterProto<float32, gr::Resampling<40u, 1u, false>>
+  - id: gr::filter::BasicFilterProto<float32, gr::Resampling<40, 1, false>>
     parameters:
       name: DecimateVoltage
       sample_rate: 4000000
       decimation: 40
       f_low: 40000.0
-  - id: gr::filter::BasicFilterProto<float32, gr::Resampling<40u, 1u, false>>
+  - id: gr::filter::BasicFilterProto<float32, gr::Resampling<40, 1, false>>
     parameters:
       name: DecimateCurrent
       sample_rate: 4000000

@@ -23,20 +23,27 @@
 #include <imgui.h>
 #include <implot.h>
 
-namespace opendigitizer::charts {
+namespace gr::od::charts {
 
 struct DataSetPlotContext {
-    const gr::DataSet<float>* data_set;
-    std::size_t               signal_index{0}; // which signal within the DataSet to plot
+    const gr::DataSet<float>* dataSet;
 };
 
-/// XYChart - standard X-Y line/scatter chart as a GR4 block.
-/// Plots Y-values against a common X-axis with support for multiple axes, automatic signal grouping,
-/// various X-axis modes (UTC/relative time, sample index), tag rendering, and DataSet history fading.
 struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui">>, Chart {
-    // annotated type alias for cleaner declarations
+    using Description = gr::Doc<"Y values over a common X axis: signals grouped onto several axes by quantity and unit, with a UTC, relative-time or sample-index X axis, tags and a fading DataSet history.">;
+
     template<typename T, gr::meta::fixed_string description = "", typename... Arguments>
     using A = gr::Annotated<T, description, Arguments...>;
+
+    static constexpr std::string_view kChartTypeName    = "XYChart";
+    static constexpr SignalKind       kSupportedSignals = SignalKind::Streaming | SignalKind::Dataset1D;
+
+    struct StreamSnapshot {
+        std::vector<double> x; // window X, pre-transformed for the active axis scale (double: absolute timestamps lose precision as float)
+        std::vector<double> y;
+        std::size_t         sourceCount = 0UZ; // the samples the window was built from, before reduceToColumns
+        double              lastRefresh = 0.0;
+    };
 
     A<std::string, "chart name", gr::Visible>                                                                                                                                      chart_name;
     A<std::string, "chart title">                                                                                                                                                  chart_title;
@@ -61,8 +68,6 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
     A<float, "update rate", gr::Unit<"Hz">, gr::Limits<0.f, 240.f>, gr::Doc<"streaming-trace redraw cadence; decouples the display from the mouse/redraw rate (0 = every frame)">> update_rate             = 25.0f;
     A<bool, "GPU acceleration", gr::Doc<"streaming traces drawn on the GPU, uploading only new samples; false: on the CPU">>                                                       gpu_acceleration        = true;
 
-    static constexpr SignalKind supportedSignals = SignalKind::Streaming | SignalKind::Dataset1D;
-
     GR_MAKE_REFLECTABLE(XYChart, chart_name, chart_title, data_sinks, x_axis_mode, show_legend, show_tags, tags_of_every_signal, show_grid, anti_aliasing, max_history_count, history_opacity_decay, history_vertical_offset, x_auto_scale, y_auto_scale, x_min, x_max, y_min, y_max, n_history, history_seconds, update_rate, gpu_acceleration);
 
     std::array<std::optional<AxisCategory>, 3UZ> _xCategories{};
@@ -72,26 +77,15 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
     mutable std::array<std::string, 6UZ>         _unitStringStorage{};
     std::array<double, 6UZ>                      _symLogLinearThresholds{}; // per ImAxis: the SymLog transform reads it while the plot draws
 
-    struct StreamSnapshot {
-        std::vector<double> x; // window X, pre-transformed for the active axis scale (double: absolute timestamps lose precision as float)
-        std::vector<double> y;
-        std::size_t         sourceCount = 0UZ; // the samples the window was built from, before reduceToColumns
-        double              lastRefresh = 0.0;
-    };
-    std::unordered_map<std::string, StreamSnapshot>                                                         _streamSnapshots;
-    GpuLineProgram                                                                                          _gpuLineProgram;
-    std::unordered_map<std::string, GpuLineRenderer, opendigitizer::TransparentStringHash, std::equal_to<>> _gpuLines;
-
-    static constexpr std::string_view kChartTypeName = "XYChart";
-
-    [[nodiscard]] static constexpr std::string_view chartTypeName() noexcept { return kChartTypeName; }
-    [[nodiscard]] std::string_view                  uniqueId() const noexcept { return this->unique_name; }
+    std::unordered_map<std::string, StreamSnapshot>                                          _streamSnapshots;
+    GpuLineProgram                                                                           _gpuLineProgram;
+    std::unordered_map<std::string, GpuLineRenderer, TransparentStringHash, std::equal_to<>> _gpuLines;
 
     explicit XYChart(gr::property_map initParameters = {}) : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui">>(std::move(initParameters)) {}
 
     gr::work::Result work(std::size_t = std::numeric_limits<std::size_t>::max(), gr::device::DeviceContext& = gr::device::hostBackend()) noexcept { return {0UZ, 0UZ, gr::work::Status::OK}; }
 
-    void settingsChanged(const gr::property_map& /*oldSettings*/, const gr::property_map& newSettings) { handleSettingsChanged(newSettings); }
+    void settingsChanged(const gr::property_map& /*oldSettings*/, const gr::property_map& newSettings) { applyChartSettings(newSettings); }
 
     gr::work::Status draw(const gr::property_map& config = {}) {
         [[maybe_unused]] auto [plotFlags, plotSize, showLegend, chartMode, showGrid, chartStyle] = prepareDrawPrologue(config);
@@ -104,7 +98,7 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
 
         buildAxisCategoriesWithFallback();
 
-        if (!DigitizerUi::TouchHandler<>::BeginZoomablePlot(chart_name.value, plotSize, plotFlags)) {
+        if (!TouchHandler<>::beginZoomablePlot(chart_name.value, plotSize, plotFlags)) {
             return gr::work::Status::OK;
         }
 
@@ -112,8 +106,8 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
         setupFinish();
         drawSignals();
         tooltip::showPlotMouseTooltip();
-        handleCommonInteractions(chartMode);
-        DigitizerUi::TouchHandler<>::EndZoomablePlot();
+        updateInteractions(chartMode);
+        TouchHandler<>::endZoomablePlot();
 
         return gr::work::Status::OK;
     }
@@ -136,7 +130,6 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
     void buildAxisCategoriesWithFallback() {
         axis::buildAxisCategories(_signalSinks, _xCategories, _yCategories, _xAxisGroups, _yAxisGroups);
 
-        // Set default categories if none were created (fallback for XYChart)
         if (!_signalSinks.empty() && !_xCategories[0].has_value()) {
             _xCategories[0] = AxisCategory{.quantity = "time", .unit = "s", .color = _signalSinks[0]->color()};
             std::ranges::transform(_signalSinks, std::back_inserter(_xAxisGroups[0]), [](const auto& sink) { return std::string(sink->uniqueName()); });
@@ -154,14 +147,7 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
         for (std::size_t i = 0; i < _xCategories.size(); ++i) {
             const auto dashCfg = parseAxisConfig(this->ui_constraints.value, true, i);
 
-            double minLimit, maxLimit;
-            if (!x_auto_scale.value[i]) {
-                minLimit = x_min.value[i];
-                maxLimit = x_max.value[i];
-            } else {
-                minLimit = dashCfg ? static_cast<double>(dashCfg->min) : std::numeric_limits<double>::quiet_NaN();
-                maxLimit = dashCfg ? static_cast<double>(dashCfg->max) : std::numeric_limits<double>::quiet_NaN();
-            }
+            const auto [minLimit, maxLimit] = axisLimits(x_auto_scale.value[i], x_min.value[i], x_max.value[i], dashCfg);
 
             const LabelFormat format = dashCfg ? dashCfg->format : LabelFormat::Auto;
             const auto        axisId = ImAxis_X1 + static_cast<int>(i);
@@ -180,14 +166,7 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
         for (std::size_t i = 0; i < _yCategories.size(); ++i) {
             const auto dashCfg = parseAxisConfig(this->ui_constraints.value, false, i);
 
-            double minLimit, maxLimit;
-            if (!y_auto_scale.value[i]) {
-                minLimit = y_min.value[i];
-                maxLimit = y_max.value[i];
-            } else {
-                minLimit = dashCfg ? static_cast<double>(dashCfg->min) : std::numeric_limits<double>::quiet_NaN();
-                maxLimit = dashCfg ? static_cast<double>(dashCfg->max) : std::numeric_limits<double>::quiet_NaN();
-            }
+            const auto [minLimit, maxLimit] = axisLimits(y_auto_scale.value[i], y_min.value[i], y_max.value[i], dashCfg);
 
             const LabelFormat format = dashCfg ? dashCfg->format : LabelFormat::Auto;
             const auto        axisId = ImAxis_Y1 + static_cast<int>(i);
@@ -217,7 +196,6 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
 
             ImPlot::SetAxes(static_cast<ImAxis>(ImAxis_X1 + xAxisIdx), static_cast<ImAxis>(ImAxis_Y1 + yAxisIdx));
 
-            // Acquire lock for thread-safe data access during rendering
             auto dataLock = sink->dataGuard();
 
             if (sink->size() > 0) {
@@ -229,7 +207,7 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
                     if (show_tags.value && (tags_of_every_signal.value || !tagsDrawnForFirstSink)) {
                         auto allDataSets = sink->dataSets();
                         if (!allDataSets.empty()) {
-                            tags::drawDataSetTimingEvents(allDataSets.back(), _xCategories[xAxisIdx].has_value() ? _xCategories[xAxisIdx]->scale : AxisScale::Linear, baseColor);
+                            tags::drawDataSetTimingEvents(allDataSets.back(), baseColor);
                         }
                         tagsDrawnForFirstSink = true;
                     }
@@ -244,7 +222,7 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
                         double      xMax       = sink->xAt(offset + dataCount - 1);
                         AxisScale   xAxisScale = _xCategories[xAxisIdx].has_value() ? _xCategories[xAxisIdx]->scale : AxisScale::Linear;
                         ImVec4      tagColor   = baseColor;
-                        tagColor.w *= DigitizerUi::LookAndFeel::instance().chartStyle.tagAlpha;
+                        tagColor.w *= LookAndFeel::instance().chartStyle.tagAlpha;
                         tags::drawTags([&](auto&& fn) { sink->forEachTag(fn); }, xAxisScale, xMin, xMax, tagColor);
                         tagsDrawnForFirstSink = true;
                     }
@@ -274,20 +252,18 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
     }
 
     void drawStreamingSignal(const SignalSink& sink) {
-        // Note: Caller must hold data lock via sink.dataGuard()
         std::size_t totalCount = sink.size();
         if (totalCount == 0) {
             return;
         }
 
-        // clamp to n_history: show only the most recent samples
         std::size_t dataCount = std::min(totalCount, static_cast<std::size_t>(n_history.value));
         std::size_t offset    = totalCount - dataCount;
 
         const AxisScale xAxisScale = _xCategories[0].has_value() ? _xCategories[0]->scale : AxisScale::Linear;
 
-        // snapshot-gate: rebuild the displayed window at most update_rate times/s instead of re-reading the live
-        // ring buffer each redraw, so the trace advances at a steady cadence rather than with the mouse/redraw rate.
+        // the displayed window is rebuilt at most update_rate times/s instead of from the live ring buffer at each redraw,
+        // so the trace advances at a steady cadence rather than with the mouse or redraw rate
         StreamSnapshot& snap            = _streamSnapshots[std::string(sink.uniqueName())];
         const double    now             = ImGui::GetTime();
         const double    refreshInterval = update_rate.value > 0.f ? 1.0 / static_cast<double>(update_rate.value) : 0.0;
@@ -311,18 +287,11 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
             }
         }
         if (refreshDue || snap.x.empty()) {
-            const double xMin = sink.xAt(offset);
-            const double xMax = sink.xAt(offset + dataCount - 1);
+            const double shift = xOffset(xAxisScale, sink.xAt(offset), sink.xAt(offset + dataCount - 1));
             snap.x.resize(dataCount);
             snap.y.resize(dataCount);
             for (std::size_t i = 0; i < dataCount; ++i) {
-                double xVal = sink.xAt(offset + i);
-                switch (xAxisScale) {
-                case AxisScale::Time: break;
-                case AxisScale::LinearReverse: xVal -= xMax; break;
-                default: xVal -= xMin; break;
-                }
-                snap.x[i] = xVal;
+                snap.x[i] = sink.xAt(offset + i) - shift;
                 snap.y[i] = static_cast<double>(sink.yAt(offset + i));
             }
             axis::reduceToColumns(snap.x, snap.y, static_cast<std::size_t>(std::max(ImPlot::GetPlotSize().x, 0.0f)));
@@ -335,8 +304,7 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
     }
 
     void drawDataSetSignal(const SignalSink& sink) {
-        // DataSet signals: x values are absolute (e.g., frequency), no transformation needed
-        // Supports history rendering with fading opacity for older DataSets
+        // DataSet x values are absolute (e.g. frequency): no transformation
         auto allDataSets = sink.dataSets();
         if (allDataSets.empty()) {
             return;
@@ -346,13 +314,12 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
         std::size_t historySize = std::min(allDataSets.size(), static_cast<std::size_t>(max_history_count.value));
         std::string baseLabel   = plotLabel(sink);
 
-        // Draw from oldest to newest (so newest renders on top)
-        // DataSets are ordered oldest-first in the span (push_back appends newest at the end)
+        // oldest first, so the newest draws on top
         const std::size_t spanSize = allDataSets.size();
-        const std::size_t offset   = spanSize - historySize; // skip older entries
+        const std::size_t offset   = spanSize - historySize;
         for (std::size_t i = 0; i < historySize; ++i) {
-            const auto&        ds = allDataSets[offset + i]; // i=0 is oldest of selected, i=historySize-1 is newest
-            DataSetPlotContext ctx{&ds, 0};
+            const auto&        ds = allDataSets[offset + i];
+            DataSetPlotContext ctx{&ds};
 
             const bool isNewest = (i == historySize - 1);
             float      opacity  = isNewest ? 1.0f : (0.2f + (static_cast<float>(i) / static_cast<float>(std::max(historySize, std::size_t{2}) - 1)) * 0.8f);
@@ -363,18 +330,17 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
 
             std::string label = isNewest ? baseLabel : std::format("##{}_hist_{}", sink.uniqueName(), i);
 
-            // Get data count from DataSet's axis_values
             if (ds.axis_values.empty() || ds.axis_values[0].empty()) {
                 continue;
             }
             int dataCount = static_cast<int>(ds.axis_values[0].size());
 
             const ImPlotGetter dataSetPoint = [](int idx, void* user_data) -> ImPlotPoint {
-                auto*       context  = static_cast<DataSetPlotContext*>(user_data);
-                const auto& data_set = *context->data_set;
-                double      xVal     = static_cast<double>(data_set.axis_values[0][static_cast<std::size_t>(idx)]);
-                double      yVal     = 0.0;
-                auto        sigVals  = data_set.signalValues(context->signal_index);
+                auto*       context = static_cast<DataSetPlotContext*>(user_data);
+                const auto& dataSet = *context->dataSet;
+                double      xVal    = static_cast<double>(dataSet.axis_values[0][static_cast<std::size_t>(idx)]);
+                double      yVal    = 0.0;
+                auto        sigVals = dataSet.signalValues(0UZ);
                 if (static_cast<std::size_t>(idx) < sigVals.size()) {
                     yVal = static_cast<double>(sigVals[static_cast<std::size_t>(idx)]);
                 }
@@ -389,10 +355,6 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
     }
 };
 
-} // namespace opendigitizer::charts
-
-// register XYChart with the GR4 block registry
-GR_REGISTER_BLOCK("opendigitizer::charts::XYChart", opendigitizer::charts::XYChart)
-inline auto registerXYChartCompatibilities = opendigitizer::charts::registerChartSignalCompatibility<opendigitizer::charts::XYChart>();
+} // namespace gr::od::charts
 
 #endif // OPENDIGITIZER_CHARTS_XYCHART_HPP

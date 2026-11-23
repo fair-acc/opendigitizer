@@ -12,21 +12,18 @@
 #include <limits>
 #include <numbers>
 
-namespace opendigitizer {
+namespace gr::od {
 
-GR_REGISTER_BLOCK(opendigitizer::SineOscillator, [T], [float])
-
-/// This block is intended to be used specifically for creating musical synthesizers, hence "oscillator" rather than "generator" in the name
 template<typename T>
 struct SineOscillator : gr::Block<SineOscillator<T>>, gr::BlockingSync<SineOscillator<T>> {
-    using Description = gr::Doc<"Sine wave generator with portamento">;
-
-    gr::PortOut<T> out;
+    using Description = gr::Doc<"Sine wave generator with portamento, for musical synthesisers (hence oscillator rather than generator).">;
 
     using NonNegativeFloat         = gr::Limits<0.f, std::numeric_limits<float>::max()>;
     using PositiveFloat            = gr::Limits<std::numeric_limits<float>::min(), std::numeric_limits<float>::max()>;
     using PositiveDouble           = gr::Limits<std::numeric_limits<double>::min(), std::numeric_limits<double>::max()>;
     static constexpr double kTwoPi = 2. * std::numbers::pi;
+
+    gr::PortOut<T> out;
 
     gr::Annotated<float, "sample_rate", gr::Visible, gr::Unit<"Hz">, PositiveFloat>                                                                                 sample_rate = 48000.f;
     gr::Annotated<gr::Size_t, "chunk_size", gr::Doc<"samples per update">>                                                                                          chunk_size  = 480;
@@ -84,8 +81,6 @@ struct SineOscillator : gr::Block<SineOscillator<T>>, gr::BlockingSync<SineOscil
     }
 };
 
-} // namespace opendigitizer
-
-inline auto registerPortamentoSineOscillator = gr::registerBlock<opendigitizer::SineOscillator, float>(gr::globalBlockRegistry());
+} // namespace gr::od
 
 #endif // OPENDIGITIZER_BLOCKS_SINE_OSCILLATOR_HPP

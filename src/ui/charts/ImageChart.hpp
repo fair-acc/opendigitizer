@@ -6,7 +6,7 @@
 #include "SpectrumHelper.hpp"
 
 #include "../common/LookAndFeel.hpp"
-#include "../utils/EmscriptenHelper.hpp"
+#include "../utils/Browser.hpp"
 
 #include <opendigitizer/video/CameraTypes.hpp>
 
@@ -29,7 +29,7 @@
 #include <imgui.h>
 #include <implot.h>
 
-namespace opendigitizer::charts {
+namespace gr::od::charts {
 
 /// RGBA8 texture holding the latest frame; GL_RGBA bytes are R,G,B,A, i.e. 0xAABBGGRR on little-endian hosts
 struct ImageTexture {
@@ -61,21 +61,19 @@ struct ImageTexture {
         if (_id == 0U) {
             return false;
         }
-        GLint previous = 0;
-        glGetIntegerv(GL_TEXTURE_BINDING_2D, &previous);
-        glBindTexture(GL_TEXTURE_2D, _id);
-        if (rows != _rows || columns != _columns) {
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, static_cast<GLsizei>(columns), static_cast<GLsizei>(rows), 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
-            _rows    = rows;
-            _columns = columns;
-        } else {
-            glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, static_cast<GLsizei>(columns), static_cast<GLsizei>(rows), GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
-        }
-        glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(previous));
+        withTextureBound(_id, [&] {
+            if (rows != _rows || columns != _columns) {
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+                glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, static_cast<GLsizei>(columns), static_cast<GLsizei>(rows), 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+                _rows    = rows;
+                _columns = columns;
+            } else {
+                glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, static_cast<GLsizei>(columns), static_cast<GLsizei>(rows), GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+            }
+        });
         return true;
     }
 };
@@ -115,7 +113,8 @@ Frames a sink received but the chart never showed are counted and indicated.)"">
     template<typename T, gr::meta::fixed_string description = "", typename... Arguments>
     using A = gr::Annotated<T, description, Arguments...>;
 
-    static constexpr std::string_view kChartTypeName = "ImageChart";
+    static constexpr std::string_view kChartTypeName    = "ImageChart";
+    static constexpr SignalKind       kSupportedSignals = SignalKind::Image2D;
 
     A<std::string, "chart name", gr::Visible>                                                                                                     chart_name;
     A<std::string, "chart title">                                                                                                                 chart_title;
@@ -132,8 +131,6 @@ Frames a sink received but the chart never showed are counted and indicated.)"">
     A<std::vector<double>, "layer max", gr::Doc<"per input: upper transparency bound (luma in [0, 1] for colour frames); missing or NaN = none">> layer_max;
     A<std::vector<std::string>, "layer colormaps", gr::Doc<"per input from the second on (overlay): ImPlot colormap name">>                       layer_colormaps;
 
-    static constexpr SignalKind supportedSignals = SignalKind::Image2D;
-
     GR_MAKE_REFLECTABLE(ImageChart, chart_name, chart_title, data_sinks, show_legend, show_grid, colormap, reverse_colormap, gpu_acceleration, x_auto_scale, y_auto_scale, composition, layer_min, layer_max, layer_colormaps);
 
     std::vector<ImageLayer>   _layers;
@@ -143,10 +140,8 @@ Frames a sink received but the chart never showed are counted and indicated.)"">
     ImPlotRect                _plotLimits;
     ImVec2                    _fittedPlotSize{0.f, 0.f};
 
-    [[nodiscard]] static constexpr std::string_view chartTypeName() noexcept { return kChartTypeName; }
-    [[nodiscard]] std::string_view                  uniqueId() const noexcept { return this->unique_name; }
-    [[nodiscard]] std::span<const ImageLayer>       layers() const noexcept { return _layers; }
-    [[nodiscard]] bool                              rendersOnGpu() const noexcept { return !_layers.empty() && _layers.front().onGpu; }
+    [[nodiscard]] std::span<const ImageLayer> layers() const noexcept { return _layers; }
+    [[nodiscard]] bool                        rendersOnGpu() const noexcept { return !_layers.empty() && _layers.front().onGpu; }
 
     /// screen position of image coordinates (column, row) as last drawn; row 0 is on top
     [[nodiscard]] ImVec2 screenPosition(double column, double row) const noexcept {
@@ -158,7 +153,7 @@ Frames a sink received but the chart never showed are counted and indicated.)"">
 
     gr::work::Result work(std::size_t = std::numeric_limits<std::size_t>::max(), gr::device::DeviceContext& = gr::device::hostBackend()) noexcept { return {0UZ, 0UZ, gr::work::Status::OK}; }
 
-    void settingsChanged(const gr::property_map& /*oldSettings*/, const gr::property_map& newSettings) { handleSettingsChanged(newSettings); }
+    void settingsChanged(const gr::property_map& /*oldSettings*/, const gr::property_map& newSettings) { applyChartSettings(newSettings); }
 
     gr::work::Status draw(const gr::property_map& config = {}) {
         [[maybe_unused]] auto [plotFlags, plotSize, showLegend, chartMode, showGrid, chartStyle] = prepareDrawPrologue(config);
@@ -166,7 +161,7 @@ Frames a sink received but the chart never showed are counted and indicated.)"">
             drawEmptyPlot("No signals", plotFlags, plotSize, chartMode);
             return gr::work::Status::OK;
         }
-        if (!DigitizerUi::TouchHandler<>::BeginZoomablePlot(chart_name.value, plotSize, plotFlags | ImPlotFlags_Equal)) {
+        if (!TouchHandler<>::beginZoomablePlot(chart_name.value, plotSize, plotFlags | ImPlotFlags_Equal)) {
             return gr::work::Status::OK;
         }
         _layers.resize(_signalSinks.size());
@@ -181,10 +176,7 @@ Frames a sink received but the chart never showed are counted and indicated.)"">
         fitFrame();
         setupFinish();
 
-        for (const auto& sink : _signalSinks) {
-            ImPlot::SetNextLineStyle(sinkColor(sink->color()));
-            ImPlot::PlotDummy(plotLabel(*sink).c_str());
-        }
+        plotLegendEntries();
         for (std::size_t i = 0UZ; i < _layers.size(); ++i) {
             drawLayer(i);
         }
@@ -198,8 +190,8 @@ Frames a sink received but the chart never showed are counted and indicated.)"">
         }
 
         tooltip::showPlotMouseTooltip();
-        handleCommonInteractions(chartMode);
-        DigitizerUi::TouchHandler<>::EndZoomablePlot();
+        updateInteractions(chartMode);
+        TouchHandler<>::endZoomablePlot();
         return gr::work::Status::OK;
     }
 
@@ -224,14 +216,13 @@ Frames a sink received but the chart never showed are counted and indicated.)"">
         return {static_cast<double>(layer % columns) * cellW, static_cast<double>(layer / columns) * cellH};
     }
 
-private:
     [[nodiscard]] std::pair<double, double> cellSize() const {
         double w = 0.0, h = 0.0;
         for (const ImageLayer& l : _layers) {
             w = std::max(w, static_cast<double>(l.columns));
             h = std::max(h, static_cast<double>(l.rows));
         }
-        const double gap = static_cast<double>(DigitizerUi::LookAndFeel::instance().chartStyle.imageTileGap) * std::max(w, h);
+        const double gap = static_cast<double>(LookAndFeel::instance().chartStyle.imageTileGap) * std::max(w, h);
         return {w + gap, h + gap};
     }
 
@@ -342,7 +333,7 @@ private:
 
     /// PlotHeatmap puts its first row at the top of the bounds, i.e. at y = rows on the inverted axis
     void fillScalar(ImageLayer& layer, auto pixels, auto toScalar) {
-        const std::size_t step = cpuDecimationStep(layer.rows, layer.columns, DigitizerUi::LookAndFeel::instance().chartStyle.imageCpuMaxCells);
+        const std::size_t step = cpuDecimationStep(layer.rows, layer.columns, LookAndFeel::instance().chartStyle.imageCpuMaxCells);
         layer.scalarRows       = (layer.rows + step - 1UZ) / step;
         layer.scalarColumns    = (layer.columns + step - 1UZ) / step;
         layer.scalar.resize(layer.scalarRows * layer.scalarColumns);
@@ -358,7 +349,7 @@ private:
     void drawCells(const ImageLayer& layer, std::size_t index, ImPlotPoint topLeft, ImPlotPoint bottomRight) const {
         const auto [cutLo, cutHi] = transparencyRange(index);
         const auto        lut     = layerLut(layerColormap(index));
-        const std::size_t step    = cpuDecimationStep(layer.scalarRows, layer.scalarColumns, DigitizerUi::LookAndFeel::instance().chartStyle.imageCpuMaxRects);
+        const std::size_t step    = cpuDecimationStep(layer.scalarRows, layer.scalarColumns, LookAndFeel::instance().chartStyle.imageCpuMaxRects);
         const double      cellW = (bottomRight.x - topLeft.x) / static_cast<double>(layer.scalarColumns), cellH = (bottomRight.y - topLeft.y) / static_cast<double>(layer.scalarRows);
         ImDrawList*       drawList = ImPlot::GetPlotDrawList();
         ImPlot::PushPlotClipRect();
@@ -386,14 +377,7 @@ private:
         const ImPlotPoint bottomRight(origin.x + static_cast<double>(sizeReference.columns), origin.y + static_cast<double>(sizeReference.rows));
         const std::string id = std::format("##frame{}", index);
         if (layer.onGpu) {
-            const auto textureId = []<typename TexId = ImTextureID>(GLuint texture) -> TexId {
-                if constexpr (std::is_pointer_v<TexId>) {
-                    return reinterpret_cast<TexId>(static_cast<std::uintptr_t>(texture));
-                } else {
-                    return static_cast<TexId>(texture);
-                }
-            };
-            ImPlot::PlotImage(id.c_str(), textureId(layer.texture._id), topLeft, bottomRight, ImVec2(0.f, 1.f), ImVec2(1.f, 0.f)); // PlotImage puts uv0 at (x min, y max)
+            ImPlot::PlotImage(id.c_str(), toTextureId(layer.texture._id), topLeft, bottomRight, ImVec2(0.f, 1.f), ImVec2(1.f, 0.f)); // PlotImage puts uv0 at (x min, y max)
             return;
         }
         if (const auto [cutLo, cutHi] = transparencyRange(index); std::isfinite(cutLo) || std::isfinite(cutHi)) {
@@ -431,7 +415,7 @@ private:
     }
 
     void drawSkippedIndicator() {
-        const auto& look = DigitizerUi::LookAndFeel::instance();
+        const auto& look = LookAndFeel::instance();
         ImVec2      pos  = ImPlot::GetPlotPos();
         pos.x += look.chartStyle.imageStatusPadding.x;
         pos.y += look.chartStyle.imageStatusPadding.y;
@@ -449,9 +433,6 @@ private:
     }
 };
 
-} // namespace opendigitizer::charts
-
-GR_REGISTER_BLOCK("opendigitizer::charts::ImageChart", opendigitizer::charts::ImageChart)
-inline auto registerImageChartCompatibilities = opendigitizer::charts::registerChartSignalCompatibility<opendigitizer::charts::ImageChart>();
+} // namespace gr::od::charts
 
 #endif // OPENDIGITIZER_CHARTS_IMAGECHART_HPP

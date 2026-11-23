@@ -14,7 +14,7 @@
 #include <SDL3/SDL_opengl.h>
 #endif
 
-namespace opendigitizer::shader {
+namespace gr::od::shader {
 
 #ifdef __EMSCRIPTEN__
 static constexpr auto* kGlslPrefix = "#version 300 es\nprecision highp float;\n";
@@ -99,7 +99,6 @@ inline GLuint attachFBO(GLuint tex) {
 }
 
 // probes whether the driver supports rendering into R32F textures (requires EXT_color_buffer_float on WebGL2)
-// result is cached after the first probe
 [[nodiscard]] inline bool supportsR32FFBO() {
     static std::optional<bool> cached;
     if (cached.has_value()) {
@@ -121,6 +120,6 @@ inline GLuint attachFBO(GLuint tex) {
     return complete;
 }
 
-} // namespace opendigitizer::shader
+} // namespace gr::od::shader
 
 #endif // OPENDIGITIZER_UTILS_SHADERHELPER_HPP

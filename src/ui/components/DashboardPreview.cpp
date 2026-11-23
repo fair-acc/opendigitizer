@@ -1,10 +1,12 @@
 #include "DashboardPreview.hpp"
 
+#include "../GraphModel.hpp"
 #include "../MapUtils.hpp"
 #include "../common/LookAndFeel.hpp"
+#include "../utils/ImGuiDockSpaceState.hpp"
 #include "../utils/TransparentStringHash.hpp"
-#include "ColourManager.hpp"
 #include "Docking.hpp"
+#include "SignalColours.hpp"
 
 #include <implot.h>
 #include <implot_internal.h>
@@ -22,7 +24,7 @@
 #include <unordered_map>
 #include <unordered_set>
 
-namespace DigitizerUi {
+namespace gr::od {
 
 namespace {
 
@@ -34,8 +36,8 @@ T getAndConvertNumber(const gr::property_map& map, std::string_view key, T fallb
 auto tryGetTensor(const auto& map, std::string_view key) { return getOptionalProperty<gr::Tensor<gr::pmt::Value>>(map, key); }
 
 template<typename T>
-using StringMap = std::unordered_map<std::string, T, opendigitizer::TransparentStringHash, std::equal_to<>>;
-using StringSet = std::unordered_set<std::string, opendigitizer::TransparentStringHash, std::equal_to<>>;
+using StringMap = std::unordered_map<std::string, T, TransparentStringHash, std::equal_to<>>;
+using StringSet = std::unordered_set<std::string, TransparentStringHash, std::equal_to<>>;
 
 StringSet getNamesOfAllBlocksWithAnInputConnection(const gr::property_map& flowgraphRoot) {
     StringSet  blocksWithInput;
@@ -70,7 +72,7 @@ FlowgraphSinks parseFlowgraphSinksFromYaml(const gr::property_map& flowgraphRoot
     }
     const auto namesOfBlocksWithInputs = getNamesOfAllBlocksWithAnInputConnection(flowgraphRoot);
 
-    opendigitizer::ColourManager manager;
+    SignalColours colours;
     for (const auto& blockValue : *blocks) { // assumes that regular dashboard loading also loads blocks in order they appear in the file
         const auto        block      = blockValue.value_or<gr::property_map>(gr::property_map{});
         const auto        parameters = block.value_or<gr::property_map>("parameters", gr::property_map{});
@@ -81,19 +83,19 @@ FlowgraphSinks parseFlowgraphSinksFromYaml(const gr::property_map& flowgraphRoot
         sinks.allBlockNames.insert(name);
 
         const std::string id = block.value_or<std::string>("id", std::string{});
-        if (!id.starts_with("opendigitizer::ImPlotSink")) {
+        if (!isPlotSinkTypeName(id)) {
             continue;
         }
         const std::uint32_t explicitColor = getAndConvertNumber<std::uint32_t>(parameters, "color", 0U);
 
-        std::size_t slot = manager.getNextSlotIndex();
-        manager.releaseSlotIndex(slot);
-        slot = explicitColor == 0U ? manager.getNextSlotIndex() : manager.setColour(explicitColor);
+        std::size_t slot = colours.acquire();
+        colours.release(slot);
+        slot = explicitColor == 0U ? colours.acquire() : colours.acquire(explicitColor);
         PlotSinkDetails details{
             .signal =
                 {
-                    .color     = manager.getColourAtSlot(manager.getActivePalette(), slot),
-                    .isDataSet = id.starts_with("opendigitizer::ImPlotSink<gr::DataSet"),
+                    .color     = colours.colour(slot),
+                    .isDataSet = isDataSetPlotSinkTypeName(id),
                 },
             .hasInput = namesOfBlocksWithInputs.contains(name),
         };
@@ -108,15 +110,13 @@ struct ChartParsingContext {
     DashboardPreview&       outputPreview;
 };
 
-/// Somewhat duplicates some logic ImGuiDockSpaceState to go over all splits and resolve them into rect areas for a chart
 void parseDockedChartRectAreas(const ChartParsingContext& context, DashboardPreview::Rect area) {
-    const auto hsplit = context.inputYaml.get_if<gr::property_map>("hsplit");
-    const auto vsplit = context.inputYaml.get_if<gr::property_map>("vsplit");
-    if (!hsplit && !vsplit) {
+    const auto split = dock_space::findSplit(context.inputYaml);
+    if (!split) {
         return;
     }
-    const gr::property_map& inner = hsplit ? *hsplit : *vsplit;
-    const float             ratio = std::clamp(getAndConvertNumber(inner, "ratio", 1.f), 0.05f, 0.95f);
+    const gr::property_map& inner = split->inner;
+    const float             ratio = std::clamp(getAndConvertNumber(inner, dock_space::kRatio, 1.f), 0.05f, 0.95f);
 
     const auto placeChild = [&](std::string_view key, DashboardPreview::Rect childArea) {
         const auto child = inner.find_value(key);
@@ -125,12 +125,10 @@ void parseDockedChartRectAreas(const ChartParsingContext& context, DashboardPrev
         }
         auto& chartIndexByName = context.inputChartIndexByName;
         if (child->is_string()) {
-            // leaf
             if (const auto chartIt = chartIndexByName.find(child->value_or(std::string{})); chartIt != chartIndexByName.end()) {
                 context.outputPreview.charts[static_cast<std::size_t>(chartIt->second)].rect = childArea;
             }
         } else if (const auto childMap = child->get_if<gr::property_map>()) {
-            // branch
             parseDockedChartRectAreas(
                 ChartParsingContext{
                     .inputYaml             = *childMap,
@@ -141,15 +139,13 @@ void parseDockedChartRectAreas(const ChartParsingContext& context, DashboardPrev
         }
     };
 
-    // first: left/top
-    // second: right/bottom
-    // value of ratio goes to the left node in hsplit or the bottom node in vsplit
-    if (hsplit) {
-        placeChild("first", {.x = area.x, .y = area.y, .w = area.w * ratio, .h = area.h});
-        placeChild("second", {.x = area.x + area.w * ratio, .y = area.y, .w = area.w * (1.f - ratio), .h = area.h});
+    // first is left or top, second right or bottom; the ratio is the left node's in an hsplit, the bottom node's in a vsplit
+    if (split->horizontal) {
+        placeChild(dock_space::kFirst, {.x = area.x, .y = area.y, .w = area.w * ratio, .h = area.h});
+        placeChild(dock_space::kSecond, {.x = area.x + area.w * ratio, .y = area.y, .w = area.w * (1.f - ratio), .h = area.h});
     } else {
-        placeChild("first", {.x = area.x, .y = area.y, .w = area.w, .h = area.h * (1.f - ratio)});
-        placeChild("second", {.x = area.x, .y = area.y + area.h * (1.f - ratio), .w = area.w, .h = area.h * ratio});
+        placeChild(dock_space::kFirst, {.x = area.x, .y = area.y, .w = area.w, .h = area.h * (1.f - ratio)});
+        placeChild(dock_space::kSecond, {.x = area.x, .y = area.y + area.h * (1.f - ratio), .w = area.w, .h = area.h * ratio});
     }
 }
 
@@ -167,10 +163,10 @@ void parseFloatingChartRectAreas(const ChartParsingContext& context) {
         chart.isFloating               = true;
 
         chart.rect = {
-            .x = getAndConvertNumber(*window, "x", 0.f),
-            .y = getAndConvertNumber(*window, "y", 0.f),
-            .w = getAndConvertNumber(*window, "width", 0.f),
-            .h = getAndConvertNumber(*window, "height", 0.f),
+            .x = getAndConvertNumber(*window, dock_space::kX, 0.f),
+            .y = getAndConvertNumber(*window, dock_space::kY, 0.f),
+            .w = getAndConvertNumber(*window, dock_space::kWidth, 0.f),
+            .h = getAndConvertNumber(*window, dock_space::kHeight, 0.f),
         };
     }
 }
@@ -199,8 +195,8 @@ DashboardPreview::ChartType chartTypeFromName(std::string_view typeName) {
     if (typeName.contains("XYChart") || typeName.contains("YYChart")) {
         return Chart2D;
     }
-    for (const auto& [chartType, name] : magic_enum::enum_entries<DashboardPreview::ChartType>()) {
-        if (typeName.contains(name)) {
+    for (const auto chartType : gr::meta::enumValues<DashboardPreview::ChartType>()) {
+        if (const auto name = gr::meta::enumName(chartType); name && typeName.contains(*name)) {
             return chartType;
         }
     }
@@ -210,81 +206,78 @@ DashboardPreview::ChartType chartTypeFromName(std::string_view typeName) {
 ImU32 signalColor(const DashboardPreview::Signal& signal) { return signal.color == 0U ? ImGui::GetColorU32(ImGuiCol_PlotLines) : rgbToImGuiABGR(signal.color); }
 
 [[nodiscard]] float spectrumPointHeight(float pointIndex, float t) {
-    constexpr float minHeight             = 0.06f;
-    constexpr float maxHeight             = 0.95f;
-    constexpr float startingPeakMinOffset = 0.15f;
-    constexpr float startingPeakWidth     = 0.5f;
-    constexpr float peakSpacing           = 0.618f; // wraps around, so this is good for preventing overlap
+    constexpr float kMinHeight             = 0.06f;
+    constexpr float kMaxHeight             = 0.95f;
+    constexpr float kStartingPeakMinOffset = 0.15f;
+    constexpr float kStartingPeakWidth     = 0.5f;
+    constexpr float kPeakSpacing           = 0.618f; // wraps around, so this is good for preventing overlap
     struct Peak {
         float offset;
         float height;
         float harshness;
     };
-    constexpr std::array peaks = {
+    constexpr std::array kPeaks = {
         Peak{.offset = 0.f, .height = 0.8f, .harshness = 250.f},
         Peak{.offset = 0.33f, .height = 0.5f, .harshness = 350.f},
         Peak{.offset = 0.57f, .height = 0.3f, .harshness = 450.f},
     };
 
-    // sum the effect of each peak on this point
-    const float mainPeak = startingPeakMinOffset + startingPeakWidth * std::fmod(pointIndex * peakSpacing, 1.f);
-    float       value    = minHeight;
-    for (const Peak& peak : peaks) {
+    const float mainPeak = kStartingPeakMinOffset + kStartingPeakWidth * std::fmod(pointIndex * kPeakSpacing, 1.f);
+    float       value    = kMinHeight;
+    for (const Peak& peak : kPeaks) {
         const float position = std::fmod(mainPeak + peak.offset, 1.f);
         value += peak.height * std::exp(-peak.harshness * (t - position) * (t - position));
     }
 
-    return 1.f - std::min(value, maxHeight); // y is down
+    return 1.f - std::min(value, kMaxHeight); // y is down
 }
 
 [[nodiscard]] float sineWavePointHeight(float pointIndex, float t) {
-    constexpr float basePeriod   = 1.5f;
-    constexpr float periodOffset = 0.5f;
-    constexpr float phaseOffset  = 1.9f;
-    constexpr float amplitude    = 0.32f; // decently big but still < 1 so its within the chart area
+    constexpr float kBasePeriod   = 1.5f;
+    constexpr float kPeriodOffset = 0.5f;
+    constexpr float kPhaseOffset  = 1.9f;
+    constexpr float kAmplitude    = 0.32f; // big, but < 1 to stay within the chart area
 
-    const float periods = basePeriod + periodOffset * pointIndex;
-    return 0.5f - amplitude * std::sin(2.f * std::numbers::pi_v<float> * periods * t + phaseOffset * pointIndex);
+    const float periods = kBasePeriod + kPeriodOffset * pointIndex;
+    return 0.5f - kAmplitude * std::sin(2.f * std::numbers::pi_v<float> * periods * t + kPhaseOffset * pointIndex);
 }
 
-/// Draw some stand-in lines either to look like a sine wave or spectrum, depending on if the type of the plot sink is a gr::DataSet or not
+/// stand-in lines: a spectrum for DataSet sinks, else a sine wave
 void drawSignalLines(ImDrawList& drawList, std::span<const DashboardPreview::Signal> signals, ImVec2 origin, ImVec2 size, bool forceSpectrumStyle) {
     const float   lineThickness = LookAndFeel::instance().openDashboardPageStyle.dashboardPreviewLineThickness;
-    constexpr int numPoints     = 24;
+    constexpr int kNumPoints    = 24;
 
-    std::array<ImVec2, numPoints> points{};
+    std::array<ImVec2, kNumPoints> points{};
     for (std::size_t signalIndex = 0UZ; signalIndex < signals.size(); ++signalIndex) {
         const float indexFloat    = static_cast<float>(signalIndex);
         const bool  spectrumStyle = forceSpectrumStyle || signals[signalIndex].isDataSet;
-        for (std::size_t point = 0; point < numPoints; ++point) {
-            const float t = static_cast<float>(point) / static_cast<float>(numPoints - 1);
+        for (std::size_t point = 0; point < kNumPoints; ++point) {
+            const float t = static_cast<float>(point) / static_cast<float>(kNumPoints - 1);
             const float y = spectrumStyle ? spectrumPointHeight(indexFloat, t) : sineWavePointHeight(indexFloat, t);
             points[point] = {origin.x + t * size.x, origin.y + y * size.y};
         }
-        drawList.AddPolyline(points.data(), numPoints, signalColor(signals[signalIndex]), ImDrawFlags_None, lineThickness);
+        drawList.AddPolyline(points.data(), kNumPoints, signalColor(signals[signalIndex]), ImDrawFlags_None, lineThickness);
     }
 }
 
-/// Draw something that looks like the 3D box of a surface plot
-/// Could probably be an icon...
 void drawSurfacePlotBoxIcon(ImDrawList& drawList, ImVec2 origin, ImVec2 size) {
-    constexpr float sideHalfHeightPercent = 0.3f;  // length of flat sides / 2
-    constexpr float pointOffsetPercent    = 0.11f; // length of pointy triangles of hexagon
+    constexpr float kSideHalfHeightPercent = 0.3f;  // length of flat sides / 2
+    constexpr float kPointOffsetPercent    = 0.11f; // length of pointy triangles of hexagon
 
     const float  unit           = std::min(size.x, size.y);
     const ImVec2 center         = {origin.x + 0.5f * size.x, origin.y + 0.5f * size.y};
-    const float  halfWidth      = (sideHalfHeightPercent + pointOffsetPercent) * unit;
-    const float  sideHalfHeight = sideHalfHeightPercent * unit;
-    const float  pointOffset    = pointOffsetPercent * unit;
+    const float  halfWidth      = (kSideHalfHeightPercent + kPointOffsetPercent) * unit;
+    const float  sideHalfHeight = kSideHalfHeightPercent * unit;
+    const float  pointOffset    = kPointOffsetPercent * unit;
 
     const ImU32      color   = ImGui::GetColorU32(ImGuiCol_PlotLines);
     const std::array outline = {
-        ImVec2{center.x, center.y - sideHalfHeight - pointOffset}, // top
-        ImVec2{center.x + halfWidth, center.y - sideHalfHeight},   // right top
-        ImVec2{center.x + halfWidth, center.y + sideHalfHeight},   // right bottom
-        ImVec2{center.x, center.y + sideHalfHeight + pointOffset}, // bottom
-        ImVec2{center.x - halfWidth, center.y + sideHalfHeight},   // left bottom
-        ImVec2{center.x - halfWidth, center.y - sideHalfHeight},   // left top
+        ImVec2{center.x, center.y - sideHalfHeight - pointOffset},
+        ImVec2{center.x + halfWidth, center.y - sideHalfHeight},
+        ImVec2{center.x + halfWidth, center.y + sideHalfHeight},
+        ImVec2{center.x, center.y + sideHalfHeight + pointOffset},
+        ImVec2{center.x - halfWidth, center.y + sideHalfHeight},
+        ImVec2{center.x - halfWidth, center.y - sideHalfHeight},
     };
     const ImVec2 backCorner{center.x, center.y + sideHalfHeight - pointOffset};
     const ImVec2 leftBottom  = outline[4];
@@ -301,12 +294,12 @@ void drawSurfacePlotBoxIcon(ImDrawList& drawList, ImVec2 origin, ImVec2 size) {
 void drawPreviewChart(ImDrawList& drawList, const DashboardPreview::Chart& chart, ImVec2 topLeft, ImVec2 bottomRight) {
     using enum DashboardPreview::ChartType;
 
-    constexpr float borderInset        = 0.5f;
+    constexpr float kBorderInset       = 0.5f;
     const float     chartSignalPadding = LookAndFeel::instance().openDashboardPageStyle.dashboardPreviewChartPadding;
     const float     minSize            = chartSignalPadding * 2.f; // nothing could fit if smaller than this
 
-    topLeft                   = {topLeft.x + borderInset, topLeft.y + borderInset};
-    bottomRight               = {bottomRight.x - borderInset, bottomRight.y - borderInset};
+    topLeft                   = {topLeft.x + kBorderInset, topLeft.y + kBorderInset};
+    bottomRight               = {bottomRight.x - kBorderInset, bottomRight.y - kBorderInset};
     const float chartRounding = LookAndFeel::instance().openDashboardPageStyle.dashboardPreviewChartRounding;
     drawList.AddRectFilled(topLeft, bottomRight, ImGui::GetColorU32(ImGuiCol_FrameBg), chartRounding);
     drawList.AddRect(topLeft, bottomRight, ImGui::GetColorU32(ImGuiCol_Border), chartRounding);
@@ -318,22 +311,22 @@ void drawPreviewChart(ImDrawList& drawList, const DashboardPreview::Chart& chart
     }
     const ImVec2 origin{topLeft.x + chartSignalPadding, topLeft.y + chartSignalPadding};
 
-    // viridis is the default implot colormap for spectrum history areas, get its darkest / background color
+    // viridis, ImPlot's default colormap of spectrum history areas: its darkest, background colour
     const ImU32 spectrumHistoryColor = ImPlot::GetColormapColorU32(0, ImPlotColormap_Viridis);
 
     switch (chart.type) {
     case SpectrumDensity: {
-        constexpr float emptyBottomArea = 1.f / 3.f;
+        constexpr float kEmptyBottomArea = 1.f / 3.f;
         drawList.AddRectFilled(origin, {origin.x + width, origin.y + height}, spectrumHistoryColor, chartRounding);
-        drawSignalLines(drawList, chart.signals, origin, {width, height * (1.f - emptyBottomArea)}, true);
+        drawSignalLines(drawList, chart.signals, origin, {width, height * (1.f - kEmptyBottomArea)}, true);
         return;
     }
     case SpectrumView: {
         // top 1/3 is the spectrum with a waterfall below that
-        constexpr float spectrumArea = 1.f / 3.f;
-        const float     gap          = LookAndFeel::instance().openDashboardPageStyle.dashboardPreviewSpectrumWaterfallGap;
+        constexpr float kSpectrumArea = 1.f / 3.f;
+        const float     gap           = LookAndFeel::instance().openDashboardPageStyle.dashboardPreviewSpectrumWaterfallGap;
 
-        const float spectrumHeight = std::max(0.f, (height - gap) * spectrumArea);
+        const float spectrumHeight = std::max(0.f, (height - gap) * kSpectrumArea);
         drawList.AddRectFilled({origin.x, origin.y + spectrumHeight + gap}, {origin.x + width, origin.y + height}, spectrumHistoryColor, chartRounding);
         drawSignalLines(drawList, chart.signals, origin, {width, spectrumHeight}, true);
         return;
@@ -348,7 +341,6 @@ void drawPreviewChart(ImDrawList& drawList, const DashboardPreview::Chart& chart
 
 } // namespace
 
-/// For this function, also see Dashboard::doLoad() in Dashboard.cpp, which has some similarities as it also needs to parse dashboard yaml
 std::optional<DashboardPreview> DashboardPreview::fromFlowgraphYaml(std::string_view flowgraphYaml) {
     const auto maybeYaml = gr::pmt::yaml::deserialize(flowgraphYaml);
     if (!maybeYaml) {
@@ -401,7 +393,7 @@ std::optional<DashboardPreview> DashboardPreview::fromFlowgraphYaml(std::string_
                     const PlotSinkDetails& details = sinkIt->second;
                     chart.signals.push_back(details.hasInput ? details.signal : Signal{.isDataSet = details.signal.isDataSet});
                 } else if (sinks.allBlockNames.contains(blockName)) {
-                    // probably some user defined sink, just draw a sine wave
+                    // probably a user-defined sink
                     chart.signals.push_back({});
                 }
             }
@@ -420,7 +412,7 @@ std::optional<DashboardPreview> DashboardPreview::fromFlowgraphYaml(std::string_
     }
 
     if (const auto windowLayout = dashboard->get_if<gr::property_map>("windowLayout")) {
-        if (const auto dockSpace = windowLayout->get_if<gr::property_map>("dockSpace")) {
+        if (const auto dockSpace = windowLayout->get_if<gr::property_map>(dock_space::kDockSpace)) {
             parseDockedChartRectAreas(
                 {
                     .inputYaml             = *dockSpace,
@@ -429,7 +421,7 @@ std::optional<DashboardPreview> DashboardPreview::fromFlowgraphYaml(std::string_
                 },
                 {.x = 0.f, .y = 0.f, .w = 1.f, .h = 1.f});
         }
-        if (const auto floatingWindows = windowLayout->get_if<gr::property_map>("floatingWindows")) {
+        if (const auto floatingWindows = windowLayout->get_if<gr::property_map>(dock_space::kFloatingWindows)) {
             parseFloatingChartRectAreas({
                 .inputYaml             = *floatingWindows,
                 .inputChartIndexByName = chartIndexByName,
@@ -463,7 +455,7 @@ void DashboardPreview::draw(ImVec2 topLeft, ImVec2 bottomRight) const {
             if (viewportSize.x <= 0.f || viewportSize.y <= 0.f) {
                 continue;
             }
-            // normalize floating windows because their rect coordinates are absolute. only really makes sense if the current screen is the same size as the screen that created the dashboard.
+            // floating windows have absolute rect coordinates; normalised, they fit only a screen of the size that created the dashboard
             rect = {.x = rect.x / viewportSize.x, .y = rect.y / viewportSize.y, .w = rect.w / viewportSize.x, .h = rect.h / viewportSize.y};
         }
         const ImVec2 chartMin{topLeft.x + rect.x * paneSize.x, topLeft.y + rect.y * paneSize.y};
@@ -474,4 +466,4 @@ void DashboardPreview::draw(ImVec2 topLeft, ImVec2 bottomRight) const {
     drawList.PopClipRect();
 }
 
-} // namespace DigitizerUi
+} // namespace gr::od

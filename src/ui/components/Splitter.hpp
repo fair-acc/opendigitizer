@@ -1,49 +1,49 @@
 #ifndef OPENDIGITIZER_UI_COMPONENTS_SPLITTER_HPP_
 #define OPENDIGITIZER_UI_COMPONENTS_SPLITTER_HPP_
 
-#include "../common/ImguiWrap.hpp"
+#include "../common/Imw.hpp"
 #include "../common/LookAndFeel.hpp"
 
-namespace DigitizerUi::components {
+namespace gr::od::components {
 
 struct SplitterState {
-    enum class State { Hidden, AnimatedForward, AnimatedBackward, Shown } anim_state = State::Hidden;
+    enum class State { Hidden, AnimatedForward, AnimatedBackward, Shown } animState = State::Hidden;
 
-    float start_ratio = 0.0f;
-    float ratio       = 0.0f;
-    float speed       = LookAndFeel::instance().splitterRatioDeltaPerFrame;
+    float startRatio = 0.0f;
+    float ratio      = 0.0f;
+    float speed      = LookAndFeel::instance().splitterRatioDeltaPerFrame;
 
     void move(float max, bool forward = true) noexcept {
         if (forward) {
-            move_forward(max);
+            moveForward(max);
         } else {
             move_backward();
         }
     }
 
-    void move_forward(float max) noexcept {
-        if (anim_state == State::Shown) {
+    void moveForward(float max) noexcept {
+        if (animState == State::Shown) {
             return;
         }
 
-        anim_state = State::AnimatedForward;
+        animState = State::AnimatedForward;
         if (ratio / max >= 0.7f) {
             speed = LookAndFeel::instance().splitterRatioDeltaPerFrameSlow;
         }
 
         ratio += speed;
         if (ratio >= max) {
-            ratio      = max;
-            anim_state = State::Shown;
-            speed      = LookAndFeel::instance().splitterRatioDeltaPerFrame;
+            ratio     = max;
+            animState = State::Shown;
+            speed     = LookAndFeel::instance().splitterRatioDeltaPerFrame;
         }
     }
     void move_backward() noexcept {
-        if (anim_state == State::Hidden) {
+        if (animState == State::Hidden) {
             return;
         }
 
-        anim_state = State::AnimatedBackward;
+        animState = State::AnimatedBackward;
         ratio -= speed;
         if (ratio <= 0.0f) {
             reset();
@@ -51,15 +51,15 @@ struct SplitterState {
     }
 
     void reset() noexcept {
-        anim_state  = State::Hidden;
-        start_ratio = 0.0f;
-        ratio       = 0.0f;
+        animState  = State::Hidden;
+        startRatio = 0.0f;
+        ratio      = 0.0f;
     }
-    [[nodiscard]] bool is_hidden() const noexcept { return anim_state == State::Hidden; }
+    [[nodiscard]] bool isHidden() const noexcept { return animState == State::Hidden; }
 };
 
-float Splitter(SplitterState& state, ImVec2 space, bool vertical, float size, float defaultRatio, bool reset);
+float splitter(SplitterState& state, ImVec2 space, bool vertical, float size, float defaultRatio, bool reset);
 
-} // namespace DigitizerUi::components
+} // namespace gr::od::components
 
 #endif

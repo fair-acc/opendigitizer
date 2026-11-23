@@ -11,7 +11,6 @@
 #include <cstdint>
 #include <cstring>
 #include <limits>
-#include <print>
 #include <string_view>
 #include <utility>
 #include <vector>
@@ -26,7 +25,7 @@
 #include <implot.h>
 #include <implot_internal.h>
 
-namespace opendigitizer::charts {
+namespace gr::od::charts {
 
 /// llvmpipe, softpipe or SwiftShader (headless browsers, CI): there one quad per segment costs more than ImPlot's CPU path
 [[nodiscard]] inline bool softwareRasteriser() {
@@ -59,8 +58,8 @@ struct GpuLineProgram {
     };
 
     Handles handles;
-    bool    _compileAttempted       = false;
     bool    allowSoftwareRasteriser = false; // true: the GPU path even where softwareRasteriser(), e.g. to compare both paths
+    bool    _compileAttempted       = false;
 
     GpuLineProgram()                                 = default;
     GpuLineProgram(const GpuLineProgram&)            = delete;
@@ -76,12 +75,12 @@ struct GpuLineProgram {
         if (!_compileAttempted) {
             _compileAttempted = true;
             if (!allowSoftwareRasteriser && softwareRasteriser()) {
-                std::println(stderr, "[XYChart] software rasteriser, streaming traces are drawn on the CPU");
+                gr::log::info("[XYChart] software rasteriser, streaming traces are drawn on the CPU");
                 return false;
             }
             compile();
             if (handles.program == 0) {
-                std::println(stderr, "[XYChart] GPU line shaders unavailable, streaming traces are drawn on the CPU");
+                gr::log::info("[XYChart] GPU line shaders unavailable, streaming traces are drawn on the CPU");
             }
         }
         return handles.program != 0;
@@ -240,6 +239,9 @@ struct GpuLineRenderer {
         float                    framebufferHeight = 0.0f;
     };
 
+    int  lastDrawnFrame = -1;
+    bool outOfMemory    = false;
+
     GLuint               _vao         = 0;
     GLuint               _vbo         = 0;
     std::size_t          _capacity    = 0UZ; // ring slots, plus one repeating slot 0 for the segment across the wrap
@@ -252,8 +254,6 @@ struct GpuLineRenderer {
     Extents              _windowExtents;
     std::vector<Extents> _blocks;
     std::vector<Vertex>  _staging;
-    int                  lastDrawnFrame = -1;
-    bool                 outOfMemory    = false;
 
     GpuLineRenderer()                                  = default;
     GpuLineRenderer(const GpuLineRenderer&)            = delete;
@@ -292,13 +292,9 @@ struct GpuLineRenderer {
         }
         upload(sink, sinkBegin, total);
 
-        _windowBegin   = begin;
-        _windowExtents = {};
-        switch (xAxisScale) {
-        case AxisScale::Time: _shift = 0.0; break;
-        case AxisScale::LinearReverse: _shift = newest; break;
-        default: _shift = xAt(begin); break;
-        }
+        _windowBegin                      = begin;
+        _windowExtents                    = {};
+        _shift                            = xOffset(xAxisScale, xAt(begin), newest);
         const std::size_t firstWholeBlock = std::min(begin + (kBlockSize - begin % kBlockSize) % kBlockSize, total);
         for (std::size_t sample = begin; sample < firstWholeBlock; ++sample) {
             _windowExtents.add(xAt(sample), yAt(sample));
@@ -347,7 +343,7 @@ struct GpuLineRenderer {
         glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>((capacity + 1UZ) * sizeof(Vertex)), nullptr, GL_DYNAMIC_DRAW);
         outOfMemory = glGetError() == GL_OUT_OF_MEMORY;
         if (outOfMemory) {
-            std::println(stderr, "[XYChart] no GPU memory for {} samples, the trace is drawn on the CPU", capacity);
+            gr::log::warning("[XYChart] no GPU memory for {} samples, the trace is drawn on the CPU", capacity);
         }
         _capacity    = capacity;
         _uploadedEnd = 0UZ;
@@ -540,6 +536,6 @@ struct GpuLineRenderer {
     }
 };
 
-} // namespace opendigitizer::charts
+} // namespace gr::od::charts
 
 #endif // OPENDIGITIZER_CHARTS_GPULINERENDERER_HPP

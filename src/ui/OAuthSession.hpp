@@ -9,30 +9,27 @@
 #include <Client.hpp>
 #include <services/OAuthClient.hpp>
 
-namespace DigitizerUi {
-class OAuthSession {
-public:
-    static OAuthSession& instance();
-    void                 signIn(const std::string& scope, const std::string& clientid, const std::string& endpoint);
-    const std::string&   availableRoles() const;
-    void                 sign(opencmw::mdp::Message& msg);
-
-private:
-    const opencmw::zmq::Context    zctx;
-    opencmw::client::ClientContext clientContext = [&]() {
+namespace gr::od {
+struct OAuthSession {
+    const opencmw::zmq::Context    _zctx;
+    opencmw::client::ClientContext _clientContext = [&]() {
         std::vector<std::unique_ptr<opencmw::client::ClientBase>> clients;
-        clients.emplace_back(std::make_unique<opencmw::client::MDClientCtx>(zctx));
+        clients.emplace_back(std::make_unique<opencmw::client::MDClientCtx>(_zctx));
         return opencmw::client::ClientContext{std::move(clients)};
     }();
 
-    std::string secret;
-    std::string accessToken;
-    std::string roles;
+    std::string _secret;
+    std::string _accessToken;
+    std::string _roles;
 
-    opencmw::majordomo::cryptography::PrivateKey privateKey;
-    opencmw::majordomo::cryptography::PublicKey  publicKey;
-    opencmw::majordomo::cryptography::KeyHash    publicHash; // cached so that we do not have to recompute it
+    opencmw::majordomo::cryptography::PrivateKey _privateKey;
+    opencmw::majordomo::cryptography::PublicKey  _publicKey;
+    opencmw::majordomo::cryptography::KeyHash    _publicHash; // cached so that we do not have to recompute it
+
+    static OAuthSession& instance();
+    void                 signIn(const std::string& scope, const std::string& clientid, const std::string& endpoint);
+    const std::string&   availableRoles() const;
 };
-} // namespace DigitizerUi
+} // namespace gr::od
 
 #endif

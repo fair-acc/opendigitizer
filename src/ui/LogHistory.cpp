@@ -5,7 +5,7 @@
 #include <cstddef>
 #include <memory>
 
-namespace DigitizerUi {
+namespace gr::od {
 
 namespace {
 [[nodiscard]] bool isWarningOrWorse(gr::log::Level level) noexcept { return level <= gr::log::Level::warning; }
@@ -73,4 +73,4 @@ LogHistory& logHistory() {
     return *history;
 }
 
-} // namespace DigitizerUi
+} // namespace gr::od

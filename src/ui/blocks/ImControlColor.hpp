@@ -13,7 +13,7 @@
 #include <string>
 #include <utility>
 
-namespace DigitizerUi {
+namespace gr::od {
 
 namespace control {
 [[nodiscard]] inline std::string colorTypeMap() {
@@ -36,22 +36,21 @@ struct ImControlColor : ImControl<ImControlColor> {
         const float         swatchSize   = ImGui::GetFrameHeight();
         const SizeAndLayout layout       = prepareDraw(parsedConfig, swatchSize, swatchSize, labelWidth());
         loadValueIfConnectionChanged(value.value, parsedConfig);
-        drawWithLabelAndTooltip(layout, [this, &parsedConfig](float) {
-            const std::string id    = "##" + label;
+        drawWithLabel(layout, [this, &parsedConfig](float) {
+            const std::string id    = widgetId();
             const ImVec4      color = ImGui::ColorConvertU32ToFloat4(rgbToImGuiABGR(value.value));
             std::array        rgb{color.x, color.y, color.z};
-            // see ImControl tooltips and ImControlChoice for why we need to disable widgets that have popups while in the flowgraph
-            IMW::Disabled cannotOpenPicker(parsedConfig.drawingContext == DrawableBlockConfig::DrawingContext::FlowgraphView);
+            // popups are disabled inside the flowgraph editor, see ImControlChoice
+            imw::Disabled cannotOpenPicker(parsedConfig.drawingContext == DrawableBlockConfig::DrawingContext::FlowgraphView);
             if (ImGui::ColorEdit3(id.c_str(), rgb.data(), ImGuiColorEditFlags_NoInputs)) {
                 value.value = float4ToRGBA(ImVec4{rgb[0], rgb[1], rgb[2], 1.f}) >> 8;
-                std::ignore = settings().setStaged({{"value", value.value}});
-                sendToTargets(value.value);
+                commitValue(value.value);
             }
         });
         return gr::work::Status::OK;
     }
 };
 
-} // namespace DigitizerUi
+} // namespace gr::od
 
 #endif

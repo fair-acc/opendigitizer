@@ -14,7 +14,7 @@
 #include "PaneBlocks.hpp"
 #include "blocks/ToolbarBlock.hpp"
 
-namespace DigitizerUi {
+namespace gr::od {
 
 struct ToolbarSlot {
     std::size_t row       = 0UZ;
@@ -25,13 +25,13 @@ struct ToolbarSlot {
 [[nodiscard]] std::vector<ToolbarSlot> planToolbar(std::span<const toolbar::ItemWidths> items, float rowWidth, float spacing, std::size_t maxRows = 2UZ);
 
 struct ToolbarView {
-    void draw(GraphSession& session, bool schedulerControls);
-
     PaneBlocks                             _blocks{gr::UICategory::Toolbar};
     std::unordered_map<std::string, float> _fixedWidths;
     std::size_t                            _rows = 1UZ;
+
+    void draw(GraphSession& session, bool schedulerControls);
 };
 
-} // namespace DigitizerUi
+} // namespace gr::od
 
 #endif

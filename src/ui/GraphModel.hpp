@@ -2,6 +2,7 @@
 #define GRAPHMODEL_H
 
 #include <cstdint>
+#include <deque>
 #include <expected>
 #include <functional>
 #include <map>
@@ -19,17 +20,24 @@
 #include "blocks/DrawableBlockConfig.hpp"
 #include "blocks/TargetMap.hpp"
 
-struct TestApp;
+namespace gr::od {
 
-namespace opendigitizer::test {
-struct TestDashboardRunner;
+/// e.g. "opendigitizer::ImPlotSink" for "opendigitizer::ImPlotSink<float32>"
+[[nodiscard]] constexpr std::string_view withoutTemplateArguments(std::string_view typeName) { return typeName.substr(0UZ, typeName.find('<')); }
+
+/// the C++ type name without its template parameters, e.g. "gr::od::ImPlotSink" for ImPlotSink<float>
+template<typename TBlock>
+[[nodiscard]] consteval std::string_view baseTypeName() {
+    return withoutTemplateArguments(gr::meta::type_name<TBlock>());
 }
 
-namespace DigitizerUi {
+/// accept the registered id as well as the C++ type name
 
-[[nodiscard]] constexpr bool isChartTypeName(std::string_view typeName) { return typeName.starts_with("opendigitizer::charts::"); }
+[[nodiscard]] bool isChartTypeName(std::string_view typeName);
+[[nodiscard]] bool isPlotSinkTypeName(std::string_view typeName);
+[[nodiscard]] bool isDataSetPlotSinkTypeName(std::string_view typeName);
 
-class UiGraphModel;
+struct UiGraphModel;
 struct UiGraphBlock;
 
 struct UiGraphPort {
@@ -43,8 +51,7 @@ struct UiGraphPort {
 
     UiGraphPort(UiGraphBlock* owner) : ownerBlock(owner) {}
 
-    /// `exportedTo` should be the root block (ie. graph or scheduler) to which this port is exported
-    /// Returns the exported name of the port, if it is exported, and null otherwise.
+    /// the exported name in `exportedTo`, the root block (graph or scheduler); nullopt when not exported
     [[nodiscard]] std::optional<std::string> getExportedName(const UiGraphBlock* exportedTo) const;
     [[nodiscard]] bool                       isExportedTo(const UiGraphBlock* exportedTo) const { return getExportedName(exportedTo).has_value(); }
 };
@@ -69,7 +76,6 @@ struct UiGraphEdge {
 
     UiGraphEdge() : edgeSourcePortDefinition(std::string()), edgeDestinationPortDefinition(std::string()) {}
 
-    /// returns the source or the destination block
     UiGraphBlock* getBlock(UiGraphPort::Role role) const {
         if (role == UiGraphPort::Role::Source) {
             return edgeSourcePort ? edgeSourcePort->ownerBlock : nullptr;
@@ -80,11 +86,6 @@ struct UiGraphEdge {
 };
 
 struct UiGraphBlock {
-    UiGraphModel* ownerGraph  = nullptr;
-    UiGraphBlock* parentBlock = nullptr;
-
-    std::string blockUniqueName;
-
     struct NormalBlockInfo {
         std::string ownerGraphUniqueName;
         std::string ownerSchedulerUniqueName;
@@ -95,106 +96,13 @@ struct UiGraphBlock {
     struct SchedulerBlockInfo {
         bool childrenLoaded = false;
     };
-    std::variant<std::monostate, NormalBlockInfo, GraphBlockInfo, SchedulerBlockInfo> blockCategoryInfo;
 
-    std::string ownerSchedulerUniqueName() const {
-        return std::visit(gr::meta::overloaded{[this](const SchedulerBlockInfo&) { return blockUniqueName; }, //
-                              [](std::monostate) {
-                                  assert(false && "monostate can not be info for an initialized block");
-                                  return std::string();
-                              }, //
-                              [](const auto& info) { return info.ownerSchedulerUniqueName; }},
-            blockCategoryInfo);
-    }
-
-    std::string blockName;
-    std::string blockTypeName;
-    std::string blockCategory;
-    std::string blockUiCategory;
-
-    bool blockIsBlocking = false;
-
-    std::vector<UiGraphPort> _inputPorts;
-    std::vector<UiGraphPort> _outputPorts;
-
-    const std::vector<UiGraphPort>& inputPorts() { return _inputPorts; }
-    const std::vector<UiGraphPort>& outputPorts() { return _outputPorts; }
-
-    void setSetting(std::string_view keyToUpdate, gr::pmt::Value&& updatedValue);
-    void setBlockData(const gr::property_map& data);
-    void setBasicBlockData(const gr::property_map& blockData);
-    void setBlockName(std::string newBlockName);
-    /// Rebuilds _inputPorts and _outputPorts. Graphs and schedulers take them from the
-    /// exported ports of their children, every other block from its own port list.
-    /// Returns true if they were derived from exported ports, i.e. if a change in ports
-    /// may have occurred.
-    [[nodiscard]] bool         updatePorts(const gr::property_map& blockData);
-    void                       setGraphChildren(const gr::property_map& data);
-    void                       setSchedulerGraph(const gr::property_map& data);
-    std::optional<UiGraphEdge> parseEdgeData(const gr::property_map& edgeData);
-
-    /// Resolves all childEdges' port pointers based on port and block names, removing
-    /// any that don't resolve to an actual port. This is necessary because subgraph
-    /// blocks can change their ports due to changes in exported/imported ports.
-    void graphResolveEdgePortPointersAndRemoveIfInvalid();
-
-    [[nodiscard]] constexpr bool isPlotSink() const { return this->blockTypeName.starts_with("opendigitizer::ImPlotSink"); }
-    [[nodiscard]] constexpr bool isChart() const { return isChartTypeName(blockTypeName); }
-    [[nodiscard]] bool           isUiControl() const;
-    [[nodiscard]] bool           isViewOnlyUiControl() const;
-    [[nodiscard]] bool           usesTargetMap() const { return blockSettings.contains("target_map"); }
-    [[nodiscard]] constexpr bool isScheduler() const { return std::holds_alternative<SchedulerBlockInfo>(blockCategoryInfo); }
-    [[nodiscard]] constexpr bool isGraph() const { return std::holds_alternative<GraphBlockInfo>(blockCategoryInfo); } // unmanaged/unscheduled
-
-    /// Returns the value of the compatible_type_map block setting
-    [[nodiscard]] std::string                           uiControlCompatibleTypeMap() const;
-    [[nodiscard]] std::expected<TargetMap, std::string> uiControlTargetMap() const {
-        if (!usesTargetMap()) {
-            return std::unexpected("Attempt to get target map for a block which does not implement it");
-        }
-        return TargetMap::fromString(blockSettings.value_or<std::string>("target_map", std::string{}));
-    }
-    /// Get the name of the type of a block property with some additional info, namely if the meta information specifies enumValues then this returns "enum" instead of "string"
-    [[nodiscard]] std::string              propertyTypeName(std::string_view property) const;
-    [[nodiscard]] bool                     isConnectableProperty(std::string_view property, std::string_view compatibleTypeMap) const;
-    [[nodiscard]] std::vector<std::string> connectableProperties(std::string_view compatibleTypeMap) const;
-    [[nodiscard]] BlockPropertyHints       propertyHints(std::string_view property) const;
-
-    // We often search by name, but as we don't expect graphs with
-    // a large $n$ of blocks, linear search will be fine
-    std::vector<std::unique_ptr<UiGraphBlock>> childBlocks;
-    std::vector<UiGraphEdge>                   childEdges;
-
-    bool newGraphDataBeingSet = false;
-
-    // Handlers for graph and schdeuler events
-    void handleChildBlockEmplaced(const gr::property_map& blockData);
-    void handleChildEdgeEmplaced(const gr::property_map& data);
-    bool handleChildBlockRemoved(const std::string& uniqueName);
-    void handleChildEdgeRemoved(const gr::property_map& data);
-
-    UiGraphBlock* findBlockByUniqueName(const std::string& uniqueName);
-
-private:
     enum class SearchProperty { UniqueName, Name };
-    auto         findBlockIteratorBy(std::initializer_list<SearchProperty>, std::string_view value);
-    auto         findPortIteratorByName(auto& ports, const std::string& portName);
-    UiGraphPort* resolveChildPort(const std::string& childNameOrUniqueName, gr::PortDirection direction, const gr::PortDefinition& portDefinition);
-
-public:
-    void removeEdgesForBlock(UiGraphBlock& block);
-
-    // Settings and contexts
 
     struct ContextTime {
         std::string   context;
         std::uint64_t time = 1;
     };
-    ContextTime              activeContext;
-    std::vector<ContextTime> contexts;
-
-    gr::property_map blockSettings;
-    gr::property_map blockMetaInformation;
 
     enum class SettingsControlType {
         Color,
@@ -216,28 +124,52 @@ public:
         SettingsControlType controlType(const gr::pmt::Value& value) const;
     };
 
-    std::map<std::string, SettingsMetaInformation> blockSettingsMetaInformation;
-
-    void updateBlockSettingsMetaInformation();
-
     struct PortNameMapper {
         std::string internalName;
         std::string exportedName;
         auto        operator<=>(const PortNameMapper&) const = default;
         bool        operator==(const PortNameMapper&) const  = default;
     };
-    std::map<std::string, std::set<PortNameMapper>> exportedInputPorts;
-    std::map<std::string, std::set<PortNameMapper>> exportedOutputPorts;
-
-    // UI-related data
 
     struct StoredXY {
         float x = 0;
         float y = 0;
     };
+
+    UiGraphModel* ownerGraph  = nullptr;
+    UiGraphBlock* parentBlock = nullptr;
+
+    std::string blockUniqueName;
+
+    std::variant<std::monostate, NormalBlockInfo, GraphBlockInfo, SchedulerBlockInfo> blockCategoryInfo;
+
+    std::string blockName;
+    std::string blockTypeName;
+    std::string blockCategory;
+
+    // searched by name: linear search suffices for graphs of few blocks
+    std::vector<std::unique_ptr<UiGraphBlock>> childBlocks;
+    std::vector<UiGraphEdge>                   childEdges;
+
+    bool newGraphDataBeingSet = false;
+
+    ContextTime              activeContext;
+    std::vector<ContextTime> contexts;
+
+    gr::property_map blockSettings;
+    gr::property_map blockMetaInformation;
+
+    std::map<std::string, SettingsMetaInformation> blockSettingsMetaInformation;
+
+    std::map<std::string, std::set<PortNameMapper>> exportedInputPorts;
+    std::map<std::string, std::set<PortNameMapper>> exportedOutputPorts;
+
     std::optional<StoredXY> storedXY;
 
     std::string storedEditorSettings;
+
+    std::vector<UiGraphPort> _inputPorts;
+    std::vector<UiGraphPort> _outputPorts;
 
     UiGraphBlock(UiGraphModel* ownerGraph_, UiGraphBlock* parentBlock_) : ownerGraph(ownerGraph_), parentBlock(parentBlock_) {}
 
@@ -248,6 +180,69 @@ public:
     UiGraphBlock(UiGraphBlock&&)                 = delete;
     UiGraphBlock& operator=(UiGraphBlock&&)      = delete;
 
+    std::string ownerSchedulerUniqueName() const {
+        return std::visit(gr::meta::overloaded{[this](const SchedulerBlockInfo&) { return blockUniqueName; }, //
+                              [](std::monostate) {
+                                  assert(false && "monostate can not be info for an initialized block");
+                                  return std::string();
+                              }, //
+                              [](const auto& info) { return info.ownerSchedulerUniqueName; }},
+            blockCategoryInfo);
+    }
+
+    const std::vector<UiGraphPort>& inputPorts() { return _inputPorts; }
+    const std::vector<UiGraphPort>& outputPorts() { return _outputPorts; }
+
+    void setSetting(std::string_view keyToUpdate, gr::pmt::Value&& updatedValue);
+    void setBlockData(const gr::property_map& data);
+    void setBasicBlockData(const gr::property_map& blockData);
+    void setBlockName(std::string newBlockName);
+    /// rebuilds _inputPorts and _outputPorts: graphs and schedulers from their children's exported ports, other blocks from their own port list;
+    /// true when derived from exported ports, i.e. when the ports may have changed
+    [[nodiscard]] bool         updatePorts(const gr::property_map& blockData);
+    void                       setGraphChildren(const gr::property_map& data);
+    void                       setSchedulerGraph(const gr::property_map& data);
+    std::optional<UiGraphEdge> parseEdgeData(const gr::property_map& edgeData);
+
+    /// subgraph blocks change their ports with their exported and imported ports
+    void graphResolveEdgePortPointersAndRemoveIfInvalid();
+
+    [[nodiscard]] bool           isPlotSink() const { return isPlotSinkTypeName(blockTypeName); }
+    [[nodiscard]] bool           isChart() const { return isChartTypeName(blockTypeName); }
+    [[nodiscard]] bool           isUiControl() const;
+    [[nodiscard]] bool           isViewOnlyUiControl() const;
+    [[nodiscard]] bool           usesTargetMap() const { return blockSettings.contains("target_map"); }
+    [[nodiscard]] constexpr bool isScheduler() const { return std::holds_alternative<SchedulerBlockInfo>(blockCategoryInfo); }
+    [[nodiscard]] constexpr bool isGraph() const { return std::holds_alternative<GraphBlockInfo>(blockCategoryInfo); } // unmanaged/unscheduled
+
+    [[nodiscard]] std::string                           uiControlCompatibleTypeMap() const;
+    [[nodiscard]] std::expected<TargetMap, std::string> uiControlTargetMap() const {
+        if (!usesTargetMap()) {
+            return std::unexpected("Attempt to get target map for a block which does not implement it");
+        }
+        return TargetMap::fromString(blockSettings.value_or<std::string>("target_map", std::string{}));
+    }
+    /// "enum" instead of "string" when the meta information lists enumValues
+    [[nodiscard]] std::string              propertyTypeName(std::string_view property) const;
+    [[nodiscard]] bool                     isConnectableProperty(std::string_view property, std::string_view compatibleTypeMap) const;
+    [[nodiscard]] std::vector<std::string> connectableProperties(std::string_view compatibleTypeMap) const;
+    [[nodiscard]] BlockPropertyHints       propertyHints(std::string_view property) const;
+
+    void emplaceChild(const gr::property_map& blockData);
+    void emplaceEdge(const gr::property_map& data);
+    bool removeChild(const std::string& uniqueName);
+    void applySettings(const gr::property_map& data);
+
+    UiGraphBlock* findBlockByUniqueName(const std::string& uniqueName);
+
+    auto         findBlockIteratorBy(std::initializer_list<SearchProperty>, std::string_view value);
+    auto         findPortIteratorByName(auto& ports, const std::string& portName);
+    UiGraphPort* resolveChildPort(const std::string& childNameOrUniqueName, gr::PortDirection direction, const gr::PortDefinition& portDefinition);
+
+    void removeEdgesForBlock(UiGraphBlock& block);
+
+    void updateBlockSettingsMetaInformation();
+
     void requestBlockUpdate();
 
     void getAllContexts();
@@ -257,128 +252,150 @@ public:
 
     void addContext(const ContextTime& contextTime);
     void removeContext(const ContextTime& contextTime);
-
-    bool isConnected() const;
 };
 
-inline void forEachBlockRecursive(UiGraphBlock& root, auto&& fn) {
-    for (const auto& child : root.childBlocks) {
-        fn(*child);
-        forEachBlockRecursive(*child, fn);
-    }
+[[nodiscard]] inline gr::Message makeMessage(gr::message::Command cmd, std::string serviceName, std::string endpoint, gr::property_map data = {}, std::string clientRequestID = {}) { //
+    return gr::Message{.cmd = cmd, .serviceName = std::move(serviceName), .clientRequestID = std::move(clientRequestID), .endpoint = std::move(endpoint), .data = std::move(data)};
 }
 
-[[nodiscard]] inline gr::Message subscriptionMessageForAllBlocksSettings() {
-    gr::Message message;
-    message.cmd             = gr::message::Command::Subscribe;
-    message.serviceName     = "";
-    message.clientRequestID = "UI";
-    message.endpoint        = gr::block::property::kSetting;
-    return message;
-}
+[[nodiscard]] inline gr::Message subscriptionMessageForAllBlocksSettings() { return makeMessage(gr::message::Command::Subscribe, "", gr::block::property::kSetting, {}, "UI"); }
 
-class UiGraphModel {
-public:
-    friend struct ::TestApp;
-    friend struct ::opendigitizer::test::TestDashboardRunner;
+/// the kEmplaceEdge payload the UI sends: minimum buffer 4096, weight 1, name "edge"
+[[nodiscard]] gr::property_map emplaceEdgeData(std::string sourceBlock, std::string sourcePort, std::string destinationBlock, std::string destinationPort);
 
-    UiGraphModel() : rootBlock(this, nullptr) {}
-
-    std::function<void(gr::Message, std::source_location)> sendMessage_;
-
-    void sendMessage(gr::Message message, std::source_location location = std::source_location::current()) { sendMessage_(std::move(message), std::move(location)); }
-
-    UiGraphBlock rootBlock;
-
-    UniqueNameRegistry nameRegistry;
-
-    std::string m_localFlowgraphGrc;
-    bool        requestedFullUpdate = false;
-
-    // Not a multimap as filtered lists like sequence collections
-    std::map<std::string, std::set<std::string>> knownBlockTypes;
-    std::map<std::string, std::set<std::string>> knownSchedulerTypes;
-
-    UiGraphBlock* selectedBlock = nullptr;
-
-    // child blocks will increment this when they are destroyed. it serves as a
-    // generation so the editor can know its node id pointers are invalid
-    std::uint64_t blockDestructionCount = 0;
-
-    std::uint64_t topologyGeneration = 0;
-
-    /**
-     * @return true if consumed the message
-     */
-    bool processMessage(const gr::Message& message);
-
-    void handleTopologyUpdated();
-    void rebuildNameRegistry();
-    void requestFullUpdate(std::source_location location = std::source_location::current());
-    void requestAvailableBlocksTypesUpdate();
-    void saveBlockPositions(gr::property_map& graphData);
-
-    /// Returns whether a block is connected directly or indirectly to another block
-    bool blockInTree(const UiGraphBlock& block, const UiGraphBlock& tree) const;
-
+struct UiGraphModel {
     struct AvailableParametrizationsResult {
         std::string baseType;
         std::string parametrization;
-        // We still don't have optional of references
+        // no std::optional of references yet
         const std::set<std::string>* availableParametrizations;
     };
 
-    AvailableParametrizationsResult availableParametrizationsFor(const std::string& fullBlockType) const;
-
     struct FindBlockResult {
+        UiGraphBlock* parentGraph = nullptr;
+        UiGraphBlock* block       = nullptr;
+
         operator bool() const { return block != nullptr; }
-
-        UiGraphBlock*                                 parentGraph        = nullptr;
-        UiGraphBlock*                                 block              = nullptr;
-        decltype(UiGraphBlock::childBlocks)*          owningCollection   = nullptr;
-        decltype(UiGraphBlock::childBlocks)::iterator owningCollectionIt = {};
     };
-    FindBlockResult recursiveFindBlockByUniqueName(std::string_view uniqueName);
-    FindBlockResult recursiveFindBlockByName(std::string_view name);
 
-    [[nodiscard]] UiGraphBlock* rootGraphBlock();
+    enum class VisitorResult {
+        Recurse,
+        Continue, // to the sibling, skipping the children
+        Break,
+    };
 
     struct ParsedUiControlTargetMap {
         UiGraphBlock* control = nullptr;
         TargetMap     targets;
     };
-    [[nodiscard]] std::vector<ParsedUiControlTargetMap> parseAllUiControlTargetMaps();
 
     using ControlledPropertyMap = std::map<std::string, std::vector<UiGraphBlock*>, std::less<>>;
-    /// Returns a map of properties of the target block to a list of UI control blocks which have a connection to that property
-    [[nodiscard]] static ControlledPropertyMap uiControlledProperties(const UiGraphBlock& targetBlock, std::span<const ParsedUiControlTargetMap> parsedUiControlTargetMaps);
-    [[nodiscard]] ControlledPropertyMap        uiControlledProperties(const UiGraphBlock& targetBlock) { return uiControlledProperties(targetBlock, parseAllUiControlTargetMaps()); }
-
-    /// Return a list of the names of all properties in all blocks which have a type listed in the "compatible_type_map" setting of this control block
-    [[nodiscard]] std::vector<std::string> globConnectableProperties(const UiGraphBlock& control);
 
     struct BlockPointerPropertyNamePair {
         const UiGraphBlock* block = nullptr;
         std::string         property;
     };
 
-    /// Returns every block property the target map refers to. Excludes properties from the @param control
+    std::function<void(gr::Message)> sendMessage;
+
+    UiGraphBlock rootBlock;
+
+    UniqueNameRegistry nameRegistry;
+
+    std::string localFlowgraphGrc;
+    bool        requestedFullUpdate = false;
+
+    // not a multimap, as filtered lists like sequence collections
+    std::map<std::string, std::set<std::string>> knownBlockTypes;
+    std::map<std::string, std::set<std::string>> knownSchedulerTypes;
+
+    UiGraphBlock* selectedBlock = nullptr;
+
+    // incremented by destroyed child blocks: a generation that tells the editor its NodeId pointers are invalid
+    std::uint64_t blockDestructionCount = 0;
+
+    std::uint64_t topologyGeneration = 0;
+
+    /// only for tests waiting for a scheduler reply
+    std::unordered_map<std::size_t, std::function<void(const gr::Message&)>> _testResponseSubscriptions;
+    std::size_t                                                              _lastResponseSubscriptionId = 0;
+
+    UiGraphModel() : rootBlock(this, nullptr) {}
+
+    void send(gr::message::Command cmd, std::string serviceName, std::string endpoint, gr::property_map data = {}, std::string clientRequestID = {}) { sendMessage(makeMessage(cmd, std::move(serviceName), std::move(endpoint), std::move(data), std::move(clientRequestID))); }
+
+    bool apply(const gr::Message& message); // true if consumed
+
+    void onTopologyChanged();
+    void rebuildNameRegistry();
+    void requestFullUpdate(std::source_location location = std::source_location::current());
+    void requestAvailableBlocksTypesUpdate();
+    void saveBlockPositions(gr::property_map& graphData);
+
+    /// whether `block` connects to `tree`, directly or indirectly
+    bool blockInTree(const UiGraphBlock& block, const UiGraphBlock& tree) const;
+
+    AvailableParametrizationsResult availableParametrizationsFor(const std::string& fullBlockType) const;
+
+    /// breadth-first from rootBlock (included); `fn` returns a VisitorResult or nothing (= Recurse)
+    template<typename Fn>
+    void recursiveForEachBlock(Fn&& fn) {
+        const auto visit = [&fn](const FindBlockResult& element) {
+            if constexpr (std::is_void_v<std::invoke_result_t<Fn&, const FindBlockResult&>>) {
+                fn(element);
+                return VisitorResult::Recurse;
+            } else {
+                return fn(element);
+            }
+        };
+        if (visit({.block = std::addressof(rootBlock)}) != VisitorResult::Recurse) {
+            return;
+        }
+        std::deque<UiGraphBlock*> toProcess{std::addressof(rootBlock)};
+        while (!toProcess.empty()) {
+            UiGraphBlock* currentGraph = toProcess.front();
+            toProcess.pop_front();
+            for (const auto& block : currentGraph->childBlocks) {
+                switch (visit({.parentGraph = currentGraph, .block = block.get()})) {
+                case VisitorResult::Break: return;
+                case VisitorResult::Continue: continue;
+                case VisitorResult::Recurse: break;
+                }
+                if (!block->childBlocks.empty()) {
+                    toProcess.push_back(block.get());
+                }
+            }
+        }
+    }
+    FindBlockResult recursiveFindBlockByUniqueName(std::string_view uniqueName);
+    FindBlockResult recursiveFindBlockByName(std::string_view name);
+
+    [[nodiscard]] UiGraphBlock* rootGraphBlock();
+
+    [[nodiscard]] std::vector<ParsedUiControlTargetMap> parseAllUiControlTargetMaps();
+
+    /// the target block's properties, each with the UI control blocks connected to it
+    [[nodiscard]] static ControlledPropertyMap uiControlledProperties(const UiGraphBlock& targetBlock, std::span<const ParsedUiControlTargetMap> parsedUiControlTargetMaps);
+    [[nodiscard]] ControlledPropertyMap        uiControlledProperties(const UiGraphBlock& targetBlock) { return uiControlledProperties(targetBlock, parseAllUiControlTargetMaps()); }
+
+    /// every property of every block whose type the control's "compatible_type_map" setting lists
+    [[nodiscard]] std::vector<std::string> globConnectableProperties(const UiGraphBlock& control);
+
+    /// every block property the target map refers to, except those of `control`
     [[nodiscard]] std::vector<BlockPointerPropertyNamePair> resolveControlledProperties(const UiGraphBlock& control, const TargetMap& targets);
 
-    /// Parse the TargetMap of the control, and then search the graph for matching properties.
-    /// Returns a std::expected if parsing the TargetMap fails
+    /// parses the control's TargetMap and searches the graph for matching properties; an error when the TargetMap does not parse
     [[nodiscard]] auto resolveControlledProperties(const UiGraphBlock& control) {
         return control.uiControlTargetMap().transform([this, &control](const TargetMap& targets) { return resolveControlledProperties(control, targets); });
     }
 
-    /// Modifies a DrawableBlockConfig to take into account all the properties it controls. this means filling out both first_controlled_property and combining
-    /// all the hints and typeinfo to find the acceptable min/max range and choices for the property
+    /// fills first_controlled_property of `config` and combines the hints and type information of all controlled properties into the acceptable min/max range and choices
     void aggregateAndApplyControlledProperties(DrawableBlockConfig& config, const UiGraphBlock& control);
 
-    /// Returns true if the given control with the given controlled properties (return value from resolveControlledProperties()) makes sense to control the given property
+    /// whether the control, with the controlled properties from resolveControlledProperties(), can control the given property
     [[nodiscard]] static bool isCompatibleWithControlledProperties(const UiGraphBlock& control, std::span<const BlockPointerPropertyNamePair> controlled, const BlockPointerPropertyNamePair& property);
 
-    /// Whether any property of @param candidate passes isCompatibleWithControlledProperties
+    /// whether any property of `candidate` passes isCompatibleWithControlledProperties
     [[nodiscard]] static bool doesBlockHaveACompatibleProperty(const UiGraphBlock& control, std::span<const BlockPointerPropertyNamePair> controlled, const UiGraphBlock& candidate);
 
     void removeUiControlConnection(const std::string& controlUniqueName, std::string_view blockSelector, const std::string& property);
@@ -387,41 +404,13 @@ public:
 
     std::unique_ptr<UiGraphBlock> makeGraphBlock(UiGraphBlock* parent, const gr::property_map& blockData, const std::string& ownerSchedulerUniqueName, const std::string& ownerGraphUniqueName);
 
-private:
-    void handleBlockDataUpdated(const std::string& uniqueName, const gr::property_map& blockData);
-    void handleBlockSettingsChanged(const std::string& uniqueName, const gr::property_map& data);
-    void handleBlockSettingsStaged(const std::string& uniqueName, const gr::property_map& data);
-    void handleBlockActiveContext(const std::string& uniqueName, const gr::property_map& data);
-    void handleBlockAllContexts(const std::string& uniqueName, const gr::property_map& data);
-    void handleBlockAddOrRemoveContext(const std::string& uniqueName, const gr::property_map& data);
-    void handleAvailableGraphBlockTypes(const gr::property_map& data);
-    void handleAvailableGraphSchedulerTypes(const gr::property_map& data);
-
     bool blockInTree(const UiGraphBlock& block, const UiGraphBlock& tree, UiGraphPort::Role direction) const;
 
-    enum class VisitorResult {
-        Recurse,  // recurse into children
-        Continue, // continue to sibling and ignore children of this block
-        Break,
-    };
-    void recursiveForEachBlock(const std::function<VisitorResult(const FindBlockResult& element)>& callback);
-
-    /// only used by tests to wait for a reponse from the scheduler  TODO: #if defined(TESTING_...) ?
-    std::unordered_map<std::size_t, std::function<void(const gr::Message&)>> _testResponseSubscriptions;
-
-    std::size_t subscribeToResponses(std::function<void(const gr::Message& incoming)> listener) {
-        static std::size_t lastUsedId = 0;
-        ++lastUsedId;
-        auto [iterator, wasEmplaced] = _testResponseSubscriptions.try_emplace(lastUsedId, std::move(listener));
-        assert(wasEmplaced);
-        return iterator->first;
-    }
-
-    void unsubscribeFromResponses(std::size_t subscriptionId) { _testResponseSubscriptions.erase(subscriptionId); }
+    std::size_t subscribeToResponses(std::function<void(const gr::Message& incoming)> listener);
 
     // used by tests
     [[nodiscard]] static DrawableBlockConfig::ControlledProperty firstControlledPropertyConfig(std::span<const BlockPointerPropertyNamePair> controlled);
 };
 
-} // namespace DigitizerUi
+} // namespace gr::od
 #endif // include guard

@@ -12,14 +12,14 @@
 
 #include "utils/TransparentStringHash.hpp"
 
-namespace DigitizerUi {
+namespace gr::od {
 
-/// Block names which are in use or were handed out for a pending request. Unnamed blocks are not tracked
+/// block names in use or handed out for a pending request; unnamed blocks are not tracked
 struct UniqueNameRegistry {
-    std::size_t                                                                            lastUsedId = 0;
-    std::unordered_set<std::string, opendigitizer::TransparentStringHash, std::equal_to<>> usedNames;
+    std::size_t                                                             lastUsedId = 0;
+    std::unordered_set<std::string, TransparentStringHash, std::equal_to<>> usedNames;
 
-    /// Returns true if the name was not in use yet
+    /// true when the name was not in use yet
     bool markBlockNameUsed(std::string_view nonUniquePrefix) {
         if (nonUniquePrefix.empty()) {
             return true;
@@ -27,7 +27,7 @@ struct UniqueNameRegistry {
         return usedNames.emplace(nonUniquePrefix).second;
     }
 
-    /// Marks and returns nonUniquePrefix if it is unused, otherwise a variant of it with a " (N)" suffix
+    /// `nonUniquePrefix` when unused, else a variant with a " (N)" suffix; marked used
     [[nodiscard]] std::string ensureNameIsUnique(std::string_view nonUniquePrefix) {
         if (nonUniquePrefix.empty()) {
             return {};
@@ -37,7 +37,7 @@ struct UniqueNameRegistry {
             const std::string_view base = withoutNumericSuffix(nonUniquePrefix);
             name                        = std::string(base);
             while (usedNames.contains(name)) {
-                // use format with parentheses instead of # in order to improve likelihood of differentiation from blocks' unique names
+                // parentheses rather than #: told apart from blocks' unique names
                 name = std::format("{} ({})", base, lastUsedId++);
             }
         }
@@ -66,6 +66,6 @@ struct UniqueNameRegistry {
     }
 };
 
-} // namespace DigitizerUi
+} // namespace gr::od
 
 #endif
