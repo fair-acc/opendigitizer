@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.27)
+cmake_minimum_required(VERSION 3.28)
 
 project(opendigitizer LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 23)
@@ -30,6 +30,7 @@ else()
 endif()
 # as a sub-project only the libraries are configured
 option(OPENDIGITIZER_ENABLE_TESTING "Enable unit tests" ${PROJECT_IS_TOP_LEVEL})
+option(OPENDIGITIZER_DEFAULT_TEST_TIMEOUT "Set the default time it takes for a test to fail due to timing out, in seconds" 600)
 option(OPENDIGITIZER_BUILD_SERVICE "Build the OpenDigitizer service" ${PROJECT_IS_TOP_LEVEL})
 option(OPENDIGITIZER_BUILD_UI_APP "Build the OpenDigitizer UI application by default" ${PROJECT_IS_TOP_LEVEL})
 option(OPENDIGITIZER_WARNINGS_AS_ERRORS "Treat OpenDigitizer compiler warnings as errors" ON)
@@ -146,4 +147,31 @@ endif()
 
 if(OPENDIGITIZER_BUILD_SERVICE AND NOT EMSCRIPTEN)
   add_subdirectory(src/service)
+endif()
+
+function(opendigitizer_set_test_timeout_for_directory directory desired_timeout)
+  # unfortunately there is no well supported way to set the default timeout
+  # fromwithin cmakelists, see https://gitlab.kitware.com/cmake/cmake/-/work_items/20450
+  # so we expose an option and manually set the TIMEOUT of every test
+  get_property(
+    tests
+    DIRECTORY "${directory}"
+    PROPERTY TESTS)
+  foreach(test IN LISTS tests)
+    get_test_property("${test}" TIMEOUT DIRECTORY "${directory}" timeout)
+    if("${timeout}" STREQUAL "NOTFOUND")
+      set_tests_properties("${test}" DIRECTORY "${directory}" PROPERTIES TIMEOUT ${desired_timeout})
+    endif()
+  endforeach()
+  get_property(
+    subdirectories
+    DIRECTORY "${directory}"
+    PROPERTY SUBDIRECTORIES)
+  foreach(subdirectory IN LISTS subdirectories)
+    opendigitizer_set_test_timeout_for_directory("${subdirectory}" ${desired_timeout})
+  endforeach()
+endfunction()
+
+if(OPENDIGITIZER_ENABLE_TESTING)
+  opendigitizer_set_test_timeout_for_directory("${CMAKE_CURRENT_SOURCE_DIR}" ${OPENDIGITIZER_DEFAULT_TEST_TIMEOUT})
 endif()
