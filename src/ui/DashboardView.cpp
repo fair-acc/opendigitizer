@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 #include "common/Imw.hpp"
 #include "common/LookAndFeel.hpp"
@@ -124,11 +125,11 @@ DashboardView::Result DashboardView::draw(Dashboard& dashboard, Mode mode, const
         drawCharts(mode, options, chartPaneSize);
         ImGui::SetCursorPos(ImVec2(0, ImGui::GetWindowHeight() - _legendBox.y));
         alignBarStart();
-        drawBar(mode, chartPaneSize, options, result);
+        drawBar(mode, options, result);
         break;
     case LegendPosition::Top:
         alignBarStart();
-        drawBar(mode, ImGui::GetContentRegionAvail(), options, result);
+        drawBar(mode, options, result);
         chartPaneSize = ImGui::GetContentRegionAvail();
         drawCharts(mode, options, chartPaneSize);
         break;
@@ -192,6 +193,14 @@ void DashboardView::drawCharts(Mode mode, const Options& options, ImVec2 paneSiz
     _dockSpace.render(windows, paneSize, mode == Mode::Layout);
 }
 
+void DashboardView::takeLegendResult(Mode mode, const GlobalSignalLegend::DrawResult& legendResult, Result& result) {
+    if (mode == Mode::Interaction) {
+        result.rightClickedSinkName = legendResult.rightClickedSinkName;
+    }
+    result.isAddSignalButtonPressed = legendResult.isAddSignalButtonPressed;
+    result.addSignalButtonRect      = legendResult.addSignalButtonRect;
+}
+
 void DashboardView::drawLegendColumn(Mode mode, float height, const Options& options, Result& result) {
     imw::Child column("##legendColumn", ImVec2(_legendColumnWidth, height), false, ImGuiWindowFlags_NoScrollbar);
     if (options.barLeading) {
@@ -199,19 +208,22 @@ void DashboardView::drawLegendColumn(Mode mode, float height, const Options& opt
         ImGui::NewLine();
     }
     _signalLegend.setDragDropEnabled(mode == Mode::Interaction);
-    const auto rightClickedSinkName = _signalLegend.draw(_dashboard->session.graphModel, 1.f, 0.f, options.callbackAfterAllLegendItemsDrawn);
-    if (mode == Mode::Interaction) {
-        result.rightClickedSinkName = std::string(rightClickedSinkName);
-    }
+    constexpr float                      kUnlimited   = std::numeric_limits<float>::max();
+    const GlobalSignalLegend::Layout     layout       = GlobalSignalLegend::fitLayout(_dashboard->session.graphModel, ImVec2{kUnlimited, kUnlimited}, true, options.addSignalButtonHidden.has_value());
+    const GlobalSignalLegend::DrawResult legendResult = _signalLegend.draw(_dashboard->session.graphModel, layout, 0.f, options.addSignalButtonHidden);
+    takeLegendResult(mode, legendResult, result);
     _legendColumnWidth = std::max(50.f, _signalLegend.legendSize().x + 2.f * ImGui::GetStyle().WindowPadding.x);
     if (options.barTrailing) {
         options.barTrailing();
     }
 }
 
-void DashboardView::drawBar(Mode mode, ImVec2 chartPaneSize, const Options& options, Result& result) {
-    imw::Group group;
+void DashboardView::drawBar(Mode mode, const Options& options, Result& result) {
+    imw::Group       group;
+    imw::ChangeStrId idScope(kBarIdScope);
 
+    const ImGuiStyle& style  = ImGui::GetStyle();
+    const float       barEnd = ImGui::GetCursorScreenPos().x + ImGui::GetContentRegionAvail().x;
     if (options.barLeading) {
         options.barLeading();
     }
@@ -219,16 +231,20 @@ void DashboardView::drawBar(Mode mode, ImVec2 chartPaneSize, const Options& opti
     // centred on the dashboard view, not on the space left after the leading items
     const float  viewCentreX = ImGui::GetWindowPos().x + (ImGui::GetWindowWidth() / 2.f);
     const ImVec2 cursor      = ImGui::GetCursorScreenPos();
-    ImGui::SetCursorScreenPos(ImVec2{std::max(cursor.x, std::floor(viewCentreX - (_legendBox.x / 2.f))), cursor.y});
     if (options.barCentre) {
+        ImGui::SetCursorScreenPos(ImVec2{std::max(cursor.x, std::floor(viewCentreX - (_legendBox.x / 2.f))), cursor.y});
         options.barCentre();
         _legendBox = ImGui::GetItemRectSize();
     } else {
+        const float                      buttonSize  = LookAndFeel::instance().mainWindowIconButtonSize();
+        const float                      regionEnd   = std::max(cursor.x, barEnd - options.barTrailingWidth);
+        const int                        maxRows     = LookAndFeel::instance().dashboardStyle.legendNumRowsBeforeShrinking;
+        const float                      maxHeight   = std::max(buttonSize, static_cast<float>(maxRows) * GlobalSignalLegend::legendItemHeight() + static_cast<float>(maxRows - 1) * style.ItemSpacing.y);
+        const GlobalSignalLegend::Layout layout      = GlobalSignalLegend::fitLayout(_dashboard->session.graphModel, ImVec2{regionEnd - cursor.x, maxHeight}, false, options.addSignalButtonHidden.has_value());
+        const float                      legendStart = std::max(cursor.x, std::min(std::floor(viewCentreX - (layout.size.x / 2.f)), regionEnd - layout.size.x));
+        ImGui::SetCursorScreenPos(ImVec2{legendStart, cursor.y});
         _signalLegend.setDragDropEnabled(mode == Mode::Interaction);
-        const auto rightClickedSinkName = _signalLegend.draw(_dashboard->session.graphModel, chartPaneSize.x, LookAndFeel::instance().mainWindowIconButtonSize(), options.callbackAfterAllLegendItemsDrawn);
-        if (mode == Mode::Interaction) {
-            result.rightClickedSinkName = std::string(rightClickedSinkName);
-        }
+        takeLegendResult(mode, _signalLegend.draw(_dashboard->session.graphModel, layout, buttonSize, options.addSignalButtonHidden), result);
         _legendBox = _signalLegend.legendSize();
     }
 

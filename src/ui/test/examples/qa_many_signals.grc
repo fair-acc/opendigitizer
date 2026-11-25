@@ -1,0 +1,417 @@
+blocks:
+  - id: gr::basic::ClockSource
+    parameters:
+      name: ClockSource1
+      do_zero_order_hold: true
+      n_samples_max: 2048
+      sample_rate: 4096
+      verbose_console: false
+  - id: gr::basic::SignalGenerator<float32>
+    parameters:
+      name: SignalGenerator1
+      frequency: 1
+      amplitude: 5
+      sample_rate: 4096
+      signal_type: Sin
+  - id: opendigitizer::ImPlotSink<float32>
+    parameters:
+      name: PlotSink1
+      signal_name: Dipole current
+      color: 0xE6194B
+  - id: opendigitizer::ImPlotSink<float32>
+    parameters:
+      name: PlotSink2
+      signal_name: Quadrupole QD1 current
+      color: 0x3CB44B
+  - id: opendigitizer::ImPlotSink<float32>
+    parameters:
+      name: PlotSink3
+      signal_name: Quadrupole QF1 current
+      color: 0xFFE119
+  - id: opendigitizer::ImPlotSink<float32>
+    parameters:
+      name: PlotSink4
+      signal_name: Beam intensity
+      color: 0x4363D8
+  - id: opendigitizer::ImPlotSink<float32>
+    parameters:
+      name: PlotSink5
+      signal_name: Beam position horizontal
+      color: 0xF58231
+  - id: opendigitizer::ImPlotSink<float32>
+    parameters:
+      name: PlotSink6
+      signal_name: Beam position vertical
+      color: 0x911EB4
+  - id: opendigitizer::ImPlotSink<float32>
+    parameters:
+      name: PlotSink7
+      signal_name: RF voltage
+      color: 0x46F0F0
+  - id: opendigitizer::ImPlotSink<float32>
+    parameters:
+      name: PlotSink8
+      signal_name: RF phase
+      color: 0xF032E6
+  - id: opendigitizer::ImPlotSink<float32>
+    parameters:
+      name: PlotSink9
+      signal_name: Vacuum pressure sector 1
+      color: 0xBCF60C
+  - id: opendigitizer::ImPlotSink<float32>
+    parameters:
+      name: PlotSink10
+      signal_name: Vacuum pressure sector 2
+      color: 0xFABEBE
+  - id: opendigitizer::ImPlotSink<float32>
+    parameters:
+      name: PlotSink11
+      signal_name: Kicker voltage
+      color: 0xE6194B
+  - id: opendigitizer::ImPlotSink<float32>
+    parameters:
+      name: PlotSink12
+      signal_name: Septum current
+      color: 0x3CB44B
+  - id: opendigitizer::ImPlotSink<float32>
+    parameters:
+      name: PlotSink13
+      signal_name: Extraction trigger
+      color: 0xFFE119
+  - id: opendigitizer::ImPlotSink<float32>
+    parameters:
+      name: PlotSink14
+      signal_name: Injection trigger
+      color: 0x4363D8
+  - id: opendigitizer::ImPlotSink<float32>
+    parameters:
+      name: PlotSink15
+      signal_name: Sextupole S1
+      color: 0xF58231
+  - id: opendigitizer::ImPlotSink<float32>
+    parameters:
+      name: PlotSink16
+      signal_name: Sextupole S2
+      color: 0x911EB4
+  - id: opendigitizer::ImPlotSink<float32>
+    parameters:
+      name: PlotSink17
+      signal_name: Steerer H1
+      color: 0x46F0F0
+  - id: opendigitizer::ImPlotSink<float32>
+    parameters:
+      name: PlotSink18
+      signal_name: Steerer V1
+      color: 0xF032E6
+  - id: opendigitizer::ImPlotSink<float32>
+    parameters:
+      name: PlotSink19
+      signal_name: Bunch length
+      color: 0xBCF60C
+  - id: opendigitizer::ImPlotSink<float32>
+    parameters:
+      name: PlotSink20
+      signal_name: Tune horizontal
+      color: 0xFABEBE
+  - id: opendigitizer::ImPlotSink<float32>
+    parameters:
+      name: PlotSink21
+      signal_name: Tune vertical
+      color: 0xE6194B
+  - id: opendigitizer::ImPlotSink<float32>
+    parameters:
+      name: PlotSink22
+      signal_name: Chromaticity
+      color: 0x3CB44B
+  - id: opendigitizer::ImPlotSink<float32>
+    parameters:
+      name: PlotSink23
+      signal_name: Temperature magnet 1
+      color: 0xFFE119
+  - id: opendigitizer::ImPlotSink<float32>
+    parameters:
+      name: PlotSink24
+      signal_name: Temperature magnet 2
+      color: 0x4363D8
+  - id: opendigitizer::ImPlotSink<float32>
+    parameters:
+      name: PlotSink25
+      signal_name: Cooling water flow
+      color: 0xF58231
+  - id: opendigitizer::ImPlotSink<float32>
+    parameters:
+      name: PlotSink26
+      signal_name: Power converter status
+      color: 0x911EB4
+  - id: opendigitizer::ImPlotSink<float32>
+    parameters:
+      name: PlotSink27
+      signal_name: Spill intensity
+      color: 0x46F0F0
+  - id: opendigitizer::ImPlotSink<float32>
+    parameters:
+      name: PlotSink28
+      signal_name: Spill quality factor
+      color: 0xF032E6
+  - id: opendigitizer::ImPlotSink<float32>
+    parameters:
+      name: PlotSink29
+      signal_name: Ion source current
+      color: 0xBCF60C
+  - id: opendigitizer::ImPlotSink<float32>
+    parameters:
+      name: PlotSink30
+      signal_name: Beam loss monitor 1
+      color: 0xFABEBE
+connections:
+  - [ClockSource1, 0, SignalGenerator1, 0]
+  - [SignalGenerator1, 0, PlotSink1, 0]
+  - [SignalGenerator1, 0, PlotSink2, 0]
+  - [SignalGenerator1, 0, PlotSink3, 0]
+  - [SignalGenerator1, 0, PlotSink4, 0]
+  - [SignalGenerator1, 0, PlotSink5, 0]
+  - [SignalGenerator1, 0, PlotSink6, 0]
+  - [SignalGenerator1, 0, PlotSink7, 0]
+  - [SignalGenerator1, 0, PlotSink8, 0]
+  - [SignalGenerator1, 0, PlotSink9, 0]
+  - [SignalGenerator1, 0, PlotSink10, 0]
+  - [SignalGenerator1, 0, PlotSink11, 0]
+  - [SignalGenerator1, 0, PlotSink12, 0]
+  - [SignalGenerator1, 0, PlotSink13, 0]
+  - [SignalGenerator1, 0, PlotSink14, 0]
+  - [SignalGenerator1, 0, PlotSink15, 0]
+  - [SignalGenerator1, 0, PlotSink16, 0]
+  - [SignalGenerator1, 0, PlotSink17, 0]
+  - [SignalGenerator1, 0, PlotSink18, 0]
+  - [SignalGenerator1, 0, PlotSink19, 0]
+  - [SignalGenerator1, 0, PlotSink20, 0]
+  - [SignalGenerator1, 0, PlotSink21, 0]
+  - [SignalGenerator1, 0, PlotSink22, 0]
+  - [SignalGenerator1, 0, PlotSink23, 0]
+  - [SignalGenerator1, 0, PlotSink24, 0]
+  - [SignalGenerator1, 0, PlotSink25, 0]
+  - [SignalGenerator1, 0, PlotSink26, 0]
+  - [SignalGenerator1, 0, PlotSink27, 0]
+  - [SignalGenerator1, 0, PlotSink28, 0]
+  - [SignalGenerator1, 0, PlotSink29, 0]
+  - [SignalGenerator1, 0, PlotSink30, 0]
+dashboard:
+  layout: Grid
+  sources:
+    - name: PlotSink1
+      block: PlotSink1
+      port: 0
+      color: 0xE6194B
+    - name: PlotSink2
+      block: PlotSink2
+      port: 0
+      color: 0x3CB44B
+    - name: PlotSink3
+      block: PlotSink3
+      port: 0
+      color: 0xFFE119
+    - name: PlotSink4
+      block: PlotSink4
+      port: 0
+      color: 0x4363D8
+    - name: PlotSink5
+      block: PlotSink5
+      port: 0
+      color: 0xF58231
+    - name: PlotSink6
+      block: PlotSink6
+      port: 0
+      color: 0x911EB4
+    - name: PlotSink7
+      block: PlotSink7
+      port: 0
+      color: 0x46F0F0
+    - name: PlotSink8
+      block: PlotSink8
+      port: 0
+      color: 0xF032E6
+    - name: PlotSink9
+      block: PlotSink9
+      port: 0
+      color: 0xBCF60C
+    - name: PlotSink10
+      block: PlotSink10
+      port: 0
+      color: 0xFABEBE
+    - name: PlotSink11
+      block: PlotSink11
+      port: 0
+      color: 0xE6194B
+    - name: PlotSink12
+      block: PlotSink12
+      port: 0
+      color: 0x3CB44B
+    - name: PlotSink13
+      block: PlotSink13
+      port: 0
+      color: 0xFFE119
+    - name: PlotSink14
+      block: PlotSink14
+      port: 0
+      color: 0x4363D8
+    - name: PlotSink15
+      block: PlotSink15
+      port: 0
+      color: 0xF58231
+    - name: PlotSink16
+      block: PlotSink16
+      port: 0
+      color: 0x911EB4
+    - name: PlotSink17
+      block: PlotSink17
+      port: 0
+      color: 0x46F0F0
+    - name: PlotSink18
+      block: PlotSink18
+      port: 0
+      color: 0xF032E6
+    - name: PlotSink19
+      block: PlotSink19
+      port: 0
+      color: 0xBCF60C
+    - name: PlotSink20
+      block: PlotSink20
+      port: 0
+      color: 0xFABEBE
+    - name: PlotSink21
+      block: PlotSink21
+      port: 0
+      color: 0xE6194B
+    - name: PlotSink22
+      block: PlotSink22
+      port: 0
+      color: 0x3CB44B
+    - name: PlotSink23
+      block: PlotSink23
+      port: 0
+      color: 0xFFE119
+    - name: PlotSink24
+      block: PlotSink24
+      port: 0
+      color: 0x4363D8
+    - name: PlotSink25
+      block: PlotSink25
+      port: 0
+      color: 0xF58231
+    - name: PlotSink26
+      block: PlotSink26
+      port: 0
+      color: 0x911EB4
+    - name: PlotSink27
+      block: PlotSink27
+      port: 0
+      color: 0x46F0F0
+    - name: PlotSink28
+      block: PlotSink28
+      port: 0
+      color: 0xF032E6
+    - name: PlotSink29
+      block: PlotSink29
+      port: 0
+      color: 0xBCF60C
+    - name: PlotSink30
+      block: PlotSink30
+      port: 0
+      color: 0xFABEBE
+  plots:
+    - name: Plot1
+      axes:
+        - axis: X
+          min: NaN
+          max: NaN
+          scale: Linear
+        - axis: Y
+          min: NaN
+          max: NaN
+      sources:
+        - PlotSink1
+        - PlotSink2
+        - PlotSink3
+        - PlotSink4
+        - PlotSink5
+      rect: [0, 0, 2, 1] # x, y, width, height
+    - name: Plot2
+      axes:
+        - axis: X
+          min: NaN
+          max: NaN
+          scale: Linear
+        - axis: Y
+          min: NaN
+          max: NaN
+      sources:
+        - PlotSink6
+        - PlotSink7
+        - PlotSink8
+        - PlotSink9
+        - PlotSink10
+      rect: [2, 0, 2, 1] # x, y, width, height
+    - name: Plot3
+      axes:
+        - axis: X
+          min: NaN
+          max: NaN
+          scale: Linear
+        - axis: Y
+          min: NaN
+          max: NaN
+      sources:
+        - PlotSink11
+        - PlotSink12
+        - PlotSink13
+        - PlotSink14
+        - PlotSink15
+      rect: [0, 1, 2, 1] # x, y, width, height
+    - name: Plot4
+      axes:
+        - axis: X
+          min: NaN
+          max: NaN
+          scale: Linear
+        - axis: Y
+          min: NaN
+          max: NaN
+      sources:
+        - PlotSink16
+        - PlotSink17
+        - PlotSink18
+        - PlotSink19
+        - PlotSink20
+      rect: [2, 1, 2, 1] # x, y, width, height
+    - name: Plot5
+      axes:
+        - axis: X
+          min: NaN
+          max: NaN
+          scale: Linear
+        - axis: Y
+          min: NaN
+          max: NaN
+      sources:
+        - PlotSink21
+        - PlotSink22
+        - PlotSink23
+        - PlotSink24
+        - PlotSink25
+      rect: [0, 2, 2, 1] # x, y, width, height
+    - name: Plot6
+      axes:
+        - axis: X
+          min: NaN
+          max: NaN
+          scale: Linear
+        - axis: Y
+          min: NaN
+          max: NaN
+      sources:
+        - PlotSink26
+        - PlotSink27
+        - PlotSink28
+        - PlotSink29
+        - PlotSink30
+      rect: [2, 2, 2, 1] # x, y, width, height

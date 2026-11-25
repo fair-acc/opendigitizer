@@ -3,6 +3,7 @@
 
 #include <cfloat>
 #include <optional>
+#include <span>
 #include <string>
 #include <unordered_map>
 
@@ -86,23 +87,21 @@ struct DashboardPage {
 
     void drawNewPlotModal();
     void drawBarLeading(LegendItemClickResult& clickResult) noexcept;
-    void drawBarTrailing(Mode mode, LegendItemClickResult& clickResult) noexcept;
-    void drawAddSignalButton(ImVec2 size) noexcept;
+    struct BarButton {
+        const char*           icon    = nullptr;
+        const char*           tooltip = nullptr;
+        std::function<void()> action;
+    };
+    [[nodiscard]] std::vector<BarButton> barTrailingButtons(Mode mode, LegendItemClickResult& clickResult);
+    [[nodiscard]] static float           calculateMultipleIconButtonsWidth(std::size_t buttonCount) noexcept; // with the spacing before them
+    void                                 drawBarTrailing(Mode mode, std::span<const BarButton> buttons) noexcept;
+    void                                 openSignalSelector() noexcept;
 
     /// laid out in place, painted slid down by the auto-hide fraction and inert while out of sight
     bool barControl(float size, auto draw) {
         const ImVec2 home = ImGui::GetCursorScreenPos();
         _barHomeDrawing.Add(ImRect(home, home + ImVec2{size, size}));
-        ImDrawList*        drawList = ImGui::GetWindowDrawList();
-        const int          first    = drawList->VtxBuffer.Size;
-        const float        shift    = _barAutoHide.hidden * std::max(0.f, ImGui::GetCurrentWindow()->ClipRect.Max.y - home.y);
-        imw::StyleFloatVar opaque(ImGuiStyleVar_DisabledAlpha, 1.f);
-        imw::Disabled      inert(_barAutoHide.hidden >= 1.f);
-        const bool         clicked = draw();
-        for (int i = first; i < drawList->VtxBuffer.Size; ++i) {
-            drawList->VtxBuffer[i].pos.y += shift;
-        }
-        return clicked;
+        return components::drawSlidOutOfSight(_barAutoHide.hidden, draw);
     }
     void drawToolbarLayoutButtons(float plotButtonSize) noexcept;
     void addSinkForRemoteSource(const SignalData& selectedRemoteSignal, const std::string& sourceUniqueName, const std::string& remoteSourceType);

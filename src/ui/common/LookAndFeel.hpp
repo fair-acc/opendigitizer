@@ -228,6 +228,8 @@ struct DashboardStyle {
     float legendColorRectBorderThickness = 2.f;
     float legendAddButtonIconScale       = .7f; // icon font size relative to the button size
     float legendSwatchRounding           = 0.f;
+    int   legendNumRowsBeforeShrinking   = 2;
+    float legendMinFontScale             = .6f; // the legend will accept shrinking down to this size before starting to ellipsize the text
     float layoutModePanelRounding        = 0.f;
     float statusDotRadiusEms             = .3f; // relative to the font size
     float infoTextAlpha                  = .6f; // multiplied with ImGuiCol_TextDisabled

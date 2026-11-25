@@ -228,23 +228,7 @@ void DashboardPage::drawBarLeading(LegendItemClickResult& clickResult) noexcept 
     ImGui::SameLine();
 }
 
-void DashboardPage::drawAddSignalButton(ImVec2 size) noexcept {
-    const bool clicked = [&] {
-        const Palette&    palette = LookAndFeel::instance().palette();
-        imw::StyleColor   buttonStyle(ImGuiCol_Button, palette.mainWindowButtonBgInactive);
-        imw::StyleColor   textStyle(ImGuiCol_Text, palette.mainWindowButtonIcon.value_or(ImGui::GetStyleColorVec4(ImGuiCol_Text)));
-        imw::StyleColor   buttonActiveStyle(ImGuiCol_ButtonActive, palette.mainWindowButtonBgActive);
-        imw::StyleColor   buttonHoveredStyle(ImGuiCol_ButtonHovered, palette.mainWindowButtonBgHovered);
-        imw::StyleVar     noPadding(ImGuiStyleVar_FramePadding, ImVec2{});
-        imw::FontWithSize font(LookAndFeel::instance().fontIconsSolid, LookAndFeel::instance().dashboardStyle.legendAddButtonIconScale * size.y);
-        return barControl(size.y, [&] { return ImGui::Button("\u{F067}##addSignal", size); });
-    }();
-    if (ImGui::IsItemHovered()) {
-        ImGui::SetTooltip("add signal");
-    }
-    if (!clicked) {
-        return;
-    }
+void DashboardPage::openSignalSelector() noexcept {
     try {
         if (!_remoteSignalSelector) {
             _remoteSignalSelector = std::make_unique<SignalSelector>(_dashboard->session.graphModel);
@@ -255,24 +239,8 @@ void DashboardPage::drawAddSignalButton(ImVec2 size) noexcept {
     }
 }
 
-void DashboardPage::drawBarTrailing(Mode mode, LegendItemClickResult& clickResult) noexcept {
-    const float plotButtonSize = LookAndFeel::instance().mainWindowIconButtonSize();
-
-    if (mode == Mode::Interaction && _dashboard) {
-        if (_remoteSignalSelector) {
-            for (const auto& selectedRemoteSignal : _remoteSignalSelector->drawAndReturnSelected()) {
-                this->addSelectedRemoteSignal(selectedRemoteSignal);
-            }
-        }
-    }
-
-    struct Button {
-        const char*           icon    = nullptr;
-        const char*           tooltip = nullptr;
-        std::function<void()> action;
-    };
-
-    std::vector<Button> buttons;
+std::vector<DashboardPage::BarButton> DashboardPage::barTrailingButtons(Mode mode, LegendItemClickResult& clickResult) {
+    std::vector<BarButton> buttons;
 
     if (mode == Mode::Interaction) {
         buttons.emplace_back("\u{F248}", "Enter layout mode", [this] {
@@ -288,10 +256,28 @@ void DashboardPage::drawBarTrailing(Mode mode, LegendItemClickResult& clickResul
             }
         });
     }
+    return buttons;
+}
+
+float DashboardPage::calculateMultipleIconButtonsWidth(std::size_t buttonCount) noexcept {
+    const float spacing = ImGui::GetStyle().ItemSpacing.x;
+    return spacing + (spacing + LookAndFeel::instance().mainWindowIconButtonSize()) * static_cast<float>(buttonCount);
+}
+
+void DashboardPage::drawBarTrailing(Mode mode, std::span<const BarButton> buttons) noexcept {
+    const float plotButtonSize = LookAndFeel::instance().mainWindowIconButtonSize();
+
+    if (mode == Mode::Interaction && _dashboard) {
+        if (_remoteSignalSelector) {
+            for (const auto& selectedRemoteSignal : _remoteSignalSelector->drawAndReturnSelected()) {
+                this->addSelectedRemoteSignal(selectedRemoteSignal);
+            }
+        }
+    }
 
     ImGui::SameLine();
     const float spacing = ImGui::GetStyle().ItemSpacing.x;
-    alignForWidth(spacing + (spacing + plotButtonSize) * static_cast<float>(buttons.size()), 1.0);
+    alignForWidth(calculateMultipleIconButtonsWidth(buttons.size()), 1.0);
     const float cursorBeforeButtons = ImGui::GetCursorPosX();
 
     for (const auto& button : buttons) {
@@ -345,9 +331,11 @@ DashboardPage::LegendItemClickResult DashboardPage::drawChartsLegendAndEditPane(
     if (mode == Mode::Layout) {
         options.barCentre = [&] { drawToolbarLayoutButtons(plotButtonSize); };
     }
-    options.barTrailing = [&] { drawBarTrailing(mode, legendClickResult); };
+    const std::vector<BarButton> trailingButtons = barTrailingButtons(mode, legendClickResult);
+    options.barTrailing                          = [&] { drawBarTrailing(mode, trailingButtons); };
+    options.barTrailingWidth                     = calculateMultipleIconButtonsWidth(trailingButtons.size());
     if (mode == Mode::Interaction) {
-        options.callbackAfterAllLegendItemsDrawn = [this](ImVec2 buttonSize) { drawAddSignalButton(buttonSize); };
+        options.addSignalButtonHidden = _barAutoHide.hidden;
     }
 
     _barHomeLastDrawn = std::exchange(_barHomeDrawing, kNoBarDrawn);
@@ -357,6 +345,12 @@ DashboardPage::LegendItemClickResult DashboardPage::drawChartsLegendAndEditPane(
         std::ignore = _barAutoHide.update(_barHomeLastDrawn);
     }
     const auto viewResult = _view.draw(*_dashboard, mode, options);
+    if (viewResult.addSignalButtonRect.GetArea() > 0.f) {
+        _barHomeDrawing.Add(viewResult.addSignalButtonRect);
+    }
+    if (viewResult.isAddSignalButtonPressed) {
+        openSignalSelector();
+    }
     if (viewResult.backgroundClicked) {
         _editPane.setSelectedBlock(nullptr, nullptr);
     }

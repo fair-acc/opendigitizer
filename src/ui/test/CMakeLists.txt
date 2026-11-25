@@ -104,6 +104,7 @@ if(ENABLE_IMGUI_TEST_ENGINE)
     examples/qa_image_chart.grc
     examples/qa_grouping.grc
     examples/qa_layout.grc
+    examples/qa_many_signals.grc
     examples/qa_localisation.grc
     examples/qa_subgraph.grc
     examples/qa_yy_scatter.grc
@@ -193,6 +194,7 @@ if(ENABLE_IMGUI_TEST_ENGINE)
   add_imgui_test(qa_CompactLayout)
   add_test(NAME qa_CompactLayout_portrait COMMAND qa_CompactLayout --window 412x915)
   add_test(NAME qa_CompactLayout_landscape COMMAND qa_CompactLayout --window 915x412)
+  add_imgui_test(qa_DashboardPageLayout)
   add_imgui_test(qa_ToolbarView)
   add_imgui_test(qa_ImControl)
   add_imgui_test(qa_ImControlNumber)

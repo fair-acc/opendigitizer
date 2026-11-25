@@ -2,6 +2,7 @@
 #define OPENDIGITIZER_UI_COMPONENTS_AUTOHIDE_HPP
 
 #include "../common/FramePacer.hpp"
+#include "../common/Imw.hpp"
 #include "../common/LookAndFeel.hpp"
 
 #include <imgui.h>
@@ -41,6 +42,23 @@ struct AutoHide {
         return result;
     }
 };
+
+/// Call @param draw with offset specified by @param hiddenAmount
+/// Styles and disables hidden items
+template<std::invocable DrawFunction>
+auto drawSlidOutOfSight(float hiddenAmount, DrawFunction&& draw) {
+    const float        homeY    = ImGui::GetCursorScreenPos().y;
+    ImDrawList*        drawList = ImGui::GetWindowDrawList();
+    const int          first    = drawList->VtxBuffer.Size;
+    const float        shift    = hiddenAmount * std::max(0.f, ImGui::GetCurrentWindow()->ClipRect.Max.y - homeY);
+    imw::StyleFloatVar opaque(ImGuiStyleVar_DisabledAlpha, 1.f);
+    imw::Disabled      inert(hiddenAmount >= 1.f);
+    auto               result = std::forward<DrawFunction>(draw)();
+    for (int i = first; i < drawList->VtxBuffer.Size; ++i) {
+        drawList->VtxBuffer[i].pos.y += shift;
+    }
+    return result;
+}
 
 } // namespace gr::od::components
 

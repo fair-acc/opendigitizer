@@ -53,6 +53,8 @@ struct TestState : test::TestDashboardRunner {
     bool                           frameProbe       = false;
     float                          probedFrameAlpha = -1.f;
     std::optional<ImVec4>          hostBackground;
+    std::optional<float>           addSignalButtonHidden;
+    bool                           isAddSignalButtonPressed = false;
 };
 
 TestState* gState = nullptr;
@@ -124,7 +126,9 @@ struct TestApp : public test::ImGuiTestApp {
                     windows.push_back(probe);
                 };
             }
-            std::ignore = state.view->draw(state.drawEmpty ? *state.emptyDashboard : *state.dashboard, state.mode, options);
+            options.addSignalButtonHidden  = state.addSignalButtonHidden;
+            const auto result              = state.view->draw(state.drawEmpty ? *state.emptyDashboard : *state.dashboard, state.mode, options);
+            state.isAddSignalButtonPressed = state.isAddSignalButtonPressed || result.isAddSignalButtonPressed;
         };
 
         t->TestFunc = [](ImGuiTestContext* ctx) {
@@ -319,6 +323,26 @@ struct TestApp : public test::ImGuiTestApp {
                 expect(topOfCharts() > topWithLegendBelow + 10.f) << std::format("top of charts {} with the legend on top, {} with it below", topOfCharts(), topWithLegendBelow);
                 captureScreenshot(*ctx, ImRect(kHostPos, kHostPos + kHostSize));
                 state.legend = LegendPosition::Bottom;
+            };
+
+            "the Add Signal button only reports presses while not hidden"_test = [&] {
+                state.mode                  = Mode::Interaction;
+                state.legend                = LegendPosition::Bottom;
+                state.addSignalButtonHidden = 0.f;
+                test::waitForStableCharts(ctx, *state.dashboard);
+                const char*  addSignalButton   = "**/\u{F067}##addSignal";
+                const ImRect buttonRect        = ctx->ItemInfo(addSignalButton).RectFull;
+                state.isAddSignalButtonPressed = false;
+                ctx->ItemClick(addSignalButton);
+                expect(state.isAddSignalButtonPressed);
+
+                state.addSignalButtonHidden    = 1.f;
+                state.isAddSignalButtonPressed = false;
+                ctx->MouseMoveToPos(buttonRect.GetCenter());
+                ctx->MouseClick();
+                expect(!state.isAddSignalButtonPressed);
+                state.addSignalButtonHidden.reset();
+                state.mode = Mode::View;
             };
 
             "a legend on the left or right narrows the charts from that side, inside the host"_test = [&] {

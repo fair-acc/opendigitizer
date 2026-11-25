@@ -18,18 +18,24 @@ struct DashboardView {
     using Mode           = charts::ChartMode;
     using LegendPosition = DashboardStyle::LegendPosition;
 
+    /// all items of the bar, including those drawn by the Options callbacks, are submitted inside this ID scope
+    static constexpr const char* kBarIdScope = "Bar";
+
     struct Options {
         ImVec2                                   size{0.f, 0.f}; // 0: the available region
         std::function<void()>                    barLeading;
         std::function<void()>                    barCentre;
         std::function<void()>                    barTrailing;
-        std::function<void(ImVec2)>              callbackAfterAllLegendItemsDrawn; // one item of the given size after the legend items
+        float                                    barTrailingWidth = 0.f; // how much space to reserve for buttons to the right of the legend, in the bottom bar
+        std::optional<float>                     addSignalButtonHidden;  // how hidden the Add Signal button is, or null if no button is being drawn
         std::function<void(DockSpace::Windows&)> addDockWindows;
     };
 
     struct Result {
         std::string rightClickedSinkName;
-        bool        backgroundClicked = false;
+        bool        backgroundClicked        = false;
+        bool        isAddSignalButtonPressed = false;
+        ImRect      addSignalButtonRect; // refers to where the button *would* be if not hidden
     };
 
     struct PendingTransmutation {
@@ -67,10 +73,11 @@ struct DashboardView {
 
     [[nodiscard]] static DockingLayoutType shownLayoutType(DockingLayoutType stored);
 
-    void applyChartRequests();
-    void drawCharts(Mode mode, const Options& options, ImVec2 paneSize);
-    void drawBar(Mode mode, ImVec2 chartPaneSize, const Options& options, Result& result);
-    void drawLegendColumn(Mode mode, float height, const Options& options, Result& result);
+    void        applyChartRequests();
+    void        drawCharts(Mode mode, const Options& options, ImVec2 paneSize);
+    void        drawBar(Mode mode, const Options& options, Result& result);
+    void        drawLegendColumn(Mode mode, float height, const Options& options, Result& result);
+    static void takeLegendResult(Mode mode, const GlobalSignalLegend::DrawResult& legendResult, Result& result);
 };
 
 void alignForWidth(float width, float alignment = 0.5f) noexcept;
