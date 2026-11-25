@@ -173,6 +173,12 @@ void ImGuiTestApp::initImGui() {
     const char* testStyle = std::getenv("OPENDIGITIZER_TEST_STYLE");
     initialise(testStyle != nullptr && std::string_view(testStyle) == "light" ? LookAndFeel::Style::Light : LookAndFeel::Style::Dark);
 
+    // Currently tests rely on the Desktop style being used, except for the ones that explicitly test mobile styles.
+    // To make the tests run under all styles, we would need to make them
+    // - find items with **/ to account for different structure/nesting
+    // - always wait for the opening and closing animations
+    LookAndFeel::mutableInstance().choiceMenuStyle = ChoiceMenuStyle::Desktop;
+
     registerTests();
 }
 

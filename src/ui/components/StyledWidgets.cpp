@@ -2,6 +2,8 @@
 
 #include "../common/Imw.hpp"
 #include "../common/LookAndFeel.hpp"
+#include "SheetPopup.hpp"
+#include "SwipeGesture.hpp"
 
 #include <imgui_internal.h>
 #include <imgui_toggle.h>
@@ -100,6 +102,9 @@ bool sliderImpl([[maybe_unused]] const char* label, ImGuiID id, float width, ImG
     if (changed) {
         ImGui::MarkItemEdited(id);
     }
+    if (ImGui::IsItemActive()) {
+        suppressSwipeGesture();
+    }
 
     const bool   isSliderWideEnoughToDrawDragHandle = imguiDragRect.Max.x > imguiDragRect.Min.x; // imgui uses this to indicate invalid or too-small region, so drag handle can't be drawn
     const ImVec2 knobCenter                         = {isSliderWideEnoughToDrawDragHandle ? imguiDragRect.GetCenter().x : frame.Min.x + floatSliderDragHandleWidth, frame.GetCenter().y};
@@ -169,6 +174,17 @@ bool sliderNumberLabelOrTextInput(const char* valueLabel, const SliderScalarPara
 }
 
 float comboChevronWidth() { return LookAndFeel::instance().comboChevronWidthEms * ImGui::GetFontSize(); }
+
+/// since we hide the title bar of popups we use this to just draw the visible text of the popup ID as centered text at the top of the popup
+void drawPopupTitle(const char* id) {
+    const char* titleEnd = ImGui::FindRenderedTextEnd(id);
+    if (titleEnd == id) {
+        return;
+    }
+    const float titleWidth = ImGui::CalcTextSize(id, titleEnd).x;
+    ImGui::SetCursorPosX(ImGui::GetCursorPosX() + std::max(0.f, .5f * (ImGui::GetContentRegionAvail().x - titleWidth)));
+    ImGui::TextUnformatted(id, titleEnd);
+}
 
 } // namespace
 
@@ -253,10 +269,38 @@ float comboWidthForText(float textWidth) {
     return ImMin(textWidth, LookAndFeel::instance().comboTextMaxWidthEms * ImGui::GetFontSize()) + comboChevronWidth() + style.ItemInnerSpacing.x + 2.f * style.FramePadding.x;
 }
 
+namespace {
+/// Generate an ID from a label in the same way that ImGui::BeginCombo(const char* label) generates the ID for its popup
+[[nodiscard]] ImGuiID comboPopupId(const char* label) {
+    imw::OverrideId comboScope(ImGui::GetID(label));
+    return ImGui::GetID("##ComboPopup");
+}
+
+/// This imitates what BeginCombo does to draw its text and the button that you press to open the dropdown popup, but does not actually open any popup
+/// @returns whether the item was clicked
+[[nodiscard]] bool openComboTextAndButtonBehavior(const char* label, const ImRect& frame) {
+    const ImGuiStyle& style      = ImGui::GetStyle();
+    const ImVec2      labelSize  = ImGui::CalcTextSize(label, nullptr, true);
+    const float       labelWidth = labelSize.x > 0.f ? style.ItemInnerSpacing.x + labelSize.x : 0.f;
+    const bool        isClicked  = ImGui::InvisibleButton(label, ImVec2{frame.GetWidth() + labelWidth, frame.GetHeight()});
+    if (labelSize.x > 0.f) {
+        ImGui::RenderText(ImVec2{frame.Max.x + style.ItemInnerSpacing.x, frame.Min.y + style.FramePadding.y}, label);
+    }
+    return isClicked;
+}
+} // namespace
+
 bool beginCombo(const char* label, const char* previewValue, ImGuiComboFlags flags) {
-    ImGuiWindow* window = ImGui::GetCurrentWindow();
-    if (window->SkipItems || (flags & ImGuiComboFlags_NoPreview) != 0) {
-        return ImGui::BeginCombo(label, previewValue, flags);
+    ImGuiWindow* window          = ImGui::GetCurrentWindow();
+    const bool   usesSheetPopups = LookAndFeel::instance().usesSheetPopups();
+    if (window->SkipItems) {
+        return false;
+    }
+    if ((flags & ImGuiComboFlags_NoPreview) != 0) {
+        if (!usesSheetPopups) {
+            return ImGui::BeginCombo(label, previewValue, flags);
+        }
+        previewValue = nullptr;
     }
     const ImGuiStyle&  style       = ImGui::GetStyle();
     const LookAndFeel& lookAndFeel = LookAndFeel::instance();
@@ -267,8 +311,15 @@ bool beginCombo(const char* label, const char* previewValue, ImGuiComboFlags fla
     const ImRect frame    = {window->DC.CursorPos, window->DC.CursorPos + ImVec2(ImGui::CalcItemWidth(), ImGui::GetFrameHeight())};
     const float  rounding = ImGui::GetFrameHeight() * lookAndFeel.sliderKnobRadiusFrameHeightRatio;
 
-    // Dear ImGui handles the item, the popup and the label; it draws neither frame, arrow button nor value
     const bool open = [&] {
+        if (usesSheetPopups) {
+            const ImGuiID popupId = comboPopupId(label);
+            if (openComboTextAndButtonBehavior(label, frame)) {
+                ImGui::OpenPopup(popupId);
+            }
+            return beginPopupSheetEx(popupId, PopupFlags::WantsExclusiveFocus);
+        }
+        // remove everything besides the text and behavior because we draw the rest of the combobox ourselves
         imw::StyleColor    frameBackground(ImGuiCol_FrameBg, ImVec4{});
         imw::StyleColor    frameBackgroundHovered(ImGuiCol_FrameBgHovered, ImVec4{});
         imw::StyleColor    popupBorder(ImGuiCol_Border, lookAndFeel.palette().widgetTrackInactive);
@@ -295,6 +346,14 @@ bool beginCombo(const char* label, const char* previewValue, ImGuiComboFlags fla
         ImGui::RenderTextEllipsis(window->DrawList, frame.Min + style.FramePadding, ImVec2(valueMaxX, frame.Max.y), valueMaxX, previewValue, previewEnd, nullptr);
     }
     return open;
+}
+
+void endCombo() {
+    if (LookAndFeel::instance().usesSheetPopups()) {
+        endPopupSheet();
+    } else {
+        ImGui::EndCombo();
+    }
 }
 
 bool treeNodeEx(const char* label, ImGuiTreeNodeFlags flags) {
@@ -342,7 +401,130 @@ bool selectable(const char* label, bool selected, ImGuiSelectableFlags flags, co
     imw::StyleColor hovered(ImGuiCol_HeaderHovered, selectableBackgroundColor(selected, true, false));
     imw::StyleColor held(ImGuiCol_HeaderActive, selectableBackgroundColor(selected, true, true));
     imw::StyleColor text(ImGuiCol_Text, selectableTextColor(selected));
-    return ImGui::Selectable(label, selected, flags, size);
+    const bool      isClicked     = ImGui::Selectable(label, selected, flags, size);
+    const bool      isAutoClosing = (flags & ImGuiSelectableFlags_NoAutoClosePopups) == 0 && (ImGui::GetItemFlags() & ImGuiItemFlags_AutoClosePopups) != 0;
+    if (isClicked && isAutoClosing && isCurrentWindowSheetContents()) {
+        closeCurrentPopupSheet();
+    }
+    return isClicked;
 }
+
+bool menuItem(const char* label, const char* shortcut, bool selected, bool enabled) {
+    const bool isClicked     = ImGui::MenuItem(label, shortcut, selected, enabled);
+    const bool isAutoClosing = (ImGui::GetItemFlags() & ImGuiItemFlags_AutoClosePopups) != 0;
+    if (isClicked && isAutoClosing && isCurrentWindowSheetContents()) {
+        closeCurrentPopupSheet();
+    }
+    return isClicked;
+}
+
+namespace {
+[[nodiscard]] ImGuiID popupCloseRequestStorageId(ImGuiID popupId) {
+    imw::OverrideId popupScope(popupId);
+    return ImGui::GetID("##isCloseRequested");
+}
+
+bool beginDesktopPopup(const char* id, const PopupOptions& options) {
+    const bool isCloseRequested = detail::takePopupCloseRequest(ImGui::GetID(id));
+    const bool isOpen           = hasFlag(options.flags, PopupFlags::Modal) ? ImGui::BeginPopupModal(id, nullptr, options.desktopWindowFlags | ImGuiWindowFlags_NoTitleBar) : ImGui::BeginPopup(id, options.desktopWindowFlags);
+    if (isOpen && isCloseRequested) {
+        ImGui::CloseCurrentPopup();
+    }
+    return isOpen;
+}
+} // namespace
+
+bool beginPopup(const char* id, const PopupOptions& options) {
+    const bool isModal = hasFlag(options.flags, PopupFlags::Modal);
+    const bool isOpen  = LookAndFeel::instance().usesSheetPopups() ? beginPopupSheet(id, options.flags) : beginDesktopPopup(id, options);
+    if (isOpen && isModal) {
+        drawPopupTitle(id);
+    }
+    return isOpen;
+}
+
+void endPopup() {
+    if (LookAndFeel::instance().usesSheetPopups()) {
+        endPopupSheet();
+    } else {
+        ImGui::EndPopup();
+    }
+}
+
+void closeCurrentPopup() {
+    if (isCurrentPopupASheet()) {
+        closeCurrentPopupSheet();
+    } else {
+        ImGui::CloseCurrentPopup();
+    }
+}
+
+bool beginMenu(const char* label, const char* icon) {
+    // ImGui has no public API for the item flags of the next item afaict
+    const bool isEnabled = (ImGui::GetCurrentContext()->CurrentItemFlags & ImGuiItemFlags_Disabled) == 0;
+    if (LookAndFeel::instance().usesSheetPopups()) {
+        return beginPopupSheetMenu(label, icon, isEnabled);
+    }
+    if (icon != nullptr) {
+        {
+            imw::Font iconFont(LookAndFeel::instance().fontIconsSolid);
+            ImGui::TextUnformatted(icon);
+        }
+        ImGui::SameLine(0.f, ImGui::GetStyle().ItemInnerSpacing.x);
+    }
+    return ImGui::BeginMenu(label, isEnabled);
+}
+
+void endMenu() {
+    if (LookAndFeel::instance().usesSheetPopups()) {
+        endPopupSheetMenu();
+    } else {
+        ImGui::EndMenu();
+    }
+}
+
+void closePopup(const char* id) { ImGui::GetStateStorage()->SetBool(popupCloseRequestStorageId(ImGui::GetID(id)), true); }
+
+bool colorEdit3(const char* label, float color[3], ImGuiColorEditFlags flags) {
+    if (!LookAndFeel::instance().usesSheetPopups()) {
+        return ImGui::ColorEdit3(label, color, flags);
+    }
+    constexpr const char* kPickerPopupId = "picker";
+    imw::ChangeStrId      colorEditScope(label);
+    // reimplement a bit of ColorEdit3 since we need to customize the latter portion (the popup)
+    {
+        imw::Group colorEdit;
+        if (ImGui::ColorButton("##ColorButton", ImVec4{color[0], color[1], color[2], 1.f}, flags | ImGuiColorEditFlags_NoAlpha)) {
+            ImGui::OpenPopup(kPickerPopupId);
+        }
+        if (const char* labelEnd = ImGui::FindRenderedTextEnd(label); labelEnd != label) {
+            ImGui::SameLine(0.f, ImGui::GetStyle().ItemInnerSpacing.x);
+            ImGui::TextUnformatted(label, labelEnd);
+        }
+    }
+    constexpr ImGuiColorEditFlags kForwardedPickerFlags = ImGuiColorEditFlags_DataTypeMask_ | ImGuiColorEditFlags_PickerMask_ | ImGuiColorEditFlags_InputMask_ | ImGuiColorEditFlags_HDR | ImGuiColorEditFlags_NoAlpha;
+    const ImGuiColorEditFlags     pickerFlags           = (flags & kForwardedPickerFlags) | ImGuiColorEditFlags_DisplayMask_ | ImGuiColorEditFlags_NoLabel;
+    bool                          isChanged             = false;
+    if (auto popup = Popup(kPickerPopupId, PopupOptions{.flags = PopupFlags::None})) {
+        ImGui::SetNextItemWidth(ImGui::GetFrameHeight() * LookAndFeel::instance().colorPickerWidthFrameHeightRatio);
+        isChanged = ImGui::ColorPicker3("##picker", color, pickerFlags);
+        if (ImGui::IsItemActive()) {
+            suppressSwipeGesture();
+        }
+    }
+    return isChanged;
+}
+
+namespace detail {
+bool isPopupAnimating(const char* id) { return LookAndFeel::instance().usesSheetPopups() && isPopupSheetAnimating(id); }
+
+bool takePopupCloseRequest(ImGuiID popupId) {
+    ImGuiStorage& storage          = *ImGui::GetStateStorage();
+    const ImGuiID storageId        = popupCloseRequestStorageId(popupId);
+    const bool    isCloseRequested = storage.GetBool(storageId, false);
+    storage.SetBool(storageId, false);
+    return isCloseRequested;
+}
+} // namespace detail
 
 } // namespace gr::od

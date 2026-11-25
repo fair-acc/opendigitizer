@@ -237,6 +237,7 @@ struct EventPumpResult {
     ImGui_ImplOpenGL3_NewFrame();
     ImGui_ImplSDL3_NewFrame();
     LookAndFeel::mutableInstance().updateFormFactor(ImGui::GetIO().DisplaySize);
+    LookAndFeel::mutableInstance().readTouchscreenDevices();
     ImGui::NewFrame();
 
     ImGui::SetNextWindowPos({0, 0});

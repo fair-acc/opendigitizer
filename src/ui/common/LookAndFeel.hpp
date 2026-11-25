@@ -11,6 +11,15 @@
 
 #include "AppState.hpp"
 
+enum class ChoiceMenuStyle {
+    Automatic, // Sheet while a touchscreen is the primary pointing device (isTouchscreenPrimaryPointer()), otherwise Desktop
+    Desktop,   // normal imgui style
+    Sheet,
+    Radial, // choice menus with ChoiceMenuFlags::SupportsRadialMenu are radial menus, all other popups are drawn as with Automatic
+};
+
+enum class SheetEdge { Bottom, Right };
+
 constexpr std::uint32_t rgbToImGuiABGR(std::uint32_t rgb, std::uint8_t alpha = 0xFF) {
     const std::uint32_t r = (rgb >> 16) & 0xFF;
     const std::uint32_t g = (rgb >> 8) & 0xFF;
@@ -419,6 +428,17 @@ struct LookAndFeel {
     ChartStyle             chartStyle;
     DashboardStyle         dashboardStyle;
     OpenDashboardPageStyle openDashboardPageStyle;
+    ChoiceMenuStyle        choiceMenuStyle                  = ChoiceMenuStyle::Automatic;
+    float                  sheetMaxLengthFractionOfDisplay  = .75f;
+    float                  sheetDismissThresholdFraction    = .3f;
+    float                  sheetHeaderRoundingEms           = 1.f;
+    float                  sheetHandlePillLengthEms         = 2.5f;
+    float                  sheetHandlePillThicknessEms      = .3f;
+    float                  sheetHandlePillAlpha             = .4f; // multiplied with the alpha of ImGuiCol_Text
+    float                  sheetRowHeightFrameHeightRatio   = 1.5f;
+    ImVec2                 sheetMinContentSizeEms           = ImVec2{16.f, 3.f}; // the x component for a sheet on the right edge, y for the bottom edge
+    float                  sheetAnimationDurationSeconds    = .25f;
+    float                  colorPickerWidthFrameHeightRatio = 12.f; // default value is taken from ImGui::ColorEdit4() which uses 12*FrameHeight
 
     Style style = Style::Light;
     Theme theme = Theme::Classic;
@@ -430,11 +450,21 @@ struct LookAndFeel {
     std::array<ImFont*, 2> _fontBigger = {nullptr, nullptr}; // [0] production, [1] prototype
     std::array<ImFont*, 2> _fontLarge  = {nullptr, nullptr}; // [0] production, [1] prototype
 
+    bool _isTouchscreenPrimaryPointer = false; // isTouchscreenPrimaryPointer() at the start of the current frame
+
     LookAndFeel() {}
 
     [[nodiscard]] const Palette&                     palette() const noexcept;
     [[nodiscard]] const SpectrumSchemeKeywordColors& spectrumColours() const noexcept; // for the current style, also while theme is Classic
     [[nodiscard]] float                              mainWindowIconButtonSize() const noexcept;
+
+    /// whether popups that can be drawn as a sheet, like Popup and Menu, are drawn as one
+    [[nodiscard]] bool usesSheetPopups() const;
+
+    [[nodiscard]] SheetEdge sheetEdge() const noexcept {
+        const ImVec2 displaySize = ImGui::GetIO().DisplaySize;
+        return displaySize.x <= displaySize.y ? SheetEdge::Bottom : SheetEdge::Right;
+    }
 
     [[nodiscard]] ImFont* fontTiny() const noexcept { return _fontTiny[gAppState.prototypeMode]; }
     [[nodiscard]] ImFont* fontSmall() const noexcept { return _fontSmall[gAppState.prototypeMode]; }
@@ -464,6 +494,8 @@ struct LookAndFeel {
 
     void loadFonts();
     void applyTheme();
+	/// this should be called every frame to detect whether to use mobile styles
+    void readTouchscreenDevices();
     void updateFormFactor(ImVec2 viewportSize);
 };
 

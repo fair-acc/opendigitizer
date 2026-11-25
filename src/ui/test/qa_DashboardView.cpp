@@ -13,6 +13,7 @@
 #include <DashboardView.hpp>
 #include <charts/XYChart.hpp>
 #include <components/AutoHide.hpp>
+#include <components/SheetPopup.hpp>
 #include <components/SignalSelector.hpp>
 
 #include <cmrc/cmrc.hpp>
@@ -69,6 +70,22 @@ ImRect chartsBounds() {
         bounds.Add(ImRect(window->Pos, window->Pos + window->Size));
     }
     return bounds;
+}
+
+[[nodiscard]] ImGuiWindow* frontmostPopupWindow() {
+    const ImGuiContext& context = *ImGui::GetCurrentContext();
+    return context.OpenPopupStack.Size > 0 ? context.OpenPopupStack.back().Window : nullptr;
+}
+
+[[nodiscard]] bool isSheetOpenAndStill() { return frontmostPopupWindow() != nullptr && !gr::od::detail::isAnyPopupSheetAnimating(); }
+
+/// a page of the sheet is shown on top of the root page, which has no back button
+[[nodiscard]] bool isSheetPageShown(ImGuiTestContext* ctx) { return ctx->ItemExists(gr::od::detail::kSheetBackButtonLabel); }
+
+/// a drag distance, as a fraction of the page width, that swipes a page back to its parent page
+[[nodiscard]] float fractionPastDismissThreshold() {
+    const float threshold = LookAndFeel::instance().sheetDismissThresholdFraction;
+    return threshold + .5f * (1.f - threshold);
 }
 
 float topOfCharts() {
@@ -399,6 +416,55 @@ struct TestApp : public test::ImGuiTestApp {
                 captureScreenshot(*ctx, hostRect);
             };
             gState->page.reset();
+        };
+
+        ImGuiTest* sheetTest = IM_REGISTER_TEST(engine(), "dashboardview", "chart settings in a sheet");
+        sheetTest->GuiFunc   = pageTest->GuiFunc;
+        sheetTest->TestFunc  = [](ImGuiTestContext* ctx) {
+            const ImVec2      previousViewportSize = ImGui::GetMainViewport()->Size;
+            gr::on_scope_exit restore              = [ctx, previousViewportSize] {
+                LookAndFeel::mutableInstance().choiceMenuStyle = ChoiceMenuStyle::Desktop;
+                test::resizeViewport(ctx, previousViewportSize);
+                gState->page.reset();
+            };
+            LookAndFeel::mutableInstance().choiceMenuStyle = ChoiceMenuStyle::Sheet;
+            test::resizeViewport(ctx, ImVec2{1600.f, 1000.f}); // a sheet on the right edge, tall enough for the whole chart settings page
+
+            "dragging a slider on the chart settings page moves the slider instead of swiping the page back"_test = [ctx] {
+                gState->waitUntil(ctx, "the six plot sinks are known", [] { return gState->dashboard->session.graphModel.recursiveGatherPlotSinks().size() >= 6UZ; });
+                test::waitForStableCharts(ctx, *gState->dashboard);
+                const auto chart = std::ranges::find_if(gState->dashboard->uiWindows, [](const Dashboard::UIWindow& uiWindow) { //
+                    return uiWindow.window && uiWindow.block && registeredId(uiWindow.block->typeName()) == "opendigitizer::charts::XYChart";
+                });
+                expect(chart != gState->dashboard->uiWindows.end()) << fatal << "the dashboard has an XYChart";
+                auto* const        xyChart      = static_cast<charts::XYChart*>(chart->block->raw());
+                const float        offsetBefore = xyChart->history_vertical_offset.value;
+                const ImGuiWindow* chartWindow  = ImGui::FindWindowByName(chart->window->name.c_str());
+                expect(chartWindow != nullptr) << fatal << "the chart is drawn";
+
+                ctx->MouseMoveToPos(chartWindow->Rect().GetCenter());
+                ctx->MouseClick(ImGuiMouseButton_Right);
+                gState->waitUntil(ctx, "the chart context menu sheet is open and does not move", isSheetOpenAndStill);
+                ctx->SetRef(frontmostPopupWindow());
+                ctx->ItemClick("**/Settings");
+                gState->waitUntil(ctx, "the settings page is shown", [ctx] { return isSheetOpenAndStill() && isSheetPageShown(ctx); });
+
+                const ImGuiTestItemInfo slider = ctx->ItemInfo("**/##history_vertical_offset");
+                expect(slider.ID != 0U) << fatal << "the settings page has the slider";
+                expect(ImRect(slider.Window->Pos, slider.Window->Pos + slider.Window->Size).Contains(slider.RectFull)) << fatal << "the slider is shown on the page without scrolling";
+
+                const ImVec2 start{slider.RectFull.Min.x + ImGui::GetStyle().FramePadding.x, slider.RectFull.GetCenter().y};
+                ctx->MouseMoveToPos(start);
+                ctx->MouseDown(ImGuiMouseButton_Left);
+                ctx->MouseMoveToPos(start + ImVec2{fractionPastDismissThreshold() * slider.Window->Size.x, 0.f});
+                ctx->MouseUp(ImGuiMouseButton_Left);
+                gState->waitUntil(ctx, "the chart context menu sheet does not move", isSheetOpenAndStill);
+                expect(xyChart->history_vertical_offset.value > offsetBefore) << "the slider moved";
+                expect(isSheetPageShown(ctx)) << "the settings page was not swiped back to the root page";
+
+                ctx->ItemClick(gr::od::detail::kSheetCloseButtonLabel);
+                gState->waitUntil(ctx, "the chart context menu sheet is closed", [] { return frontmostPopupWindow() == nullptr; });
+            };
         };
 
         ImGuiTest* remoteTest = IM_REGISTER_TEST(engine(), "dashboardview", "adding a remote signal adds its source, sink, edge and chart");

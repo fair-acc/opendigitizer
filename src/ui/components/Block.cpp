@@ -9,11 +9,11 @@
 #include <misc/cpp/imgui_stdlib.h>
 
 #include "../GraphModel.hpp"
-#include "../blocks/ImControlNumber.hpp"
 #include "../blocks/TargetMap.hpp"
 #include "../common/LookAndFeel.hpp"
-#include "../components/Dialog.hpp"
+#include "Dialog.hpp"
 #include "Keypad.hpp"
+#include "SliderAndSpinner.hpp"
 #include "StyledWidgets.hpp"
 
 using namespace gr::od;
@@ -91,10 +91,10 @@ bool ModifyUiConnectionsPopup::draw(UiGraphModel* graphModel) {
     enum class Action { none, apply, cancel };
     Action action = Action::none;
 
-    if (auto popup = imw::ModalPopup(kDialogName, nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+    if (auto popup = Popup(kDialogName, PopupOptions{.flags = PopupFlags::WantsExclusiveFocus | PopupFlags::Modal, .desktopWindowFlags = ImGuiWindowFlags_AlwaysAutoResize})) {
         if (ImGui::IsKeyPressed(ImGuiKey_Escape)) {
             action = Action::cancel;
-            ImGui::CloseCurrentPopup();
+            closeCurrentPopup();
         }
         {
             const std::string globWarning = std::format("Disconnecting this connection will also disconnect {} other controls", countOtherBlocksWithProperty(*graphModel, *block, this->property));
@@ -130,12 +130,12 @@ bool ModifyUiConnectionsPopup::draw(UiGraphModel* graphModel) {
         const float halfWidth = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) / 2.F;
         if (textButton("Done", ImVec2(halfWidth, 0.F))) {
             action = Action::apply;
-            ImGui::CloseCurrentPopup();
+            closeCurrentPopup();
         }
         ImGui::SameLine();
         if (textButton("Cancel", ImVec2(halfWidth, 0.F))) {
             action = Action::cancel;
-            ImGui::CloseCurrentPopup();
+            closeCurrentPopup();
         }
     }
 
@@ -163,9 +163,9 @@ bool JumpToControlPopup::draw(UiGraphModel* graphModel, std::function<void(const
         ImGui::OpenPopup(kPopupName);
     }
 
-    if (auto popup = imw::Popup(kPopupName, 0)) {
+    if (auto popup = Popup(kPopupName, PopupOptions{})) {
         if (ImGui::IsKeyPressed(ImGuiKey_Escape)) {
-            ImGui::CloseCurrentPopup();
+            closeCurrentPopup();
         }
         ImGui::TextUnformatted(kPopupName);
         ImGui::Separator();
@@ -185,7 +185,7 @@ bool JumpToControlPopup::draw(UiGraphModel* graphModel, std::function<void(const
         const float doneWidth = 100.F;
         ImGui::SetCursorPosX(ImGui::GetCursorPosX() + std::max(0.F, (ImGui::GetContentRegionAvail().x - doneWidth) / 2.F));
         if (textButton("Done", ImVec2(doneWidth, 0.F))) {
-            ImGui::CloseCurrentPopup();
+            closeCurrentPopup();
         }
     }
     if (this->opened && !ImGui::IsPopupOpen(kPopupName)) {
@@ -211,7 +211,7 @@ constexpr const char* kRemoveContextPopupId = "Remove Context";
 
 void drawAddContextPopup(UiGraphBlock* block) {
     ImGui::SetNextWindowSize(LookAndFeel::instance().addContextPopupSize, ImGuiCond_Once);
-    if (auto popup = imw::ModalPopup(kAddContextPopupId, nullptr, 0)) {
+    if (auto popup = Popup(kAddContextPopupId, PopupOptions{.flags = PopupFlags::WantsExclusiveFocus | PopupFlags::Modal, .desktopWindowFlags = ImGuiWindowFlags_None})) {
         ImGui::AlignTextToFramePadding();
         ImGui::Text("Name:");
         ImGui::SameLine();
@@ -234,7 +234,7 @@ void drawAddContextPopup(UiGraphBlock* block) {
 
 bool drawRemoveContextPopup(const std::string& context) {
     ImGui::SetNextWindowSize(LookAndFeel::instance().removeContextPopupSize, ImGuiCond_Once);
-    if (auto popup = imw::ModalPopup(kRemoveContextPopupId, nullptr, 0)) {
+    if (auto popup = Popup(kRemoveContextPopupId, PopupOptions{.flags = PopupFlags::WantsExclusiveFocus | PopupFlags::Modal, .desktopWindowFlags = ImGuiWindowFlags_None})) {
         ImGui::AlignTextToFramePadding();
         ImGui::Text("Do you want to remove '%s' context?", context.c_str());
         return components::dialogButtons() == components::DialogButton::Ok;
@@ -399,7 +399,7 @@ gr::pmt::Value editBlockProperty(const char* label, const std::string& propertyN
             if constexpr (std::unsigned_integral<T> && sizeof(T) >= 4) {
                 ImVec4 col = ImGui::ColorConvertU32ToFloat4(rgbToImGuiABGR(static_cast<std::uint32_t>(value)));
                 float  rgb[3]{col.x, col.y, col.z};
-                if (ImGui::ColorEdit3(label, rgb, kColorFieldEditorFlags)) {
+                if (colorEdit3(label, rgb, kColorFieldEditorFlags)) {
                     out = static_cast<T>(float3ToRGB(rgb));
                 }
             }
@@ -428,7 +428,7 @@ gr::pmt::Value editBlockProperty(const char* label, const std::string& propertyN
                     ImGui::SetItemDefaultFocus();
                 }
             }
-            ImGui::EndCombo();
+            endCombo();
         }
         break;
     }

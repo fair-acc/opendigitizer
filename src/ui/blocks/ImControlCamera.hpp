@@ -10,10 +10,8 @@
 
 #include <gnuradio-4.0/Block.hpp>
 
-#include <array>
 #include <format>
 #include <optional>
-#include <ranges>
 #include <string>
 #include <utility>
 #include <vector>
@@ -70,7 +68,7 @@ priority and the camera controls that both the V4L2 and the browser backend offe
     }
 
     void drawSettingsPopup(const gr::property_map& target, const std::string& camera) {
-        auto popup = imw::Popup("cameraSettings", 0);
+        auto popup = Popup("cameraSettings", PopupOptions{});
         if (!popup) {
             return;
         }

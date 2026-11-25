@@ -7,6 +7,7 @@
 #include <crude_json.h>
 #include <cstdint>
 #include <format>
+#include <iterator>
 #include <ranges>
 
 #include <gnuradio-4.0/PmtTypeHelpers.hpp>
@@ -25,6 +26,7 @@
 
 #include "common/LookAndFeel.hpp"
 
+#include "components/ChoiceMenu.hpp"
 #include "components/DataTypeStyle.hpp"
 #include "components/OverlayButton.hpp"
 #include "components/Splitter.hpp"
@@ -975,9 +977,8 @@ void FlowgraphEditor::draw(const ImVec2& contentTopLeft, const ImVec2& contentSi
     }
 
     if (exportPortRequest) {
-        bool shouldShowExportPortPopup = true;
         ImGui::OpenPopup("Exported port name");
-        if (ImGui::BeginPopupModal("Exported port name", &shouldShowExportPortPopup, ImGuiWindowFlags_AlwaysAutoResize)) {
+        if (auto popup = Popup("Exported port name", PopupOptions{.flags = PopupFlags::WantsExclusiveFocus | PopupFlags::Modal, .desktopWindowFlags = ImGuiWindowFlags_AlwaysAutoResize})) {
             ImGui::Text("Enter the name the port will be visible as:");
             ImGui::InputText("##Input", &exportPortTextField);
 
@@ -989,16 +990,13 @@ void FlowgraphEditor::draw(const ImVec2& contentTopLeft, const ImVec2& contentSi
 
                     exportPortRequest.reset();
                     exportPortTextField.clear();
-                    shouldShowExportPortPopup = false;
                 }
             }
             ImGui::SameLine();
             if (textButton("Cancel")) {
                 exportPortRequest.reset();
                 exportPortTextField.clear();
-                shouldShowExportPortPopup = false;
             }
-            ImGui::EndPopup();
         }
     }
 
@@ -1048,7 +1046,7 @@ void FlowgraphEditor::draw(const ImVec2& contentTopLeft, const ImVec2& contentSi
             }
         }
         if (isPopupOpen(popupResult)) {
-            ImGui::EndPopup();
+            endPopup();
         }
 
         if (!ImGui::IsPopupOpen(kEdgeConflictPopupId)) {
@@ -1107,17 +1105,15 @@ void FlowgraphEditor::draw(const ImVec2& contentTopLeft, const ImVec2& contentSi
         _contextMenuPosition = ax::NodeEditor::ScreenToCanvas(ImGui::GetMousePos());
     }
 
-    if (auto menu = imw::Popup("ctx_menu", 0)) {
-        if (ImGui::MenuItem("Refresh graph")) {
+    if (auto backgroundMenu = ChoiceMenu("ctx_menu", ChoiceMenuFlags::WantsExclusiveFocus | ChoiceMenuFlags::SupportsRadialMenu)) {
+        if (choiceMenuAction("Refresh graph")) {
             _graphModel->requestFullUpdate();
             _graphModel->requestAvailableBlocksTypesUpdate();
         }
-
-        if (_filterBlock != nullptr && ImGui::MenuItem("Remove filter")) {
+        if (_filterBlock != nullptr && choiceMenuAction("Remove filter")) {
             _filterBlock = nullptr;
         }
-
-        drawGroupingMenuItems(selectedBlockUniqueNames());
+        drawGroupingChoices(selectedBlockUniqueNames());
     }
 
     drawBlockContextMenu();
@@ -1141,94 +1137,82 @@ void FlowgraphEditor::draw(const ImVec2& contentTopLeft, const ImVec2& contentSi
     }
 }
 
-void FlowgraphEditor::drawPortsMenu(const char* text, const char* portDirection, const auto& blockPorts) {
-    if (blockPorts.empty()) {
-        return;
-    }
-
-    const auto* exportTarget = exportPortTargetBlock();
-    if (!exportTarget) {
+void FlowgraphEditor::drawPortExportToggleSubmenu(const char* submenuLabel, const std::vector<UiGraphPort>& ports, const char* portDirection) {
+    const UiGraphBlock* exportTarget = exportPortTargetBlock();
+    if (exportTarget == nullptr || ports.empty()) {
         return; // nowhere to export to, e.g. in the root graph
     }
-
-    auto portsSubMenu = imw::Menu{text, /*enabled*/ true};
-    if (!portsSubMenu) {
-        return;
-    }
-
-    for (const UiGraphPort& port : blockPorts) {
-        bool exported = port.isExportedTo(exportTarget);
-
-        if (!checkbox(std::format("{}##{}-{}", port.portName, port.ownerBlock->blockUniqueName, port.portName).c_str(), &exported)) {
-            continue;
-        }
-
-        if (exported) {
-            ExportPortMessageData exportMessage{
-                .uniqueBlockName = _selectedBlockUniqueName,
-                .portDirection   = portDirection,
-                .portName        = port.portName,
-                .exportedName    = "", // -Wmissing-designated-field-initializers
-                .exportFlag      = true,
-            };
-            exportPortTextField = getDefaultExportedName(&port);
-
-            if (internalEdgeForInputPort(exportMessage)) {
-                // defer to a confirmation popup, an exported input port cannot also have an internal edge
-                _popupEdgeConflict    = EdgeConflict::InputHasInternalConnection;
-                exportConflictRequest = std::move(exportMessage);
-            } else {
-                exportPortRequest = std::move(exportMessage);
+    if (auto submenu = Menu(submenuLabel, nullptr)) {
+        for (const UiGraphPort& port : ports) {
+            bool isExported = port.isExportedTo(exportTarget);
+            if (choiceMenuToggle(port.portName.c_str(), &isExported)) {
+                requestPortExportChange(port, portDirection, isExported);
             }
-            continue;
         }
+    }
+}
 
-        ExportPortMessageData unexportMessage{
+void FlowgraphEditor::requestPortExportChange(const UiGraphPort& port, const char* portDirection, bool exported) {
+    if (exported) {
+        ExportPortMessageData exportMessage{
             .uniqueBlockName = _selectedBlockUniqueName,
             .portDirection   = portDirection,
             .portName        = port.portName,
             .exportedName    = "", // -Wmissing-designated-field-initializers
-            .exportFlag      = false,
+            .exportFlag      = true,
         };
+        exportPortTextField = getDefaultExportedName(&port);
 
-        if (const auto exportedName = port.getExportedName(exportTarget); exportedName && hasExternalEdgesForExportedPort(*exportedName)) {
-            // defer to a confirmation popup, external edges would be disconnected
-            _popupEdgeConflict  = EdgeConflict::UnexportingPortHasExternalConnection;
-            unexportPortRequest = UnexportPortRequest{.message = std::move(unexportMessage), .exportedName = *exportedName};
+        if (internalEdgeForInputPort(exportMessage)) {
+            // defer to a confirmation popup, an exported input port cannot also have an internal edge
+            _popupEdgeConflict    = EdgeConflict::InputHasInternalConnection;
+            exportConflictRequest = std::move(exportMessage);
         } else {
-            requestExportPort(unexportMessage);
+            exportPortRequest = std::move(exportMessage);
         }
+        return;
+    }
+
+    ExportPortMessageData unexportMessage{
+        .uniqueBlockName = _selectedBlockUniqueName,
+        .portDirection   = portDirection,
+        .portName        = port.portName,
+        .exportedName    = "", // -Wmissing-designated-field-initializers
+        .exportFlag      = false,
+    };
+
+    if (const auto exportedName = port.getExportedName(exportPortTargetBlock()); exportedName && hasExternalEdgesForExportedPort(*exportedName)) {
+        // defer to a confirmation popup, external edges would be disconnected
+        _popupEdgeConflict  = EdgeConflict::UnexportingPortHasExternalConnection;
+        unexportPortRequest = UnexportPortRequest{.message = std::move(unexportMessage), .exportedName = *exportedName};
+    } else {
+        requestExportPort(unexportMessage);
     }
 }
 
 UiGraphBlock* FlowgraphEditor::findSelectedBlock() { return _graphModel->recursiveFindBlockByUniqueName(_selectedBlockUniqueName).block; }
 
 void FlowgraphEditor::drawBlockContextMenu() {
-    auto menu = imw::Popup("block_ctx_menu", 0);
-    if (!menu) {
-        return;
+    constexpr const char* kPopupId      = "block_ctx_menu";
+    UiGraphBlock* const   selectedBlock = findSelectedBlock();
+    if (selectedBlock == nullptr && ImGui::IsPopupOpen(kPopupId)) {
+        closePopup(kPopupId); // the block was deleted while the menu was open
     }
-
-    UiGraphBlock* const selectedBlock = findSelectedBlock();
-    if (selectedBlock == nullptr) {
-        // the block was deleted while the menu was open
-        ImGui::CloseCurrentPopup();
+    auto blockMenu = ChoiceMenu(kPopupId, ChoiceMenuFlags::WantsExclusiveFocus);
+    if (!blockMenu || selectedBlock == nullptr) {
         return;
     }
 
     const bool isFilter = _filterBlock == selectedBlock;
-    if (ImGui::MenuItem(isFilter ? "Remove filter" : "Filter")) {
+    if (choiceMenuAction(isFilter ? "Remove filter" : "Filter")) {
         _filterBlock = isFilter ? nullptr : selectedBlock;
     }
-
-    if (ImGui::MenuItem("Delete this block")) {
+    if (choiceMenuAction("Delete this block")) {
         requestBlockDeletion(selectedBlock->blockUniqueName);
     }
 
-    if (selectedBlock->isGraph() || selectedBlock->isScheduler()) {
-        if (ImGui::MenuItem("Edit block graph...")) {
-            requestGraphEdit(selectedBlock);
-        }
+    if ((selectedBlock->isGraph() || selectedBlock->isScheduler()) && choiceMenuAction("Edit block graph...")) {
+        requestGraphEdit(selectedBlock);
     }
 
     auto groupNames = selectedBlockUniqueNames();
@@ -1236,19 +1220,19 @@ void FlowgraphEditor::drawBlockContextMenu() {
         groupNames.push_back(selectedBlock->blockUniqueName);
     }
 
-    if ((selectedBlock->isGraph() || selectedBlock->isScheduler()) && ImGui::MenuItem("Ungroup blocks")) {
+    if ((selectedBlock->isGraph() || selectedBlock->isScheduler()) && choiceMenuAction("Ungroup blocks")) {
         requestBlocksUngrouping(selectedBlock->blockUniqueName);
     }
 
-    drawGroupingMenuItems(std::move(groupNames));
+    drawGroupingChoices(std::move(groupNames));
 
-    auto typeParams = _graphModel->availableParametrizationsFor(selectedBlock->blockTypeName);
+    const auto typeParams = _graphModel->availableParametrizationsFor(selectedBlock->blockTypeName);
     if (typeParams.availableParametrizations && typeParams.availableParametrizations->size() > 1) {
-        if (imw::Menu blockTypesMenu("Change type to...", /*enabled*/ true); blockTypesMenu) {
+        if (auto blockTypeMenu = Menu("Change type to...", nullptr)) {
             for (const auto& availableParametrization : *typeParams.availableParametrizations) {
-                if (availableParametrization != typeParams.parametrization && ImGui::MenuItem(availableParametrization.c_str())) {
+                if (availableParametrization != typeParams.parametrization && choiceMenuAction(availableParametrization.c_str())) {
                     if (auto owner = ownersFor(*selectedBlock)) {
-                        _graphModel->sendMessage(toScheduler(*owner, gr::scheduler::property::kReplaceBlock, {{"uniqueName", selectedBlock->blockUniqueName}, {"type", std::move(typeParams.baseType) + availableParametrization}, {"properties", gr::property_map{{"name", selectedBlock->blockName}}}}));
+                        _graphModel->sendMessage(toScheduler(*owner, gr::scheduler::property::kReplaceBlock, {{"uniqueName", selectedBlock->blockUniqueName}, {"type", typeParams.baseType + availableParametrization}, {"properties", gr::property_map{{"name", selectedBlock->blockName}}}}));
                     }
                 }
             }
@@ -1256,8 +1240,8 @@ void FlowgraphEditor::drawBlockContextMenu() {
     }
 
     if (_editorLevel > 0) {
-        this->drawPortsMenu("Exported input ports...", "input", selectedBlock->_inputPorts);
-        this->drawPortsMenu("Exported output ports...", "output", selectedBlock->_outputPorts);
+        drawPortExportToggleSubmenu("Exported input ports...", selectedBlock->_inputPorts, "input");
+        drawPortExportToggleSubmenu("Exported output ports...", selectedBlock->_outputPorts, "output");
     }
 }
 
@@ -1408,18 +1392,18 @@ std::vector<std::string> FlowgraphEditor::selectedBlockUniqueNames() {
     return result;
 }
 
-void FlowgraphEditor::drawGroupingMenuItems(std::vector<std::string> uniqueNames) {
+void FlowgraphEditor::drawGroupingChoices(std::vector<std::string> uniqueNames) {
     // ui control blocks are special and can only exist in the root graph
     std::erase_if(uniqueNames, [this](const std::string& uniqueName) {
         const UiGraphBlock* block = _graphModel->recursiveFindBlockByUniqueName(uniqueName).block;
         return block && block->isUiControl();
     });
-    const bool haveSelection = !uniqueNames.empty();
-    const bool singular      = uniqueNames.size() == 1;
-    if (ImGui::MenuItem(singular ? "Group block" : "Group blocks", nullptr, false, haveSelection)) {
+    const bool    singular = uniqueNames.size() == 1;
+    imw::Disabled noSelection(uniqueNames.empty());
+    if (choiceMenuAction(singular ? "Group block" : "Group blocks")) {
         requestBlocksGrouping("gr::Graph", uniqueNames);
     }
-    if (ImGui::MenuItem(singular ? "Group block and pick graph type..." : "Group blocks and pick graph type...", nullptr, false, haveSelection)) {
+    if (choiceMenuAction(singular ? "Group block and pick graph type..." : "Group blocks and pick graph type...")) {
         _pendingGroupBlocksRequest = std::move(uniqueNames);
     }
 }

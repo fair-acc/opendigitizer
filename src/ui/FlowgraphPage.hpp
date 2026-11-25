@@ -253,7 +253,9 @@ struct FlowgraphEditor {
 
     void requestFocusOnBlock(std::string uniqueName) { _focusBlockRequest = std::move(uniqueName); }
 
-    void drawPortsMenu(const char* text, const char* portDirection, const auto& blockPorts);
+    void drawPortExportToggleSubmenu(const char* submenuLabel, const std::vector<UiGraphPort>& ports, const char* portDirection);
+
+    void requestPortExportChange(const UiGraphPort& port, const char* portDirection, bool exported);
 
     /// what to draw after the graph, above it
     [[nodiscard]] std::optional<components::BlockDragConnectOverlay> drawGraph(const ImVec2& size);
@@ -287,7 +289,8 @@ struct FlowgraphEditor {
 
     [[nodiscard]] std::vector<std::string> selectedBlockUniqueNames();
 
-    void drawGroupingMenuItems(std::vector<std::string> uniqueNames);
+    /// The choices of the choice menu that group the blocks @param uniqueNames
+    void drawGroupingChoices(std::vector<std::string> uniqueNames);
 
     /// the block of _selectedBlockUniqueName, or nullptr when it does not exist (anymore)
     [[nodiscard]] UiGraphBlock* findSelectedBlock();

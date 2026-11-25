@@ -178,9 +178,9 @@ ScrollableListSelectionPopupResult ScrollableListSelectionPopup::draw(const std:
     std::optional<std::size_t> hoveredItem;
     bool                       confirmed = false;
 
-    if (auto popup = imw::Popup(_name.c_str(), 0)) {
+    if (auto popup = Popup(_name.c_str(), PopupOptions{})) {
         if (ImGui::IsKeyPressed(ImGuiKey_Escape)) {
-            ImGui::CloseCurrentPopup();
+            closeCurrentPopup();
         }
         ImGui::TextUnformatted(_name.c_str());
         ImGui::Separator();
@@ -203,7 +203,7 @@ ScrollableListSelectionPopupResult ScrollableListSelectionPopup::draw(const std:
         ImGui::SetCursorPosX(ImGui::GetCursorPosX() + std::max(0.F, (ImGui::GetContentRegionAvail().x - doneWidth) / 2.F));
         if (textButton("Done", ImVec2(doneWidth, 0.F))) {
             confirmed = true;
-            ImGui::CloseCurrentPopup();
+            closeCurrentPopup();
         }
     }
 

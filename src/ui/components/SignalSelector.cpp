@@ -26,10 +26,10 @@ void QueryFilters::draw() {
                 const bool isSelected = filter.selectedIndex == i;
                 if (selectable(QueryFilter::kFieldNames[i], isSelected)) {
                     if (std::ranges::any_of(elements, [&i, &filter](const QueryFilter& other) { return other.keyId != filter.keyId && other.selectedIndex == i; })) {
-                        if (auto popup = imw::ModalPopup("Wrong Entry", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+                        if (auto popup = Popup("Wrong Entry", PopupOptions{.flags = PopupFlags::WantsExclusiveFocus | PopupFlags::Modal, .desktopWindowFlags = ImGuiWindowFlags_AlwaysAutoResize})) {
                             ImGui::Text("Key already selected. Please select a different one");
                             if (textButton("Ok")) {
-                                ImGui::CloseCurrentPopup();
+                                closeCurrentPopup();
                             }
                         }
                     } else {
@@ -307,15 +307,13 @@ std::vector<SignalData> SignalSelector::drawAndReturnSelected() {
     auto parentSize = ImGui::GetIO().DisplaySize;
     ImGui::SetNextWindowSize(parentSize - ImVec2(32, 32), ImGuiCond_Once);
     ImGui::SetNextWindowPos(ImVec2(16, 16), ImGuiCond_Once);
-    auto x = ImGui::GetCursorPosX();
-    ImGui::SetCursorPosX(x + 32);
 
-    if (auto menu = imw::ModalPopup(_windowName.c_str(), nullptr, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse)) {
+    if (auto menu = Popup(_windowName.c_str(), PopupOptions{.flags = PopupFlags::WantsExclusiveFocus | PopupFlags::Modal | PopupFlags::WantsMaxSize, .desktopWindowFlags = ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse})) {
         float windowWidth = ImGui::GetWindowWidth();
         float buttonPosX  = windowWidth - 2 * ImGui::GetStyle().ItemSpacing.x - ImGui::GetStyle().FramePadding.x - ImGui::CalcTextSize("Close").x;
         ImGui::SetCursorPosX(buttonPosX);
         if (textButton("Close") || ImGui::IsKeyPressed(ImGuiKey_Escape)) {
-            ImGui::CloseCurrentPopup();
+            closeCurrentPopup();
             return {};
         }
 

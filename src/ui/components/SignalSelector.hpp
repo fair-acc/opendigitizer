@@ -20,6 +20,7 @@
 
 #include "FilterComboBoxes.hpp"
 #include "SelectedLabelsView.hpp"
+#include "StyledWidgets.hpp"
 
 #include "services/dns_client.hpp"
 #include "services/dns_types.hpp"
@@ -180,7 +181,7 @@ struct SignalSelector {
     [[nodiscard]] std::vector<SignalData> drawSignalSelector();
 
     void open() { ImGui::OpenPopup(_windowName.c_str()); }
-    void close() { ImGui::CloseCurrentPopup(); }
+    void close() { closeCurrentPopup(); }
 
     void drawElement(const SignalData& entry, std::size_t idx, const ImGuiSelectionBasicStorage& selection);
 

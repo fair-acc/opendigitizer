@@ -42,7 +42,7 @@ struct ImControlColor : ImControl<ImControlColor> {
             std::array        rgb{color.x, color.y, color.z};
             // popups are disabled inside the flowgraph editor, see ImControlChoice
             imw::Disabled cannotOpenPicker(parsedConfig.drawingContext == DrawableBlockConfig::DrawingContext::FlowgraphView);
-            if (ImGui::ColorEdit3(id.c_str(), rgb.data(), ImGuiColorEditFlags_NoInputs)) {
+            if (colorEdit3(id.c_str(), rgb.data(), ImGuiColorEditFlags_NoInputs)) {
                 value.value = float4ToRGBA(ImVec4{rgb[0], rgb[1], rgb[2], 1.f}) >> 8;
                 commitValue(value.value);
             }

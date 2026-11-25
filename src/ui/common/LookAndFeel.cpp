@@ -1,6 +1,7 @@
 #include "LookAndFeel.hpp"
 
 #include "Imw.hpp"
+#include "TouchHandler.hpp"
 
 #include <cmrc/cmrc.hpp>
 
@@ -407,6 +408,10 @@ void LookAndFeel::applyTheme() {
     notificationRounding             = pick(lookAndFeelDefaults.notificationRounding, 4.f);
 }
 
+void LookAndFeel::readTouchscreenDevices() { //
+    _isTouchscreenPrimaryPointer = isTouchscreenPrimaryPointer();
+}
+
 void LookAndFeel::updateFormFactor(ImVec2 viewportSize) {
     const float shortSide = std::min(viewportSize.x, viewportSize.y);
     if (shortSide <= 0.f) {
@@ -418,6 +423,13 @@ void LookAndFeel::updateFormFactor(ImVec2 viewportSize) {
 }
 
 [[nodiscard]] float LookAndFeel::mainWindowIconButtonSize() const noexcept { return kFontSizes[FontSizeBig] * 1.7f; }
+
+bool LookAndFeel::usesSheetPopups() const {
+    if (choiceMenuStyle == ChoiceMenuStyle::Automatic || choiceMenuStyle == ChoiceMenuStyle::Radial) {
+        return _isTouchscreenPrimaryPointer;
+    }
+    return choiceMenuStyle == ChoiceMenuStyle::Sheet;
+}
 
 void LookAndFeel::loadFonts() {
     static const std::vector<ImWchar> rangeLatin             = {0x0020, 0x0080, // Basic Latin

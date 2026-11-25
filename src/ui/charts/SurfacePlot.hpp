@@ -5,6 +5,8 @@
 #include "SignalSink.hpp"
 #include "SpectrumHelper.hpp"
 
+#include "../components/SwipeGesture.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -933,16 +935,14 @@ struct SurfacePlot : gr::Block<SurfacePlot, gr::Drawable<gr::UICategory::Content
             }
         }
 
-        if (ImGui::BeginPopup("##Srf3DAxis")) {
+        if (auto popup = Popup("##Srf3DAxis", PopupOptions{.flags = PopupFlags::None})) {
             if (_hoveredAxisIndex >= 0 && _hoveredAxisIndex < 3) {
                 draw3DAxisSubmenuContent(_hoveredAxisIndex);
             }
-            ImGui::EndPopup();
         }
 
-        if (ImGui::BeginPopup("##Srf3DCanvas")) {
+        if (auto popup = Popup("##Srf3DCanvas", PopupOptions{.flags = PopupFlags::None})) {
             drawCommonContextMenuItems(mode);
-            ImGui::EndPopup();
         }
     }
 
@@ -993,7 +993,7 @@ struct SurfacePlot : gr::Block<SurfacePlot, gr::Drawable<gr::UICategory::Content
                         _pendingScale[ai] = kScaleIds[s];
                     }
                 }
-                ImGui::EndCombo();
+                endCombo();
             }
         }
 
@@ -1007,7 +1007,7 @@ struct SurfacePlot : gr::Block<SurfacePlot, gr::Drawable<gr::UICategory::Content
                         _axisFormat[ai] = f;
                     }
                 }
-                ImGui::EndCombo();
+                endCombo();
             }
         }
 

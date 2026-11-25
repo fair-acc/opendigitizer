@@ -7,12 +7,12 @@
 #include <gnuradio-4.0/Tag.hpp>
 #include <implot.h>
 #include <memory>
-#include <print>
 
 #include "common/Events.hpp"
 #include "common/Imw.hpp"
 #include "common/LookAndFeel.hpp"
 
+#include "components/Dialog.hpp"
 #include "components/ImGuiNotify.hpp"
 #include "components/Splitter.hpp"
 #include "components/StyledWidgets.hpp"
@@ -72,7 +72,7 @@ DashboardPage::~DashboardPage() { charts::SinkRegistry::instance().removeListene
 
 DashboardPage::PropertyControlWindowContextMenuAction DashboardPage::drawPropertyControlWindowContextMenu(const PropertyControlWindowsDrawParams& params) {
     auto action = PropertyControlWindowContextMenuAction::None;
-    if (auto contextPopup = imw::Popup(kPropertyControlWindowContextMenuId, ImGuiPopupFlags_None)) {
+    if (auto contextPopup = Popup(kPropertyControlWindowContextMenuId, PopupOptions{})) {
         namespace menu_icons = charts::menu_icons;
         if (menu_icons::menuItemWithIcon(menu_icons::kRemove, "Remove")) {
             params.removeList.push_back(params.windowId);
@@ -126,9 +126,8 @@ void DashboardPage::drawChangeLabelPopup() {
         return;
     }
 
-    bool          isOpen = true;
     imw::StyleVar minSize(ImGuiStyleVar_WindowMinSize, ImVec2{LookAndFeel::instance().dashboardStyle.newChartPopupMinWidth, ImGui::GetFrameHeight()});
-    if (auto popup = imw::ModalPopup(kChangeLabelPopupId, &isOpen, ImGuiPopupFlags_None)) {
+    if (auto popup = Popup(kChangeLabelPopupId, PopupOptions{.flags = PopupFlags::WantsExclusiveFocus | PopupFlags::Modal, .desktopWindowFlags = ImGuiWindowFlags_None})) {
         constexpr int kNumColumns = 2;
         if (auto table = imw::Table("labelTable", kNumColumns, ImGuiTableFlags_SizingFixedFit, ImVec2(0, 0), 0.0f)) {
             ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed);
@@ -139,6 +138,7 @@ void DashboardPage::drawChangeLabelPopup() {
             ImGui::TableSetColumnIndex(1);
             ImGui::InputText("##Change label", &selectedWindowIter->second.label);
         }
+        std::ignore = components::dialogButtons();
     }
 }
 
@@ -351,6 +351,11 @@ DashboardPage::LegendItemClickResult DashboardPage::drawChartsLegendAndEditPane(
     if (viewResult.isAddSignalButtonPressed) {
         openSignalSelector();
     }
+    if (mode == Mode::Interaction && _remoteSignalSelector) {
+        for (const auto& selectedRemoteSignal : _remoteSignalSelector->drawAndReturnSelected()) {
+            this->addSelectedRemoteSignal(selectedRemoteSignal);
+        }
+    }
     if (viewResult.backgroundClicked) {
         _editPane.setSelectedBlock(nullptr, nullptr);
     }
@@ -400,7 +405,7 @@ void DashboardPage::draw(Mode mode) noexcept {
         if (isPopupConfirmed(popup) && this->_requestViewOnlyMode) {
             this->_requestViewOnlyMode();
         }
-        ImGui::EndPopup();
+        endPopup();
     }
 
     for (std::size_t id : windowRemoveList) {
@@ -423,8 +428,7 @@ void DashboardPage::drawNewPlotModal() {
     ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
     ImGui::SetNextWindowSize(ImVec2(LookAndFeel::instance().dashboardStyle.newChartPopupWidth, 0.f), ImGuiCond_Appearing);
 
-    bool showCloseButton = true; // ImGui then draws an (X) button on the popup
-    if (auto popup = imw::ModalPopup(kAddChartPopupId, &showCloseButton, ImGuiWindowFlags_AlwaysAutoResize)) {
+    if (auto popup = Popup(kAddChartPopupId, PopupOptions{.flags = PopupFlags::WantsExclusiveFocus | PopupFlags::Modal, .desktopWindowFlags = ImGuiWindowFlags_AlwaysAutoResize})) {
         ImGui::Text("Select chart type:");
         ImGui::Separator();
 
@@ -437,7 +441,7 @@ void DashboardPage::drawNewPlotModal() {
 
         ImGui::Separator();
         if (textButton("Cancel", ImVec2(ImGui::GetWindowSize().x - (ImGui::GetStyle().WindowPadding.x * 2.f), 0))) {
-            ImGui::CloseCurrentPopup();
+            closeCurrentPopup();
         }
     }
 }

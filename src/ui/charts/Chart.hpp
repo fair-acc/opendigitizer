@@ -10,6 +10,7 @@
 #include "../components/AutoHide.hpp"
 #include "../components/ImGuiNotify.hpp"
 #include "../components/StyledWidgets.hpp"
+#include "../components/SwipeGesture.hpp"
 
 #include <imgui.h>
 #include <implot.h>
@@ -992,20 +993,10 @@ inline bool menuItemWithIcon(const char* icon, const char* label, bool selected 
         ImGui::TextUnformatted(icon);
     }
     ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
-    if (ImGui::MenuItem(label, nullptr, selected, enabled)) {
+    if (menuItem(label, nullptr, selected, enabled)) {
         clicked = true;
     }
     return clicked;
-}
-
-/// true when the menu is open: the caller then calls ImGui::EndMenu()
-inline bool beginMenuWithIcon(const char* icon, const char* label, bool enabled = true) {
-    {
-        imw::Font iconFont(LookAndFeel::instance().fontIconsSolid);
-        ImGui::TextUnformatted(icon);
-    }
-    ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
-    return ImGui::BeginMenu(label, enabled);
 }
 
 } // namespace menu_icons
@@ -1222,6 +1213,9 @@ void drawLimitSpinners(bool disabled, double minVal, double maxVal, TSetMin&& se
         ImGui::SetNextItemWidth(chartStyle.menuAxisLimitDragWidth);
         if (ImGui::DragScalar(dragId.c_str(), ImGuiDataType_Double, &val, dragSpeed, nullptr, nullptr, "%.4g")) {
             assign(val);
+        }
+        if (ImGui::IsItemActive()) {
+            suppressSwipeGesture();
         }
         detail::onScrollWheel([&](float wheel) {
             val += static_cast<double>(wheel) * increment;
@@ -1846,7 +1840,7 @@ struct Chart {
 
     template<typename Self>
     void drawChartTypeSubmenu(this Self& self) {
-        if (menu_icons::beginMenuWithIcon(menu_icons::kChangeType, "Change Type")) {
+        if (auto menu = Menu("Change Type", menu_icons::kChangeType)) {
             const auto minimumCompatibility = self.displayedSignalKinds();
             for (const auto& type : registeredChartTypes()) {
                 bool disabled                     = false;
@@ -1857,13 +1851,12 @@ struct Chart {
 
                 imw::Disabled _(disabled);
                 bool          isCurrent = type.ends_with(std::remove_cvref_t<Self>::kChartTypeName);
-                if (ImGui::MenuItem(type.c_str(), nullptr, isCurrent)) {
+                if (menuItem(type.c_str(), nullptr, isCurrent)) {
                     if (!isCurrent && gChartRequests && gChartRequests->transmute) {
                         gChartRequests->transmute(self.unique_name, type);
                     }
                 }
             }
-            ImGui::EndMenu();
         }
     }
 
@@ -1917,7 +1910,7 @@ struct Chart {
                         ImGui::SetItemDefaultFocus();
                     }
                 }
-                ImGui::EndCombo();
+                endCombo();
             }
             detail::onScrollWheel([&](float wheel) {
                 auto values = gr::meta::enumValues<E>();
@@ -2044,6 +2037,9 @@ struct Chart {
         if (ImGui::DragScalar("##historyValue", ImGuiDataType_Double, &displayValue, dragSpeed, nullptr, nullptr, format)) {
             applyDisplayValue();
         }
+        if (ImGui::IsItemActive()) {
+            suppressSwipeGesture();
+        }
         detail::onScrollWheel([&](float wheel) {
             displayValue += static_cast<double>(wheel) * step();
             displayValue = std::max(displayValue, minDisplayValue);
@@ -2081,7 +2077,7 @@ struct Chart {
                     ImGui::EndDisabled();
                 }
             }
-            ImGui::EndCombo();
+            endCombo();
         }
         detail::onScrollWheel([&](float wheel) {
             auto values = gr::meta::enumValues<HistoryUnit>();
@@ -2475,6 +2471,9 @@ struct Chart {
                 if (ImGui::DragFloat(label.c_str(), &val, 0.01f, 0.0f, 0.0f, "%.2f")) {
                     field = static_cast<ValueType>(val);
                 }
+                if (ImGui::IsItemActive()) {
+                    suppressSwipeGesture();
+                }
                 detail::onScrollWheel([&](float wheel) {
                     val += wheel * std::max(0.01f, std::abs(val) * 0.05f);
                     field = static_cast<ValueType>(val);
@@ -2487,7 +2486,7 @@ struct Chart {
                     isColourPicker = true;
                     ImVec4 col     = sinkColor(field.value);
                     float  rgb[3]{col.x, col.y, col.z};
-                    if (ImGui::ColorEdit3(label.c_str(), rgb, ImGuiColorEditFlags_NoInputs)) {
+                    if (colorEdit3(label.c_str(), rgb, ImGuiColorEditFlags_NoInputs)) {
                         field = float3ToRGB(rgb);
                     }
                 }
@@ -2525,6 +2524,9 @@ struct Chart {
                     if (ImGui::DragInt(label.c_str(), &val, 1.0f)) {
                         field = static_cast<ValueType>(val);
                     }
+                    if (ImGui::IsItemActive()) {
+                        suppressSwipeGesture();
+                    }
                     detail::onScrollWheel([&](float wheel) {
                         val += static_cast<int>(wheel) * std::max(1, std::abs(val) / 20);
                         field = static_cast<ValueType>(val);
@@ -2560,7 +2562,7 @@ struct Chart {
                         ImGui::SetItemDefaultFocus();
                     }
                 }
-                ImGui::EndCombo();
+                endCombo();
             }
         } else if constexpr (std::is_enum_v<ValueType>) {
             ImGui::SetNextItemWidth(widgetWidth);
@@ -2575,7 +2577,7 @@ struct Chart {
                         ImGui::SetItemDefaultFocus();
                     }
                 }
-                ImGui::EndCombo();
+                endCombo();
             }
         } else if constexpr (std::is_same_v<ValueType, std::string>) {
             ImGui::SetNextItemWidth(widgetWidth);
@@ -2612,9 +2614,8 @@ struct Chart {
 
     template<typename Self>
     void drawSettingsSubmenu(this Self& self) {
-        if (menu_icons::beginMenuWithIcon(menu_icons::kSettings, "Settings")) {
+        if (auto menu = Menu("Settings", menu_icons::kSettings)) {
             self.drawAutoGeneratedSettings(/*visibleOnly=*/false);
-            ImGui::EndMenu();
         }
     }
 
@@ -2679,19 +2680,17 @@ struct Chart {
             }
         }
 
-        if (ImGui::BeginPopup("AxisContextMenu")) {
+        if (auto popup = Popup("AxisContextMenu", PopupOptions{.flags = PopupFlags::None})) {
             if (self._hoveredAxisForMenu) {
                 const ImAxis      axis      = *self._hoveredAxisForMenu;
                 const bool        isX       = (axis == ImAxis_X1 || axis == ImAxis_X2 || axis == ImAxis_X3);
                 const std::size_t axisIndex = static_cast<std::size_t>(isX ? (axis - ImAxis_X1) : (axis - ImAxis_Y1));
                 self.drawAxisSubmenuContent(isX ? AxisKind::X : AxisKind::Y, axisIndex);
             }
-            ImGui::EndPopup();
         }
 
-        if (ImGui::BeginPopup(popupId)) {
+        if (auto popup = Popup(popupId, PopupOptions{.flags = PopupFlags::None})) {
             self.drawCommonContextMenuItems(mode);
-            ImGui::EndPopup();
         }
     }
 };

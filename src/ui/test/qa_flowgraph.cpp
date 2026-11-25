@@ -6,6 +6,8 @@
 #include "UiControlCompatibilityTarget.hpp"
 
 #include <ToolbarView.hpp>
+#include <common/LookAndFeel.hpp>
+#include <components/SheetPopup.hpp>
 
 #include <imgui_node_editor_internal.h>
 
@@ -225,6 +227,11 @@ struct TestApp : public test::ImGuiTestApp { // NOSONAR (more methods than autho
     [[nodiscard]] static ImGuiID frontmostPopupId() {
         const ImGuiContext& g = *GImGui;
         return g.OpenPopupStack.Size > 0 && g.OpenPopupStack.back().Window ? g.OpenPopupStack.back().Window->ID : 0;
+    }
+
+    [[nodiscard]] static ImGuiWindow* frontmostPopupWindow() {
+        const ImGuiContext& g = *GImGui;
+        return g.OpenPopupStack.Size > 0 ? g.OpenPopupStack.back().Window : nullptr;
     }
 
     static void clickInBlockContextMenu(ImGuiTestContext* ctx, FlowgraphEditor& editor, const UiGraphBlock* block, const char* menuItem) {
@@ -1916,6 +1923,46 @@ struct TestApp : public test::ImGuiTestApp { // NOSONAR (more methods than autho
                     expect(frontmostPopupId() == 0u) << "the menu closes";
                 };
 
+                finishUiControlTest();
+            };
+        }
+
+        {
+            ImGuiTest* t = IM_REGISTER_TEST(engine(), "flowgraph", "A page of the block context menu sheet closes when the selected block stops drawing it");
+            t->GuiFunc   = uiControlGuiFunc;
+
+            t->TestFunc = [](ImGuiTestContext* ctx) { // NOSONAR test lambda length
+                gr::on_scope_exit restoreStyle                 = [] { LookAndFeel::mutableInstance().choiceMenuStyle = ChoiceMenuStyle::Desktop; };
+                LookAndFeel::mutableInstance().choiceMenuStyle = ChoiceMenuStyle::Sheet;
+
+                auto&               editor          = loadUiControlGraph(ctx, "examples/qa_uicontrol_connections.grc");
+                const UiGraphBlock* signalGenerator = findRootChildByName("signalGenerator1");
+                const UiGraphBlock* clockSource     = findRootChildByName("clockSource1");
+                expect(signalGenerator != nullptr && clockSource != nullptr) << fatal;
+                gState->dashboard->session.graphModel.requestAvailableBlocksTypesUpdate();
+                gState->waitUntil(ctx, "the signal generator has more than one parametrization, so its menu has a \"Change type to...\" page", [signalGenerator] {
+                    const auto parametrizations = gState->dashboard->session.graphModel.availableParametrizationsFor(signalGenerator->blockTypeName).availableParametrizations;
+                    return parametrizations != nullptr && parametrizations->size() > 1UZ;
+                });
+                expect(!gState->dashboard->session.graphModel.availableParametrizationsFor(clockSource->blockTypeName).availableParametrizations) << fatal << "the clock source has no \"Change type to...\" page";
+
+                const auto isMenuOpenAndStill = [] { return frontmostPopupWindow() != nullptr && !gr::od::detail::isAnyPopupSheetAnimating(); };
+                const auto isPageShown        = [ctx] { return ctx->ItemExists(gr::od::detail::kSheetBackButtonLabel); }; // the root page has no back button
+
+                clickNode(ctx, editor, signalGenerator, ImGuiMouseButton_Right);
+                gState->waitUntil(ctx, "the block context menu sheet is open and does not move", isMenuOpenAndStill);
+                ctx->SetRef(frontmostPopupWindow());
+                ctx->ItemClick("**/Change type to...");
+                gState->waitUntil(ctx, "the \"Change type to...\" page is shown", [&] { return isMenuOpenAndStill() && isPageShown(); });
+
+                editor._selectedBlockUniqueName = clockSource->blockUniqueName;
+                gState->waitUntil(ctx, "the root page is shown", [&] { return isMenuOpenAndStill() && !isPageShown(); });
+                expect(!ctx->ItemExists("**/Change type to..."));
+                expect(ctx->ItemExists("**/Filter"));
+
+                ctx->ItemClick(gr::od::detail::kSheetCloseButtonLabel);
+                gState->waitUntil(ctx, "the block context menu sheet is closed", [] { return frontmostPopupWindow() == nullptr; });
+                ctx->SetRef("Test Window");
                 finishUiControlTest();
             };
         }

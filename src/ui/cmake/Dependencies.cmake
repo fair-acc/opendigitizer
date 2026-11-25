@@ -30,7 +30,7 @@ FetchContent_Declare(
   PATCH_COMMAND
     git checkout -- . && git apply
     ${CMAKE_CURRENT_LIST_DIR}/patches/imguidatepicker-remove-windows-only-time-function.patch && git apply
-    ${CMAKE_CURRENT_LIST_DIR}/patches/imguidatepicker-make-datepicker-just-a-popup.patch EXCLUDE_FROM_ALL SYSTEM)
+    ${CMAKE_CURRENT_LIST_DIR}/patches/imguidatepicker-draw-datepicker-inline.patch EXCLUDE_FROM_ALL SYSTEM)
 
 FetchContent_Declare(
   imgui_toggle

@@ -1,17 +1,19 @@
 diff --git a/ImGuiDatePicker.cpp b/ImGuiDatePicker.cpp
-index 8c81b2b..a7e8caf 100644
+index 425131f..0f08236 100644
 --- a/ImGuiDatePicker.cpp
 +++ b/ImGuiDatePicker.cpp
-@@ -224,7 +224,7 @@ namespace ImGui
+@@ -231,37 +231,31 @@ namespace ImGui
          return res;
      }
  
 -    bool DatePickerEx(const std::string& label, tm& v, ImFont* altFont, bool clampToBorder, float itemSpacing)
-+    bool DatePickerEx(const std::string& popupID, tm& v, ImFont* altFont, bool clampToBorder, float itemSpacing)
++    bool DatePickerEx(const std::string& strId, tm& v, ImFont* altFont, bool* dayPicked, bool clampToBorder)
      {
          bool res = false;
++        if (dayPicked)
++            *dayPicked = false;
  
-@@ -232,29 +232,20 @@ namespace ImGui
+         ImGuiWindow* window = GetCurrentWindow();
          if (window->SkipItems)
              return false;
  
@@ -24,15 +26,19 @@ index 8c81b2b..a7e8caf 100644
 -            SameLine((itemSpacing == 0.0f) ? 0.0f : GetCursorPos().x + itemSpacing);
 -        }
 -
-         if (clampToBorder)
+-        if (clampToBorder)
 -            SetNextItemWidth(GetContentRegionAvail().x);
-+            SetNextWindowSize({GetContentRegionAvail().x, 0.F});
- 
+-
++        // the size the date picker had as the contents of its popup
          const ImVec2 windowSize = ImVec2(274.5f, 301.5f);
-         SetNextWindowSize(windowSize);
+-        SetNextWindowSize(windowSize);
++        const ImVec2 padding = GetStyle().WindowPadding;
++        ImVec2 size = ImVec2(windowSize.x - 2.0f * padding.x, windowSize.y - 2.0f * padding.y);
++        if (clampToBorder)
++            size.x = GetContentRegionAvail().x;
  
 -        if (BeginCombo(std::string("##" + myLabel).c_str(), TimePointToLongString(v).c_str()))
-+        if (BeginPopup(popupID.c_str(), ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize))
++        if (BeginChild(strId.c_str(), size))
          {
              int monthIdx = GET_MONTH_UNSCALED(v);
              int year = GET_YEAR(v);
@@ -44,7 +50,7 @@ index 8c81b2b..a7e8caf 100644
              {
                  SET_MONTH(v, monthIdx + 1);
                  res = true;
-@@ -264,7 +255,7 @@ namespace ImGui
+@@ -271,7 +265,7 @@ namespace ImGui
              SameLine();
              PushItemWidth(GetContentRegionAvail().x);
  
@@ -53,7 +59,7 @@ index 8c81b2b..a7e8caf 100644
              {
                  SET_YEAR(v, std::min(std::max(IMGUI_DATEPICKER_YEAR_MIN, year), IMGUI_DATEPICKER_YEAR_MAX));
                  res = true;
-@@ -286,7 +277,7 @@ namespace ImGui
+@@ -293,7 +287,7 @@ namespace ImGui
              PushStyleColor(ImGuiCol_Border, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
              BeginDisabled(IsMinDate(v));
  
@@ -62,7 +68,7 @@ index 8c81b2b..a7e8caf 100644
              {
                  v = PreviousMonth(v);
                  res = true;
-@@ -298,7 +289,7 @@ namespace ImGui
+@@ -305,7 +299,7 @@ namespace ImGui
              PushStyleColor(ImGuiCol_Button, GetStyleColorVec4(ImGuiCol_Text));
              SetCursorPosY(GetCursorPosY() + 2.0f);
  
@@ -71,7 +77,7 @@ index 8c81b2b..a7e8caf 100644
              {
                  v = Today();
                  res = true;
-@@ -311,7 +302,7 @@ namespace ImGui
+@@ -318,7 +312,7 @@ namespace ImGui
              PushStyleColor(ImGuiCol_Border, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
              BeginDisabled(IsMaxDate(v));
  
@@ -80,7 +86,7 @@ index 8c81b2b..a7e8caf 100644
              {
                  v = NextMonth(v);
                  res = true;
-@@ -324,7 +315,7 @@ namespace ImGui
+@@ -331,7 +325,7 @@ namespace ImGui
              constexpr ImGuiTableFlags TABLE_FLAGS = ImGuiTableFlags_BordersOuter | ImGuiTableFlags_SizingFixedFit |
                  ImGuiTableFlags_NoHostExtendX | ImGuiTableFlags_NoHostExtendY;
  
@@ -89,29 +95,47 @@ index 8c81b2b..a7e8caf 100644
              {
                  for (const auto& day : DAYS)
                      TableSetupColumn(day.c_str(), ImGuiTableColumnFlags_WidthFixed | ImGuiTableColumnFlags_NoHeaderWidth, 30.0f);
-@@ -380,7 +371,7 @@ namespace ImGui
+@@ -370,7 +364,8 @@ namespace ImGui
+                             {
+                                 v = EncodeTimePoint(day, month, year);
+                                 res = true;
+-                                CloseCurrentPopup();
++                                if (dayPicked)
++                                    *dayPicked = true;
+                             }
+ 
+                             if (!selected)
+@@ -387,14 +382,14 @@ namespace ImGui
                  EndTable();
              }
  
 -            EndCombo();
-+            EndPopup();
          }
++        EndChild();
  
          return res;
+     }
+ 
+-    bool DatePicker(const std::string& label, tm& v, bool clampToBorder, float itemSpacing)
++    bool DatePicker(const std::string& strId, tm& v, bool* dayPicked, bool clampToBorder)
+     {
+-        return DatePickerEx(label, v, nullptr, clampToBorder, itemSpacing);
++        return DatePickerEx(strId, v, nullptr, dayPicked, clampToBorder);
+     }
+ }
 diff --git a/ImGuiDatePicker.hpp b/ImGuiDatePicker.hpp
-index 91ed569..da045d7 100644
+index 91ed569..cef1a21 100644
 --- a/ImGuiDatePicker.hpp
 +++ b/ImGuiDatePicker.hpp
-@@ -13,7 +13,7 @@
+@@ -13,7 +13,9 @@
  
  namespace ImGui
  {
 -    IMGUI_API bool DatePickerEx(const std::string& label, tm& v, ImFont* altFont, bool clampToBorder = false, float itemSpacing = 130.0f);
-+    IMGUI_API bool DatePickerEx(const std::string& popupID, tm& v, ImFont* altFont, bool clampToBorder = false, float itemSpacing = 130.0f);
++    // Draws the date picker in place, in a child window with the ID `strId`. Returns whether `v` was changed.
++    // `dayPicked`, unless nullptr, is set to whether a day of the month was clicked
++    IMGUI_API bool DatePickerEx(const std::string& strId, tm& v, ImFont* altFont, bool* dayPicked = nullptr, bool clampToBorder = false);
  
 -    IMGUI_API bool DatePicker(const std::string& label, tm& v, bool clampToBorder = false, float itemSpacing = 130.0f);
-+    IMGUI_API bool DatePicker(const std::string& popupID, tm& v, bool clampToBorder = false, float itemSpacing = 130.0f);
++    IMGUI_API bool DatePicker(const std::string& strId, tm& v, bool* dayPicked = nullptr, bool clampToBorder = false);
  }
--- 
-2.51.0
-

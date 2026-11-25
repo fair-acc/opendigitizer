@@ -68,12 +68,16 @@ constexpr const char* kExampleDate = "00/00/0000";
         ImGui::OpenPopup(kCalendarPopupId);
     }
 
-    if (ImGui::IsPopupOpen(kCalendarPopupId)) {
+    if (auto popup = Popup(kCalendarPopupId, PopupOptions{})) {
         time_t  dateAsTimeT = std::chrono::system_clock::to_time_t(current);
         std::tm temporaryTime{};
         if (std::tm* localTime = localtime_r(&dateAsTimeT, &temporaryTime)) {
-            if (ImGui::DatePicker(kCalendarPopupId, *localTime)) {
+            bool isDayPicked = false;
+            if (ImGui::DatePicker("##calendar", *localTime, &isDayPicked)) {
                 newDate = std::chrono::system_clock::from_time_t(std::mktime(localTime));
+            }
+            if (isDayPicked) {
+                closeCurrentPopup();
             }
         } else {
             imw::StyleColor redText(ImGuiCol_Text, LookAndFeel::instance().palette().errorColor);

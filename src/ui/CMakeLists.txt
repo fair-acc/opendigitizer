@@ -309,6 +309,8 @@ target_link_libraries(
 
 add_library(
   opendigitizer-ui-components STATIC
+  components/ChoiceMenu.hpp
+  components/ChoiceMenu.cpp
   components/DateInput.hpp
   components/Dialog.hpp
   components/EditableStringList.hpp
@@ -321,6 +323,8 @@ add_library(
   components/SearchAndFilterComponents.cpp
   components/SearchAndFilterComponents.hpp
   components/SelectedLabelsView.hpp
+  components/SheetPopup.cpp
+  components/SheetPopup.hpp
   components/SliderAndSpinner.hpp
   components/SortFilterModel.hpp
   components/SortFilterTreeModel.hpp
@@ -328,6 +332,8 @@ add_library(
   components/Splitter.hpp
   components/StyledWidgets.cpp
   components/StyledWidgets.hpp
+  components/SwipeGesture.cpp
+  components/SwipeGesture.hpp
   components/VirtualScrollTable.hpp
   components/ViewModeBlocker.hpp
   components/YesNoPopup.hpp)

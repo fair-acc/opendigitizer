@@ -6,6 +6,8 @@
 #include "../charts/SinkRegistry.hpp"
 #include "../common/Imw.hpp"
 #include "../common/LookAndFeel.hpp"
+#include "StyledWidgets.hpp"
+#include "SwipeGesture.hpp"
 
 #include "AutoHide.hpp"
 
@@ -290,19 +292,25 @@ struct GlobalSignalLegend {
         if (_openColorPopup) {
             ImGui::OpenPopup("SinkColorPopup");
         }
-        if (ImGui::BeginPopup("SinkColorPopup")) {
+        if (auto popup = Popup("SinkColorPopup", PopupOptions{.flags = PopupFlags::None})) {
             UiGraphBlock* editingSink = graphModel.recursiveFindBlockByUniqueName(_editingSinkUniqueName).block;
             if (editingSink) {
                 auto          colorIter = editingSink->blockSettings.find("color");
                 std::uint32_t c         = colorIter != std::end(editingSink->blockSettings) ? colorIter->second.value_or(std::uint32_t{}) : std::uint32_t{};
                 ImVec4        col       = ImGui::ColorConvertU32ToFloat4(rgbToImGuiABGR(c));
                 float         rgb[3]{col.x, col.y, col.z};
+                if (LookAndFeel::instance().usesSheetPopups()) {
+                    // otherwise the colorpicker doesn't take up the full width of the sheet, so this makes better use of screen real estate
+                    ImGui::SetNextItemWidth(ImGui::GetFrameHeight() * LookAndFeel::instance().colorPickerWidthFrameHeightRatio);
+                }
                 if (ImGui::ColorPicker3("##color", rgb, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoSidePreview | ImGuiColorEditFlags_PickerHueBar)) {
                     auto newColor = float3ToRGB(rgb);
                     editingSink->setSetting("color", newColor);
                 }
+                if (ImGui::IsItemActive()) {
+                    suppressSwipeGesture();
+                }
             }
-            ImGui::EndPopup();
         }
 
         dnd::acceptLegendDrop();

@@ -207,6 +207,7 @@ if(ENABLE_IMGUI_TEST_ENGINE)
   add_imgui_test(qa_flowgraph)
   add_imgui_test(qa_GraphModel)
   add_imgui_test(qa_StyledWidgets)
+  add_imgui_test(qa_ChoiceMenu)
 endif()
 
 # the WASM UI in headless Chrome, from the superbuild's ui-wasm output (or OD_WASM_WEB_DIR); skipped without it

@@ -388,7 +388,7 @@ void OpenDashboardPage::addDashboard(std::string_view path) { _dashboardsCollect
 
 void OpenDashboardPage::drawSaveAsDialog(Dashboard* optionalDashboard, DashboardPage* optionalDashboardPage) {
     ImGui::SetNextWindowSize(LookAndFeel::instance().openDashboardPageStyle.saveAsPopupSize, ImGuiCond_Once);
-    auto popup = imw::ModalPopup("saveAsDialog", nullptr, 0);
+    auto popup = Popup("saveAsDialog", PopupOptions{.flags = PopupFlags::WantsExclusiveFocus | PopupFlags::Modal, .desktopWindowFlags = ImGuiWindowFlags_None});
     if (!popup) {
         return;
     }
@@ -998,7 +998,7 @@ void OpenDashboardPage::drawViewOverlayButtons(ImVec2 viewTopLeft, ImVec2 viewSi
 void OpenDashboardPage::drawOAuthPopup() {
 #ifndef __EMSCRIPTEN__
     ImGui::SetNextWindowSize({LookAndFeel::instance().openDashboardPageStyle.oauthPopupWidth, 0.f}, ImGuiCond_Once);
-    if (auto popup = imw::ModalPopup(kOauthPopupId, nullptr, 0)) {
+    if (auto popup = Popup(kOauthPopupId, PopupOptions{.flags = PopupFlags::WantsExclusiveFocus | PopupFlags::Modal, .desktopWindowFlags = ImGuiWindowFlags_None})) {
         auto& session = OAuthSession::instance();
 
         ImGui::AlignTextToFramePadding();
@@ -1025,7 +1025,7 @@ void OpenDashboardPage::drawOAuthPopup() {
 
         ImGui::Separator();
         if (textButton("Close") || ImGui::IsKeyPressed(ImGuiKey_Escape)) {
-            ImGui::CloseCurrentPopup();
+            closeCurrentPopup();
         }
     }
 #endif
@@ -1262,7 +1262,7 @@ void OpenDashboardPage::drawFilterAndViewOptions() {
 
 void OpenDashboardPage::drawAddSourcePopup() {
     ImGui::SetNextWindowSize({LookAndFeel::instance().openDashboardPageStyle.addSourcePopupWidth, ImGui::GetFrameHeight() * 4.F}, ImGuiCond_Once); // 4 line heights: window top bar, path entry, buttons, and some extra spacing
-    if (auto popup = imw::ModalPopup(kAddSourcePopupId, nullptr, 0)) {
+    if (auto popup = Popup(kAddSourcePopupId, PopupOptions{.flags = PopupFlags::WantsExclusiveFocus | PopupFlags::Modal, .desktopWindowFlags = ImGuiWindowFlags_None})) {
         ImGui::AlignTextToFramePadding();
         ImGui::Text("Path:");
         ImGui::SameLine();

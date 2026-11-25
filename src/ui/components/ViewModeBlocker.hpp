@@ -21,11 +21,11 @@ namespace gr::od::components {
 
     bool exitRequested = false;
     if (const auto popup = beginYesNoPopup(unlockPopupID, {.yesText = "Make interactive"}); isPopupOpen(popup)) {
-        ImGui::BringWindowToDisplayFront(ImGui::GetCurrentWindow());
+        ImGui::BringWindowToDisplayFront(ImGui::GetCurrentWindow()->RootWindow); // the contents of a sheet are in a child window
         if (isPopupConfirmed(popup)) {
             exitRequested = true;
         }
-        ImGui::EndPopup();
+        endPopup();
     }
     return exitRequested;
 }

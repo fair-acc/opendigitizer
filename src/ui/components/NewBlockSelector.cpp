@@ -17,7 +17,6 @@ using namespace gr::od;
 using namespace std::string_literals;
 using components::FilterResult;
 using components::filterTypename;
-using components::NamespaceDelimitedSearchIterator;
 
 namespace gr::od {
 namespace {
@@ -328,15 +327,24 @@ void NewBlockSelector::draw() {
     auto x = ImGui::GetCursorPosX();
     ImGui::SetCursorPosX(x + 32);
 
-    auto menu = imw::ModalPopup(_windowName.c_str(), nullptr, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+    auto menu = Popup(_windowName.c_str(), PopupOptions{.flags = PopupFlags::WantsExclusiveFocus | PopupFlags::Modal | PopupFlags::WantsMaxSize, .desktopWindowFlags = ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse});
     if (!menu) {
         _wasOpenLastFrame = false;
         return;
     }
     gr::on_scope_exit _([this] { this->_wasOpenLastFrame = true; });
 
-    auto listSize = windowSize - ImVec2(64, 64);
-    listSize.x /= 2.f;
+    const ImVec2 listSize = [&windowSize] {
+        if (LookAndFeel::instance().usesSheetPopups()) {
+            constexpr float   kSeparatorThickness = 1.f; // of ImGui::Separator()
+            const ImGuiStyle& style               = ImGui::GetStyle();
+            const ImVec2      available           = ImGui::GetContentRegionAvail();
+            // need to leave space for the dialog buttons at the bottom
+            const float dialogButtonsHeight = 2.f * style.ItemSpacing.y + kSeparatorThickness + ImGui::GetFrameHeight();
+            return ImVec2{(available.x - style.ItemSpacing.x) / 2.f, available.y - dialogButtonsHeight};
+        }
+        return ImVec2{(windowSize.x - 64.f) / 2.f, windowSize.y - 64.f};
+    }();
 
     this->drawNamespaceTree(listSize);
 

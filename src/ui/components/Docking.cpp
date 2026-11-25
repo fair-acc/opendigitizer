@@ -1,6 +1,7 @@
 #include "Docking.hpp"
 #include "../ui/common/Imw.hpp"
 #include "../ui/components/ImGuiNotify.hpp"
+#include "../ui/components/StyledWidgets.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -34,6 +35,16 @@ struct GridShape {
 
 constexpr const char* kDockspaceId  = "OpendigitizerDockspace";
 constexpr const char* kHostWindowId = "MainDockspace_Window";
+
+static void doWindowContextMenu(const std::function<void()>& drawContents) {
+    constexpr const char* kWindowContextMenuId = "window_context";
+    if (ImGui::IsMouseReleased(ImGuiMouseButton_Right) && ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByPopup)) {
+        ImGui::OpenPopup(kWindowContextMenuId);
+    }
+    if (auto popup = Popup(kWindowContextMenuId, PopupOptions{})) {
+        drawContents();
+    }
+}
 
 DockingLayoutType DockSpace::layoutType() const { return _layoutType; }
 
@@ -166,9 +177,8 @@ void DockSpace::renderWindows(const Windows& windows, bool isEditable, ImVec2 pa
         if (isEditable) {
             drawEditableWindowDragArea();
 
-            if (window->renderDockingContextMenuFunc && ImGui::BeginPopupContextWindow()) {
-                window->renderDockingContextMenuFunc();
-                ImGui::EndPopup();
+            if (window->renderDockingContextMenuFunc) {
+                doWindowContextMenu(window->renderDockingContextMenuFunc);
             }
         }
 
