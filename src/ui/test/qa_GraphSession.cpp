@@ -4,11 +4,10 @@
 
 #include <algorithm>
 #include <atomic>
-#include <chrono>
-#include <cstdlib>
 #include <format>
 #include <optional>
 #include <print>
+#include <source_location>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -28,32 +27,12 @@ using gr::lifecycle::State;
 
 namespace {
 
-template<typename TPredicate>
-[[nodiscard]] bool waitFor(TPredicate&& predicate, std::chrono::seconds limit = std::chrono::seconds(30)) {
-    const auto deadline = std::chrono::steady_clock::now() + limit;
-    while (!predicate()) {
-        if (std::chrono::steady_clock::now() > deadline) {
-            return false;
-        }
+template<typename Condition>
+void waitUntil(std::string_view what, Condition&& condition, std::source_location location = std::source_location::current()) {
+    std::println("\twaiting until {} ({}:{})", what, location.file_name(), location.line());
+    while (!condition()) {
         std::this_thread::yield();
     }
-    return true;
-}
-
-// a hang cannot be cancelled, so it is reported and the process ends; the limit only decides how long a failure takes
-template<typename TFunction>
-void expectReturns(std::string_view what, TFunction&& function) {
-    std::atomic_bool done{false};
-    std::thread      worker([&] {
-        function();
-        done = true;
-    });
-    if (!waitFor([&] { return done.load(); })) {
-        std::println("hang: {}", what);
-        std::fflush(stdout);
-        std::_Exit(1);
-    }
-    worker.join();
 }
 
 constexpr std::size_t kRepetitions = 50UZ;
@@ -131,13 +110,14 @@ struct UiSide {
         session.sendMessage(std::move(message));
     }
 
-    [[nodiscard]] bool pumpUntil(auto predicate, std::chrono::seconds limit = std::chrono::seconds(30)) {
-        return waitFor(
+    void waitUntil(std::string_view what, auto condition, std::source_location location = std::source_location::current()) {
+        ::waitUntil(
+            what,
             [&] {
                 session.receiveMessages();
-                return predicate();
+                return condition();
             },
-            limit);
+            location);
     }
 
     [[nodiscard]] bool showsReplacementGraph() { return static_cast<bool>(session.graphModel.recursiveFindBlockByName("grcSource")); }
@@ -176,8 +156,8 @@ const suite<"GraphSession lifecycle"> lifecycleTests = [] {
         for (std::size_t i = 0; i < kRepetitions; ++i) {
             auto session = std::make_unique<GraphSession>();
             session->emplaceGraph(makeRunningGraph());
-            expect(waitFor([&] { return hasState(*session, State::RUNNING); }));
-            expectReturns("destroying a running scheduler", [&] { session.reset(); });
+            waitUntil("the scheduler is RUNNING", [&] { return hasState(*session, State::RUNNING); });
+            session.reset();
         }
     };
 
@@ -185,27 +165,25 @@ const suite<"GraphSession lifecycle"> lifecycleTests = [] {
         for (std::size_t i = 0; i < kRepetitions; ++i) {
             GraphSession session;
             session.emplaceGraph(makeRunningGraph());
-            expect(waitFor([&] { return hasState(session, State::RUNNING); }));
+            waitUntil("the scheduler is RUNNING", [&] { return hasState(session, State::RUNNING); });
             session.stop();
-            expect(waitFor([&] { return hasState(session, State::STOPPED); }));
-            expectReturns("start() twice from STOPPED", [&] {
-                session.start();
-                session.start();
-            });
-            expect(waitFor([&] { return hasState(session, State::RUNNING); })) << std::format("restarted exactly once and running, state {}", magic_enum::enum_name(session.state()));
+            waitUntil("the scheduler is STOPPED", [&] { return hasState(session, State::STOPPED); });
+            session.start();
+            session.start();
+            waitUntil("the scheduler restarted exactly once and is RUNNING", [&] { return hasState(session, State::RUNNING); });
         }
     };
 
     "a host asking to start on every frame while the stopped run still leaves gets one start job"_test = [] {
         const auto pool = gr::thread_pool::Manager::defaultIoPool();
-        expect(waitFor([&] { return pool->numTasksRunning() == 0UZ; })) << fatal << "watchdogs of earlier tests have left the pool";
+        waitUntil("the watchdogs of earlier tests have left the pool", [&] { return pool->numTasksRunning() == 0UZ; });
         GraphSession session;
         session.emplaceGraph(makeHoldingGraph());
-        expect(waitFor([&] { return hasState(session, State::RUNNING); })) << fatal;
+        waitUntil("the scheduler is RUNNING", [&] { return hasState(session, State::RUNNING); });
         HoldingSink::hold = true;
-        expect(waitFor([] { return HoldingSink::holding.load(); })) << fatal << "the sink's worker is held";
+        waitUntil("the sink's worker is held", [] { return HoldingSink::holding.load(); });
         session.stop();
-        expect(waitFor([&] { return hasState(session, State::STOPPED); })) << fatal << "stopped while a job of the run is still held";
+        waitUntil("the scheduler is STOPPED while a job of the run is still held", [&] { return hasState(session, State::STOPPED); });
 
         constexpr std::size_t kRequests = 1000UZ;
         std::size_t           peakTasks = 0UZ;
@@ -215,43 +193,43 @@ const suite<"GraphSession lifecycle"> lifecycleTests = [] {
         }
         HoldingSink::hold = false;
         HoldingSink::hold.notify_all();
-        expect(waitFor([&] { return hasState(session, State::RUNNING); })) << "started once the held job has left";
+        waitUntil("the scheduler started once the held job has left", [&] { return hasState(session, State::RUNNING); });
         expect(lt(peakTasks, kRequests / 10UZ)) << std::format("running and queued pool tasks stay independent of the {} requests: peak {}", kRequests, peakTasks);
     };
 
     "a stopped scheduler holds no IO pool thread"_test = [] {
-        expect(waitFor([] { return gr::thread_pool::Manager::defaultIoPool()->numTasksRunning() == 0UZ; })) << fatal << "watchdogs of earlier tests have left the pool";
+        waitUntil("the watchdogs of earlier tests have left the pool", [] { return gr::thread_pool::Manager::defaultIoPool()->numTasksRunning() == 0UZ; });
         GraphSession session;
         session.emplaceGraph(makeRunningGraph());
-        expect(waitFor([&] { return hasState(session, State::RUNNING); }));
+        waitUntil("the scheduler is RUNNING", [&] { return hasState(session, State::RUNNING); });
         session.stop();
-        expect(waitFor([&] { return hasState(session, State::STOPPED); }));
-        expect(waitFor([&] { return gr::thread_pool::Manager::defaultIoPool()->numTasksRunning() == 0UZ; })) << "frame pacer and watchdog released";
+        waitUntil("the scheduler is STOPPED", [&] { return hasState(session, State::STOPPED); });
+        waitUntil("the frame pacer and watchdog released their IO pool threads", [&] { return gr::thread_pool::Manager::defaultIoPool()->numTasksRunning() == 0UZ; });
     };
 
     "destroying a stopped scheduler returns"_test = [] {
         auto session = std::make_unique<GraphSession>();
         session->emplaceGraph(makeRunningGraph());
-        expect(waitFor([&] { return hasState(*session, State::RUNNING); }));
+        waitUntil("the scheduler is RUNNING", [&] { return hasState(*session, State::RUNNING); });
         session->stop();
-        expect(waitFor([&] { return hasState(*session, State::STOPPED); }));
-        expectReturns("destroying a stopped scheduler", [&] { session.reset(); });
+        waitUntil("the scheduler is STOPPED", [&] { return hasState(*session, State::STOPPED); });
+        session.reset();
     };
 
     "destroying a paused scheduler returns"_test = [] {
         auto session = std::make_unique<GraphSession>();
         session->emplaceGraph(makeRunningGraph());
-        expect(waitFor([&] { return hasState(*session, State::RUNNING); }));
+        waitUntil("the scheduler is RUNNING", [&] { return hasState(*session, State::RUNNING); });
         session->pause();
-        expect(waitFor([&] { return hasState(*session, State::PAUSED); }));
-        expectReturns("destroying a paused scheduler", [&] { session.reset(); });
+        waitUntil("the scheduler is PAUSED", [&] { return hasState(*session, State::PAUSED); });
+        session.reset();
     };
 
     "destroying a scheduler whose start has not run yet returns"_test = [] {
         for (std::size_t i = 0; i < kRepetitions; ++i) {
             auto session = std::make_unique<GraphSession>();
             session->emplaceGraph(makeRunningGraph());
-            expectReturns("destroying a starting scheduler", [&] { session.reset(); });
+            session.reset();
         }
     };
 
@@ -259,10 +237,10 @@ const suite<"GraphSession lifecycle"> lifecycleTests = [] {
         for (std::size_t i = 0; i < kRepetitions; ++i) {
             GraphSession session;
             session.emplaceGraph(makeRunningGraph());
-            expect(waitFor([&] { return hasState(session, State::RUNNING); })) << fatal;
+            waitUntil("the scheduler is RUNNING", [&] { return hasState(session, State::RUNNING); });
             session.stop();
             session.stop();
-            expect(waitFor([&] { return hasState(session, State::STOPPED); })) << std::format("stopped, state {}", magic_enum::enum_name(session.state()));
+            waitUntil("the scheduler is STOPPED", [&] { return hasState(session, State::STOPPED); });
             session.stop();
             expect(hasState(session, State::STOPPED));
         }
@@ -274,7 +252,7 @@ const suite<"GraphSession lifecycle"> lifecycleTests = [] {
             session.emplaceGraph(makeRunningGraph());
             expect(hasState(session, State::RUNNING)) << fatal << std::format("graph {} runs", i);
             const std::uint64_t requestsBefore = globalFramePacer().requestCount();
-            expect(waitFor([&] { return globalFramePacer().requestCount() > requestsBefore; })) << fatal << std::format("graph {} paces frames", i);
+            waitUntil(std::format("graph {} paces frames", i), [&] { return globalFramePacer().requestCount() > requestsBefore; });
         }
     };
 
@@ -288,46 +266,42 @@ const suite<"GraphSession lifecycle"> lifecycleTests = [] {
 
     "the scheduler runs its graph on GR4's pool, not on the thread that started it"_test = [] {
         GraphSession session;
-        expectReturns("emplacing a graph", [&] { session.emplaceGraph(makeRunningGraph()); });
-        expect(waitFor([&] { return hasState(session, State::RUNNING); })) << "running while this thread is free";
+        session.emplaceGraph(makeRunningGraph());
+        waitUntil("the scheduler is RUNNING while this thread is free", [&] { return hasState(session, State::RUNNING); });
     };
 
     "setting a .grc on a running scheduler runs the new graph"_test = [] {
         UiSide ui;
-        expect(ui.pumpUntil([&] { return hasState(ui.session, State::RUNNING); })) << fatal;
+        ui.waitUntil("the scheduler is RUNNING", [&] { return hasState(ui.session, State::RUNNING); });
         ui.setGrc(kReplacementGrc);
-        expect(ui.pumpUntil([&] { return ui.showsReplacementGraph() && hasState(ui.session, State::RUNNING); })) << "the UI model shows the new graph and the scheduler runs again";
+        ui.waitUntil("the UI model shows the new graph and the scheduler runs again", [&] { return ui.showsReplacementGraph() && hasState(ui.session, State::RUNNING); });
     };
 
     "from sending a .grc until its reply the UI side keeps off the graph, also when it is set again and again"_test = [] {
         UiSide ui;
-        expect(ui.pumpUntil([&] { return hasState(ui.session, State::RUNNING); })) << fatal;
+        ui.waitUntil("the scheduler is RUNNING", [&] { return hasState(ui.session, State::RUNNING); });
         for (std::size_t i = 0; i < kRepetitions; ++i) {
             ui.setGrc(i % 2UZ == 0UZ ? kReplacementGrc : kOtherGrc);
             expect(ui.session.isExchangingGraph()) << "exchanging once the .grc is sent";
-            const bool done = ui.pumpUntil([&] { return !ui.session.isExchangingGraph() && hasState(ui.session, State::RUNNING); });
-            expect(done) << std::format("exchange {}: the reply ends the exchange and the scheduler runs again; exchanging {}, state {}", i, ui.session.isExchangingGraph(), magic_enum::enum_name(ui.session.state()));
-            if (!done) {
-                return;
-            }
+            ui.waitUntil(std::format("exchange {}: the reply ends the exchange and the scheduler runs again", i), [&] { return !ui.session.isExchangingGraph() && hasState(ui.session, State::RUNNING); });
         }
     };
 
     "a .grc that does not load ends the exchange and leaves the scheduler running"_test = [] {
         UiSide ui;
-        expect(ui.pumpUntil([&] { return hasState(ui.session, State::RUNNING); })) << fatal;
+        ui.waitUntil("the scheduler is RUNNING", [&] { return hasState(ui.session, State::RUNNING); });
         ui.setGrc("blocks: [ this is not a flowgraph");
-        expect(ui.pumpUntil([&] { return !ui.session.isExchangingGraph(); })) << "the error reply ends the exchange";
+        ui.waitUntil("the error reply ends the exchange", [&] { return !ui.session.isExchangingGraph(); });
         expect(hasState(ui.session, State::RUNNING));
     };
 
     "setting a .grc on a paused scheduler leaves the new graph paused"_test = [] {
         UiSide ui;
-        expect(ui.pumpUntil([&] { return hasState(ui.session, State::RUNNING); })) << fatal;
+        ui.waitUntil("the scheduler is RUNNING", [&] { return hasState(ui.session, State::RUNNING); });
         ui.session.pause();
-        expect(ui.pumpUntil([&] { return hasState(ui.session, State::PAUSED); })) << fatal;
+        ui.waitUntil("the scheduler is PAUSED", [&] { return hasState(ui.session, State::PAUSED); });
         ui.setGrc(kReplacementGrc);
-        expect(ui.pumpUntil([&] { return ui.showsReplacementGraph() && hasState(ui.session, State::PAUSED); })) << "the UI model shows the new graph and the scheduler is paused again";
+        ui.waitUntil("the UI model shows the new graph and the scheduler is paused again", [&] { return ui.showsReplacementGraph() && hasState(ui.session, State::PAUSED); });
     };
 };
 
@@ -337,16 +311,15 @@ const suite<"GraphSession settings subscription"> subscriptionTests = [] {
         constexpr std::string_view kLateSinkName = "lateSink";
 
         UiSide ui;
-        expect(ui.pumpUntil([&] { return hasState(ui.session, State::RUNNING); })) << fatal;
-        expect(ui.pumpUntil([&] { return ui.uniqueNameOf("runningSink").has_value(); })) << fatal << "graph appears to have loaded";
+        ui.waitUntil("the scheduler is RUNNING", [&] { return hasState(ui.session, State::RUNNING); });
+        ui.waitUntil("the graph has loaded", [&] { return ui.uniqueNameOf("runningSink").has_value(); });
 
         ui.emplaceBlock(kLateSinkType, kLateSinkName);
-        expect(ui.pumpUntil([&] { return ui.uniqueNameOf(kLateSinkName).has_value(); })) << fatal << "block has been emplaced";
+        ui.waitUntil("the block has been emplaced", [&] { return ui.uniqueNameOf(kLateSinkName).has_value(); });
         expect(ui.getDisconnectOnDoneForBlock(kLateSinkName) == std::optional<bool>(true)) << fatal << "block has the expected defaults";
 
         ui.setSetting(*ui.uniqueNameOf(kLateSinkName), "disconnect_on_done", false);
-        expect(ui.pumpUntil([&] { return ui.getDisconnectOnDoneForBlock(kLateSinkName) == std::optional<bool>(false); }, std::chrono::seconds(5))) //
-            << "the UI graph has received and updated the value for disconnect_on_done";
+        ui.waitUntil("the UI graph has received and updated the value for disconnect_on_done", [&] { return ui.getDisconnectOnDoneForBlock(kLateSinkName) == std::optional<bool>(false); });
     };
 };
 

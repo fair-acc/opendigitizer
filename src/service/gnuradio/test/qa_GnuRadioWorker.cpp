@@ -91,20 +91,16 @@ client::ClientContext makeClient(zmq::Context& ctx) {
     return client::ClientContext{std::move(clients)};
 }
 
-[[nodiscard]] bool waitWhile(auto condition, std::source_location location = std::source_location::current()) {
-    // generous for gcov runs, where creating 6 blocks from GRC alone can take ~6 s
-    constexpr auto kTimeout       = 20s;
-    constexpr auto kSleepInterval = 100ms;
-    auto           elapsed        = 0ms;
-    while (elapsed < kTimeout) {
-        if (!condition()) {
-            return true;
-        }
-        std::this_thread::sleep_for(kSleepInterval);
-        elapsed += kSleepInterval;
+void waitUntilNoPrint(auto condition) {
+    constexpr auto kPollInterval = 100ms;
+    while (!condition()) {
+        std::this_thread::sleep_for(kPollInterval);
     }
-    expect(false) << std::format("timeout at {}:{}", location.file_name(), location.line());
-    return false;
+}
+
+void waitUntil(auto condition, std::source_location location = std::source_location::current()) {
+    std::println("waiting for condition at {}:{}", location.file_name(), location.line());
+    waitUntilNoPrint(condition);
 }
 
 template<typename T>
@@ -324,7 +320,7 @@ struct TestApp {
         brokerThread    = std::jthread([this] { broker.run(); });
         acqWorkerThread = std::jthread([this] { acqWorker.run(); });
         fgWorkerThread  = std::jthread([this] { fgWorker.run(); });
-        expect(waitWhile([this] { return !opendigitizerServiceHasAcquisitionAndFlowgraph(); })) << "both workers should register their service with the broker";
+        waitUntil([this] { return opendigitizerServiceHasAcquisitionAndFlowgraph(); });
     }
 
     [[nodiscard]] bool opendigitizerServiceHasAcquisitionAndFlowgraph() {
@@ -334,11 +330,13 @@ struct TestApp {
             services      = reply.data.asString();
             receivedReply = true;
         });
-        return waitWhile([&receivedReply] { return !receivedReply.load(); }) && services.contains(AcqWorker::name) && services.contains(FgWorker::name);
+        // this is nested ie. called inside of another waitUntil, so no need to print for both
+        waitUntilNoPrint([&receivedReply] { return receivedReply.load(); });
+        return services.contains(AcqWorker::name) && services.contains(FgWorker::name);
     }
 
-    [[nodiscard]] bool waitForNumSubscriptions(std::size_t count, std::source_location location = std::source_location::current()) {
-        return waitWhile([this, count] { return acqWorker.activeSubscriptions().size() < count; }, location);
+    void waitForNumSubscriptions(std::size_t count, std::source_location location = std::source_location::current()) {
+        waitUntil([this, count] { return acqWorker.activeSubscriptions().size() >= count; }, location);
     }
 
     void expectDnsEntries(                                                         //
@@ -350,7 +348,7 @@ struct TestApp {
         std::string_view                configStr,                                 //
         std::source_location            location = std::source_location::current() //
     ) {
-        std::ignore = waitWhile([&] { return !dnsEntriesMatch(dnsEntries.getLastSignalEntries(), types, names, units, quantities, sampleRates); }, location);
+        waitUntil([&] { return dnsEntriesMatch(dnsEntries.getLastSignalEntries(), types, names, units, quantities, sampleRates); }, location);
         checkDnsEntries(dnsEntries.getLastSignalEntries(), types, names, units, quantities, sampleRates, configStr, location);
     }
 
@@ -417,14 +415,14 @@ struct TestApp {
         client.set(URI(std::string(kMdpHost) + "/GnuRadio/FlowGraph"s), std::move(callback), std::move(buffer));
     }
 
-    [[nodiscard]] bool setGrc(std::string_view kGrc) {
+    void setGrc(std::string_view kGrc) {
         std::atomic<bool> receivedReply = false;
         setGrc(kGrc, [&](const auto& reply) {
             expect(eq(reply.error, std::string{}));
             expect(!reply.data.empty());
             receivedReply = true;
         });
-        return waitWhile([&receivedReply] { return !receivedReply.load(); });
+        waitUntil([&receivedReply] { return receivedReply.load(); });
     }
 
     ~TestApp() {
@@ -508,9 +506,9 @@ connections:
             receivedDownCount = receivedDownData.size();
         });
 
-        if (!test.waitForNumSubscriptions(2UZ) || !test.setGrc(kGrc) || !waitWhile([&] { return receivedUpCount < kExpectedSamples || receivedDownCount < kExpectedSamples; })) {
-            return;
-        }
+        test.waitForNumSubscriptions(2UZ);
+        test.setGrc(kGrc);
+        waitUntil([&] { return receivedUpCount >= kExpectedSamples && receivedDownCount >= kExpectedSamples; });
 
         expect(eq(receivedUpData.size(), kExpectedSamples)) << config.toString();
         expect(eq(receivedUpData, expectedUpData)) << config.toString();
@@ -542,9 +540,7 @@ connections:
         TestApp                    test;
         std::atomic<std::size_t>   receivedCount = 0;
 
-        if (!test.setGrc(kGrc)) {
-            return;
-        }
+        test.setGrc(kGrc);
         test.expectDnsEntries({SignalType::Plain}, {"Signal_A"}, {"Unit_A"}, {"Quantity_A"}, {8.f}, config.toString());
 
         test.subscribeClient("/GnuRadio/Acquisition?channelNameFilter=Signal_A", [&receivedCount, &config](const auto& acq) {
@@ -555,7 +551,7 @@ connections:
         });
 
         // ignore as it is the last step of the test
-        std::ignore = waitWhile([&] { return receivedCount == 0; });
+        waitUntil([&] { return receivedCount != 0; });
     } | kTestConfigs;
 
     "Flow graph management"_test = [] {
@@ -622,13 +618,11 @@ connections:
             receivedDownCount = receivedDownData.size();
         });
 
-        if (!test.waitForNumSubscriptions(2UZ) ||                             //
-            !test.setGrc(kGrc1) ||                                            //
-            !waitWhile([&] { return receivedUpCount < kExpectedSamples; }) || //
-            !test.setGrc(kGrc2) ||                                            //
-            !waitWhile([&] { return receivedDownCount < kExpectedSamples; })) {
-            return;
-        }
+        test.waitForNumSubscriptions(2UZ);
+        test.setGrc(kGrc1);
+        waitUntil([&] { return receivedUpCount >= kExpectedSamples; });
+        test.setGrc(kGrc2);
+        waitUntil([&] { return receivedDownCount >= kExpectedSamples; });
 
         expect(eq(receivedUpData.size(), kExpectedSamples));
         expect(eq(receivedUpData, expectedUpData));
@@ -685,14 +679,13 @@ connections:
         });
 
         constexpr auto kExpectedSamples = 50000UZ;
-        if (!test.waitForNumSubscriptions(2UZ) || !test.setGrc(kGrc1) || !waitWhile([&] { return receivedCount1 < kExpectedSamples; })) {
-            return;
-        }
+        test.waitForNumSubscriptions(2UZ);
+        test.setGrc(kGrc1);
+        waitUntil([&] { return receivedCount1 >= kExpectedSamples; });
         test.expectDnsEntries({SignalType::Plain}, {"Signal_A"}, {"Unit_A"}, {"Quantity_A"}, {1234.f}, "");
 
-        if (!test.setGrc(kGrc2) || !waitWhile([&] { return receivedCount2 < kExpectedSamples; })) {
-            return;
-        }
+        test.setGrc(kGrc2);
+        waitUntil([&] { return receivedCount2 >= kExpectedSamples; });
         test.expectDnsEntries({SignalType::Plain}, {"Signal_B"}, {"Unit_B"}, {"Quantity_B"}, {123456.f}, "");
     };
 
@@ -723,18 +716,17 @@ connections:
         std::atomic<std::size_t> receivedCountB = 0;
         test.subscribeClient(kUriB, [&receivedCountB](const auto& acq) { receivedCountB += samplesForSignalIndex(acq.channelValues, 0).size(); });
 
-        if (!test.waitForNumSubscriptions(2UZ) || !test.setGrc(kGrc) || !waitWhile([&] { return receivedCountB == 0UZ; })) {
-            return;
-        }
+        test.waitForNumSubscriptions(2UZ);
+        test.setGrc(kGrc);
+        waitUntil([&] { return receivedCountB != 0UZ; });
 
         test.client.unsubscribe(URI(std::format("{}{}", TestApp::kMdsHost, kUriB)));
-        if (!waitWhile([&test] { return test.acqWorker.activeSubscriptions().size() > 1UZ; })) {
-            return;
-        }
+        waitUntil([&test] { return test.acqWorker.activeSubscriptions().size() <= 1UZ; });
 
         constexpr std::size_t kMoreThanBuffered  = 10UZ * gr::basic::detail::data_sink_buffer_size;
         const std::size_t     countAtUnsubscribe = receivedCountA;
-        expect(waitWhile([&] { return receivedCountA < countAtUnsubscribe + kMoreThanBuffered; })) << "the unread Signal_B poller must not stall the shared source";
+        // the unread Signal_B poller must not stall the shared source
+        waitUntil([&] { return receivedCountA >= countAtUnsubscribe + kMoreThanBuffered; });
     };
 
     "Trigger - tightly packed tags"_test = [] {
@@ -771,9 +763,9 @@ connections:
             receivedCount = receivedData.size();
         });
 
-        if (!test.waitForNumSubscriptions(1UZ) || !test.setGrc(kGrc) || !waitWhile([&] { return receivedCount < 20; })) {
-            return;
-        }
+        test.waitForNumSubscriptions(1UZ);
+        test.setGrc(kGrc);
+        waitUntil([&] { return receivedCount >= 20; });
 
         expect(eq(receivedData, getIota(20, 45)));
     };
@@ -813,9 +805,9 @@ connections:
             receivedCount = receivedData.size();
         });
 
-        if (!test.waitForNumSubscriptions(1UZ) || !test.setGrc(kGrc) || !waitWhile([&] { return receivedCount < 20; })) {
-            return;
-        }
+        test.waitForNumSubscriptions(1UZ);
+        test.setGrc(kGrc);
+        waitUntil([&] { return receivedCount >= 20; });
 
         expect(eq(receivedData, getIota(20, 799995)));
     };
@@ -855,9 +847,9 @@ connections:
             receivedCount = receivedData.size();
         });
 
-        if (!test.waitForNumSubscriptions(1UZ) || !test.setGrc(kGrc) || !waitWhile([&] { return receivedCount < 20; })) {
-            return;
-        }
+        test.waitForNumSubscriptions(1UZ);
+        test.setGrc(kGrc);
+        waitUntil([&] { return receivedCount >= 20; });
 
         expect(eq(receivedData, getIota(20, 50)));
 
@@ -900,9 +892,9 @@ connections:
             receivedCount = receivedData.size();
         });
 
-        if (!test.waitForNumSubscriptions(1UZ) || !test.setGrc(kGrc) || !waitWhile([&] { return receivedCount == 0; })) {
-            return;
-        }
+        test.waitForNumSubscriptions(1UZ);
+        test.setGrc(kGrc);
+        waitUntil([&] { return receivedCount != 0; });
 
         // trigger + delay * sample_rate = 50 + 3 * 10 = 80
         expect(eq(receivedData, std::vector{80.f}));
@@ -942,9 +934,9 @@ connections:
             receivedCount++;
         });
 
-        if (!test.waitForNumSubscriptions(1UZ) || !test.setGrc(kGrc) || !waitWhile([&receivedCount] { return receivedCount < 97UZ; })) {
-            return;
-        }
+        test.waitForNumSubscriptions(1UZ);
+        test.setGrc(kGrc);
+        waitUntil([&receivedCount] { return receivedCount >= 97UZ; });
         expect(eq(receivedCount.load(), 97UZ)) << config.toString();
 
         test.expectDnsEntries({SignalType::DataSet}, {"FFTTestSignal"}, {}, {}, {}, config.toString()); // TODO: expect sample rate 1.0f once handled correctly
@@ -990,9 +982,9 @@ connections:
             receivedDataSetCount++;
         });
 
-        if (!test.waitForNumSubscriptions(1UZ) || !test.setGrc(kGrc) || !waitWhile([&receivedCount] { return receivedCount < 12UZ; })) {
-            return;
-        }
+        test.waitForNumSubscriptions(1UZ);
+        test.setGrc(kGrc);
+        waitUntil([&receivedCount] { return receivedCount >= 12UZ; });
         expect(eq(receivedCount.load(), 12UZ)) << config.toString();
         expect(eq(receivedDataSetCount.load(), 3UZ)) << config.toString();
         std::vector<float> expectedData = {18.f, 19.f, 20.f, 21.f, 48.f, 49.f, 50.f, 51.f, 68.f, 69.f, 70.f, 71.f};
@@ -1022,10 +1014,7 @@ connections:
             receivedReply = true;
         });
 
-        if (!waitWhile([&] { return !receivedReply; })) {
-            return;
-        }
-        expect(receivedReply.load());
+        waitUntil([&] { return receivedReply.load(); });
     };
 
     "Dynamic signal metadata"_test = [] {
@@ -1076,9 +1065,8 @@ connections:
                    && entries[1].name == "Signal_B" && entries[1].unit == "Unit_B" && entries[1].quantity == "Quantity_B" && entries[1].signalMin == std::optional<float>{0.f} && entries[1].signalMax == std::optional<float>{100.f};
         };
 
-        if (!test.setGrc(kGrc) || !waitWhile([&] { return !hasExpectedDnsEntries(); })) {
-            return;
-        }
+        test.setGrc(kGrc);
+        waitUntil([&] { return hasExpectedDnsEntries(); });
 
         test.subscribeClient("/GnuRadio/Acquisition?channelNameFilter=Signal_A", [&receivedUpCount](const Acquisition& acq) {
             const auto nSamples = samplesForSignalIndex(acq.channelValues, 0).size();
@@ -1091,9 +1079,7 @@ connections:
             checkAcquisitionMeta(acq, 1UZ, nSamples, {"Signal_B"}, {"Unit_B"}, {"Quantity_B"}, {0.f}, {100.f}, "");
             receivedDownCount += nSamples;
         });
-        if (!waitWhile([&] { return receivedUpCount == 0 || receivedDownCount == 0; })) {
-            return;
-        }
+        waitUntil([&] { return receivedUpCount != 0 && receivedDownCount != 0; });
 
         expect(receivedUpCount > 0);
         expect(receivedDownCount > 0);

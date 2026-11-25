@@ -37,8 +37,8 @@ applicable, in order of likelihood:
 a) the test should pass without the sleep/wait, remove it, and investigate any breakage
 
 b) the condition of completion is verifiable but the time it takes to complete is nondeterministic or not part of any
-API contract, in which case you should use a function which waits for a condition to become true or an event to arrive.
-ctest handles failing a timed-out test.
+API contract, in which case you should use a function which waits for a condition to become true (`waitUntil()`) or
+an event to arrive. ctest handles failing a timed-out test.
 
 c) (rarest) This is correct, iff the task cannot easily be verified as completed and the amount of computation is
 deterministic. the only known example of this is the node editor which may take 2 frames to resolve the positions of
