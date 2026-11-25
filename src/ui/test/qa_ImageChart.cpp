@@ -294,7 +294,6 @@ int main(int argc, char* argv[]) {
     std::ignore = gr::registerBlock<opendigitizer::video::BrowserMicrophonePairs>(registry); // the browser variant's, built not started
 #endif
 
-    options.speedMode = ImGuiTestRunSpeed_Normal;
     TestApp app(options);
     app.initImGui();
     TestState state;

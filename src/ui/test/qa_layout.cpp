@@ -81,7 +81,6 @@ int main(int argc, char* argv[]) {
     auto options             = test::TestOptions::fromArgs(argc, argv);
     options.screenshotPrefix = "dashboardpage_layout";
 
-    options.speedMode = ImGuiTestRunSpeed_Normal;
     TestApp app(options);
 
     // before the dashboard, which sets ImGui styles

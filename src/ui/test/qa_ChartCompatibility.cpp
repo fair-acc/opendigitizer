@@ -291,7 +291,6 @@ int main(int argc, char* argv[]) {
     auto options             = test::TestOptions::fromArgs(argc, argv);
     options.screenshotPrefix = "chart_compat";
 
-    options.speedMode = ImGuiTestRunSpeed_Normal;
     TestApp app(options);
 
     app.initImGui();

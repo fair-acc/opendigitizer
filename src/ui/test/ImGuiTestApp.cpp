@@ -63,6 +63,11 @@ inline bool newFrame(ImGuiApp* /*app*/) {
     return sdl::newFrame();
 }
 
+[[nodiscard]] bool isDrawnFrameNeeded(const ImGuiTestEngine* engine) {
+    const bool isWindowHidden = (SDL_GetWindowFlags(sdl::gWindow) & SDL_WINDOW_HIDDEN) != 0;
+    return !isWindowHidden || engine->CaptureCurrentArgs != nullptr;
+}
+
 inline void render(ImGuiApp*) {} // the run loop renders, so that captures happen before the swap
 
 inline void shutdownCloseWindow(ImGuiApp*) { sdl::teardownSDL(); }
@@ -206,9 +211,13 @@ bool ImGuiTestApp::runTests() {
 
         _app->Vsync = !ImGuiTestEngine_GetIO(_engine).IsRequestingMaxAppSpeed;
         ImGui::Render();
-        // the capture reads the back buffer: only before the swap does it hold this frame
-        sdl::renderFrame([this] { ImGuiTestEngine_PostSwap(_engine); });
-        SDL_GL_SetSwapInterval(_app->Vsync ? 1 : 0);
+        if (isDrawnFrameNeeded(_engine)) {
+            // the capture reads the back buffer: only before the swap does it hold this frame
+            sdl::renderFrame([this] { ImGuiTestEngine_PostSwap(_engine); });
+            SDL_GL_SetSwapInterval(_app->Vsync ? 1 : 0);
+        } else {
+            ImGuiTestEngine_PostSwap(_engine);
+        }
     }
 
     int countTested  = 0;

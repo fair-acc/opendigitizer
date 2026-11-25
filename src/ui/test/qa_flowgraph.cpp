@@ -2163,7 +2163,6 @@ int main(int argc, char* argv[]) {
     // qa_subgraph.grc uses the singlethreaded simple scheduler
     schedulerRegistry.insert<gr::scheduler::Simple<gr::scheduler::ExecutionPolicy::singleThreaded>>();
 
-    options.speedMode = ImGuiTestRunSpeed_Normal;
     TestApp app(options);
 
     // before the dashboard, which sets ImGui styles
