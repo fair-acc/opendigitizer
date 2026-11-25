@@ -153,6 +153,7 @@ if(ENABLE_IMGUI_TEST_ENGINE)
   endfunction()
 
   add_imgui_test(qa_PopupMenu)
+  add_imgui_test(qa_AppHeader)
   add_imgui_test(qa_Dialog)
   add_imgui_test(qa_FilterComboBoxes)
   add_imgui_test(qa_Keypad)

@@ -96,6 +96,15 @@ bool waitUntil(ImGuiTestContext* ctx, std::string_view what, Condition&& conditi
     }
     return true;
 }
+
+/// resizes the SDL window to trigger also resizing of the main viewport and re-layout-ing of the UI
+inline void resizeViewport(ImGuiTestContext* ctx, ImVec2 size) {
+    SDL_SetWindowSize(sdl::gWindow, static_cast<int>(size.x), static_cast<int>(size.y));
+    waitUntil(ctx, "the viewport has the requested size", [size] {
+        const ImVec2 viewportSize = ImGui::GetMainViewport()->Size;
+        return viewportSize.x == size.x && viewportSize.y == size.y;
+    });
+}
 } // namespace gr::od::test
 
 #endif

@@ -1,6 +1,7 @@
 #ifndef OPENDIGITIZER_UI_COMPONENTS_APP_HEADER_HPP_
 #define OPENDIGITIZER_UI_COMPONENTS_APP_HEADER_HPP_
 
+#include <algorithm>
 #include <chrono>
 #include <string_view>
 
@@ -27,13 +28,6 @@ CMRC_DECLARE(ui_assets);
 namespace gr::od::components {
 namespace detail {
 
-inline void textCentered(const std::string_view text) {
-    auto windowWidth = ImGui::GetWindowSize().x;
-    auto textWidth   = ImGui::CalcTextSize(text.data(), text.data() + text.size()).x;
-    ImGui::SetCursorPosX((windowWidth - textWidth) * 0.5f);
-    ImGui::Text("%s", text.data());
-}
-
 inline void textRight(const std::string_view text, float rightInset) {
     auto windowWidth = ImGui::GetWindowSize().x;
     auto textWidth   = ImGui::CalcTextSize(text.data(), text.data() + text.size()).x;
@@ -41,12 +35,18 @@ inline void textRight(const std::string_view text, float rightInset) {
     ImGui::Text("%s", text.data());
 }
 
-inline void textFitted(std::string_view text, ImFont* font, float minSize, float left, float right, auto&& topForHeight) {
+/// This enables the size of an item to be accessed from tests, which is useful for making sure layouts behave correctly at different sizes
+inline void markItemRectForTesting(const char* label, const ImRect& rect) {
+    ImGuiContext& g  = *ImGui::GetCurrentContext(); // IMGUI_TEST_ENGINE_ITEM_INFO macro uses this variable
+    const ImGuiID id = ImGui::GetID(label);
+    ImGui::ItemAdd(rect, id, nullptr, ImGuiItemFlags_NoNav);
+    IMGUI_TEST_ENGINE_ITEM_INFO(id, label, g.LastItemData.StatusFlags);
+}
+
+/// @returns the screenspace rect occupied by the text, or an empty rect if there was not enough space to draw even the ellipsis
+inline ImRect textFitted(std::string_view text, ImFont* font, float minSize, float left, float right, auto&& topForHeight) {
     const float available = right - left;
-    if (available <= 0.f) {
-        return;
-    }
-    float size = font->LegacySize;
+    float       size      = font->LegacySize;
     {
         imw::Font   measured(font);
         const float width = ImGui::CalcTextSize(text.data(), text.data() + text.size()).x;
@@ -56,9 +56,15 @@ inline void textFitted(std::string_view text, ImFont* font, float minSize, float
     }
     imw::FontWithSize sized(font, size);
     const ImVec2      textSize = ImGui::CalcTextSize(text.data(), text.data() + text.size());
-    const ImVec2      min      = ImGui::GetWindowPos() + ImVec2{left + std::max(0.f, 0.5f * (available - textSize.x)), topForHeight(textSize.y)};
-    const ImVec2      max{ImGui::GetWindowPos().x + right, min.y + textSize.y};
+    char              ellipsis[5]{};
+    ImTextCharToUtf8(ellipsis, font->EllipsisChar);
+    if (textSize.x > available && ImGui::CalcTextSize(ellipsis).x > available) {
+        return {};
+    }
+    const ImVec2 min = ImGui::GetWindowPos() + ImVec2{left + std::max(0.f, 0.5f * (available - textSize.x)), topForHeight(textSize.y)};
+    const ImVec2 max{ImGui::GetWindowPos().x + right, min.y + textSize.y};
     ImGui::RenderTextEllipsis(ImGui::GetWindowDrawList(), min, max, max.x, text.data(), text.data() + text.size(), &textSize);
+    return ImRect(min, ImVec2{std::min(min.x + textSize.x, max.x), max.y});
 }
 
 inline bool loadTextureFromFile(const char* filename, GLuint* outTexture, ImVec2& textureSize) {
@@ -97,6 +103,17 @@ inline bool loadTextureFromFile(const char* filename, GLuint* outTexture, ImVec2
 } // namespace detail
 
 struct AppHeader {
+    /// all items of the header are submitted inside this ID scope
+    static constexpr const char* kIdScope = "AppHeader";
+
+    static constexpr const char* kMenuButtonLabel          = "\u{f0c9}##menu button"; // bars
+    static constexpr const char* kPrototypeMenuButtonLabel = "\u{f805}##menu button";
+    static constexpr const char* kLogoLabel                = "logo";
+    static constexpr const char* kTitleLabel               = "##title";
+    static constexpr const char* kLocalClockLabel          = "##local clock";
+    static constexpr const char* kUtcClockLabel            = "##UTC clock";
+    static constexpr const char* kDeveloperMenuButtonLabel = "\u{f085}##developer menu button"; // gears
+
     std::function<void()>                   requestApplicationStop;
     std::function<void(ViewMode)>           requestApplicationSwitchMode;
     std::function<void(LookAndFeel::Style)> requestApplicationSwitchStyle;
@@ -120,6 +137,8 @@ struct AppHeader {
 
     void draw(std::string_view title, ImFont* titleFont, LookAndFeel::Style style) {
         using namespace detail;
+        imw::ChangeStrId idScope(kIdScope);
+        const auto       lastItemRect = [] { return ImRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax()); };
 
         const auto  now           = std::chrono::round<std::chrono::seconds>(std::chrono::system_clock::now());
         const auto  timeT         = std::chrono::system_clock::to_time_t(now);
@@ -148,38 +167,39 @@ struct AppHeader {
             return ImGui::Button(label, ImVec2{iconButtonSize, iconButtonSize});
         };
 
-        constexpr const char* kDevMenuIcon   = "";
-        const float           devMenuButtonX = ImGui::GetWindowSize().x - ImGui::GetStyle().WindowPadding.x - iconButtonSize;
-        const ImVec2          devMenuHome{devMenuButtonX, verticallyCentredY(iconButtonSize)};
-        const float           devMenuHidden     = !editable ? 1.f : devMenuAutoHide.update(ImRect(ImGui::GetWindowPos() + devMenuHome, ImGui::GetWindowPos() + devMenuHome + ImVec2{iconButtonSize, iconButtonSize}));
-        const bool            showDevMenuButton = devMenuHidden < 1.f;
-        const float           clockRightInset   = showDevMenuButton ? ImGui::GetWindowSize().x - devMenuButtonX + ImGui::GetStyle().ItemSpacing.x : ImGui::GetStyle().ItemSpacing.x;
+        const float  devMenuButtonX = ImGui::GetWindowSize().x - ImGui::GetStyle().WindowPadding.x - iconButtonSize;
+        const ImVec2 devMenuHome{devMenuButtonX, verticallyCentredY(iconButtonSize)};
+        const float  devMenuHidden     = !editable ? 1.f : devMenuAutoHide.update(ImRect(ImGui::GetWindowPos() + devMenuHome, ImGui::GetWindowPos() + devMenuHome + ImVec2{iconButtonSize, iconButtonSize}));
+        const bool   showDevMenuButton = devMenuHidden < 1.f;
+        const float  clockRightInset   = showDevMenuButton ? ImGui::GetWindowSize().x - devMenuButtonX + ImGui::GetStyle().ItemSpacing.x : ImGui::GetStyle().ItemSpacing.x;
 
         const ImVec2 localLogoSize = logoSize * (headerHeight / logoSize.y);
         ImVec2       posBeneathClock;
+        const float  spacing   = ImGui::GetStyle().ItemSpacing.x;
+        const float  titleLeft = topLeft.x + (editable ? iconButtonSize + LookAndFeel::instance().appHeaderMenuToLogoGap : 0.f) + localLogoSize.x + spacing;
         if (gAppState.compact) {
-            const float spacing    = ImGui::GetStyle().ItemSpacing.x;
-            const float titleLeft  = topLeft.x + (editable ? iconButtonSize + LookAndFeel::instance().appHeaderMenuToLogoGap : 0.f) + localLogoSize.x + spacing;
             const float titleRight = ImGui::GetWindowSize().x - clockRightInset - utcStringSize.x - spacing;
-            textFitted(title, titleFont, LookAndFeel::instance().fontNormal()->LegacySize, titleLeft, titleRight, verticallyCentredY);
+            markItemRectForTesting(kTitleLabel, textFitted(title, titleFont, LookAndFeel::instance().fontNormal()->LegacySize, titleLeft, titleRight, verticallyCentredY));
             ImGui::SetCursorPos(ImVec2{topLeft.x, verticallyCentredY(ImGui::GetTextLineHeight())});
             textRight(utcClock, clockRightInset);
+            markItemRectForTesting(kUtcClockLabel, lastItemRect());
             posBeneathClock = ImVec2{topLeft.x, topLeft.y + headerHeight + ImGui::GetStyle().ItemSpacing.y};
         } else {
             {
-                imw::Font  font(titleFont);
-                const auto titleSize = ImGui::CalcTextSize(title.data());
-                if (0.5f * ImGui::GetIO().DisplaySize.x > (0.5f * titleSize.x + utcStringSize.x)) {
-                    textCentered(title);
-                }
+                const float windowCentre       = 0.5f * ImGui::GetWindowSize().x;
+                const float titleRight         = 2.f * windowCentre - clockRightInset - std::max(ImGui::CalcTextSize(localClock.c_str()).x, utcStringSize.x) - spacing;
+                const float halfAvailableWidth = std::min(windowCentre - titleLeft, titleRight - windowCentre); // the title stays centred on the window, not between logo and clock
+                markItemRectForTesting(kTitleLabel, textFitted(title, titleFont, titleFont->LegacySize, windowCentre - halfAvailableWidth, windowCentre + halfAvailableWidth, verticallyCentredY));
             }
 
-            ImGui::SameLine();
-            auto pos = ImGui::GetCursorPos();
+            ImGui::SetCursorPos(topLeft);
+            auto pos = topLeft;
             textRight(localClock, clockRightInset);
+            markItemRectForTesting(kLocalClockLabel, lastItemRect());
             pos.y += ImGui::GetTextLineHeightWithSpacing();
             ImGui::SetCursorPos(pos);
             textRight(utcClock, clockRightInset);
+            markItemRectForTesting(kUtcClockLabel, lastItemRect());
             posBeneathClock = ImGui::GetCursorPos();
         }
 
@@ -188,7 +208,7 @@ struct AppHeader {
         const float          menuHidden = !editable ? 0.f : menuAutoHide.update(ImRect(ImGui::GetWindowPos() + menuHome, ImGui::GetWindowPos() + menuHome + ImVec2{iconButtonSize, iconButtonSize}));
         ImGui::SetCursorPos(ImVec2{menuHome.x - menuHidden * (menuHome.x + iconButtonSize), menuHome.y});
 
-        const auto menuButtonPushed = editable && headerIconButton(gAppState.prototypeMode ? "" : "", palette.mainWindowButtonIcon.value_or(ImGui::GetStyleColorVec4(ImGuiCol_Text)));
+        const auto menuButtonPushed = editable && headerIconButton(gAppState.prototypeMode ? kPrototypeMenuButtonLabel : kMenuButtonLabel, palette.mainWindowButtonIcon.value_or(ImGui::GetStyleColorVec4(ImGuiCol_Text)));
 
         if ((menuButtonPushed || ImGui::IsItemHovered()) && editable) {
             const bool wasAlreadyOpen = leftMenu.isOpen();
@@ -211,7 +231,7 @@ struct AppHeader {
             imw::StyleColor activeStyle(ImGuiCol_ButtonActive, palette.appHeaderFAIRLogoButtonActive);
             imw::StyleVar   noPadding(ImGuiStyleVar_FramePadding, ImVec2{});
             const auto      imgLogo = static_cast<ImTextureID>(style == LookAndFeel::Style::Light ? imgFairLogo : imgFairLogoDark);
-            ImGui::ImageButton("logo", imgLogo, localLogoSize);
+            ImGui::ImageButton(kLogoLabel, imgLogo, localLogoSize);
         }
 
         const float           rightMenuStartAngle = LookAndFeel::instance().appHeaderRightMenuStartDegrees;
@@ -222,7 +242,7 @@ struct AppHeader {
         const bool devMenuButtonPushed = showDevMenuButton && [&] {
             ImVec4 iconColor = palette.devMenuIcon.value_or(ImGui::GetStyleColorVec4(ImGuiCol_Text));
             iconColor.w      = LookAndFeel::instance().devMenuButtonAlpha;
-            return headerIconButton(kDevMenuIcon, iconColor);
+            return headerIconButton(kDeveloperMenuButtonLabel, iconColor);
         }();
 
         // showDevMenuButton first: IsItemHovered() must refer to the dev menu button, not another header item
