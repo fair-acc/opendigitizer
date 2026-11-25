@@ -113,8 +113,8 @@ struct FlowgraphEditor {
     bool   _fitJustApplied     = false;
     ImVec2 _lastCanvasSize;
 
-    const UiGraphBlock* _filterBlock   = nullptr;
-    UiGraphBlock*       _selectedBlock = nullptr;
+    const UiGraphBlock* _filterBlock = nullptr;
+    std::string         _selectedBlockUniqueName;
 
     // a changed count refreshes NodeIds that may dangle
     std::uint64_t _seenBlockDestructionCount = 0;
@@ -288,6 +288,9 @@ struct FlowgraphEditor {
     [[nodiscard]] std::vector<std::string> selectedBlockUniqueNames();
 
     void drawGroupingMenuItems(std::vector<std::string> uniqueNames);
+
+    /// the block of _selectedBlockUniqueName, or nullptr when it does not exist (anymore)
+    [[nodiscard]] UiGraphBlock* findSelectedBlock();
 
     void drawBlockContextMenu();
 

@@ -1094,12 +1094,12 @@ void FlowgraphEditor::draw(const ImVec2& contentTopLeft, const ImVec2& contentSi
         auto block = n.AsPointer<UiGraphBlock>();
         if (block) {
             ImGui::OpenPopup("block_ctx_menu");
-            _selectedBlock = block;
+            _selectedBlockUniqueName = block->blockUniqueName;
         }
     }
     if (blockMenuButtonPressed) {
         ImGui::OpenPopup("block_ctx_menu");
-        _selectedBlock = std::exchange(_blockContextMenuRequest, nullptr);
+        _selectedBlockUniqueName = std::exchange(_blockContextMenuRequest, nullptr)->blockUniqueName;
     }
 
     if (backgroundClicked == ImGuiMouseButton_Right && mouseDrag < 200) {
@@ -1165,7 +1165,7 @@ void FlowgraphEditor::drawPortsMenu(const char* text, const char* portDirection,
 
         if (exported) {
             ExportPortMessageData exportMessage{
-                .uniqueBlockName = _selectedBlock->blockUniqueName,
+                .uniqueBlockName = _selectedBlockUniqueName,
                 .portDirection   = portDirection,
                 .portName        = port.portName,
                 .exportedName    = "", // -Wmissing-designated-field-initializers
@@ -1184,7 +1184,7 @@ void FlowgraphEditor::drawPortsMenu(const char* text, const char* portDirection,
         }
 
         ExportPortMessageData unexportMessage{
-            .uniqueBlockName = _selectedBlock->blockUniqueName,
+            .uniqueBlockName = _selectedBlockUniqueName,
             .portDirection   = portDirection,
             .portName        = port.portName,
             .exportedName    = "", // -Wmissing-designated-field-initializers
@@ -1201,51 +1201,54 @@ void FlowgraphEditor::drawPortsMenu(const char* text, const char* portDirection,
     }
 }
 
+UiGraphBlock* FlowgraphEditor::findSelectedBlock() { return _graphModel->recursiveFindBlockByUniqueName(_selectedBlockUniqueName).block; }
+
 void FlowgraphEditor::drawBlockContextMenu() {
     auto menu = imw::Popup("block_ctx_menu", 0);
     if (!menu) {
         return;
     }
 
-    if (_selectedBlock == nullptr) {
+    UiGraphBlock* const selectedBlock = findSelectedBlock();
+    if (selectedBlock == nullptr) {
         // the block was deleted while the menu was open
         ImGui::CloseCurrentPopup();
         return;
     }
 
-    const bool isFilter = _filterBlock == _selectedBlock;
+    const bool isFilter = _filterBlock == selectedBlock;
     if (ImGui::MenuItem(isFilter ? "Remove filter" : "Filter")) {
-        _filterBlock = isFilter ? nullptr : _selectedBlock;
+        _filterBlock = isFilter ? nullptr : selectedBlock;
     }
 
     if (ImGui::MenuItem("Delete this block")) {
-        requestBlockDeletion(_selectedBlock->blockUniqueName);
+        requestBlockDeletion(selectedBlock->blockUniqueName);
     }
 
-    if (_selectedBlock->isGraph() || _selectedBlock->isScheduler()) {
+    if (selectedBlock->isGraph() || selectedBlock->isScheduler()) {
         if (ImGui::MenuItem("Edit block graph...")) {
-            requestGraphEdit(_selectedBlock);
+            requestGraphEdit(selectedBlock);
         }
     }
 
     auto groupNames = selectedBlockUniqueNames();
-    if (std::ranges::find(groupNames, _selectedBlock->blockUniqueName) == groupNames.end()) {
-        groupNames.push_back(_selectedBlock->blockUniqueName);
+    if (std::ranges::find(groupNames, selectedBlock->blockUniqueName) == groupNames.end()) {
+        groupNames.push_back(selectedBlock->blockUniqueName);
     }
 
-    if ((_selectedBlock->isGraph() || _selectedBlock->isScheduler()) && ImGui::MenuItem("Ungroup blocks")) {
-        requestBlocksUngrouping(_selectedBlock->blockUniqueName);
+    if ((selectedBlock->isGraph() || selectedBlock->isScheduler()) && ImGui::MenuItem("Ungroup blocks")) {
+        requestBlocksUngrouping(selectedBlock->blockUniqueName);
     }
 
     drawGroupingMenuItems(std::move(groupNames));
 
-    auto typeParams = _graphModel->availableParametrizationsFor(_selectedBlock->blockTypeName);
+    auto typeParams = _graphModel->availableParametrizationsFor(selectedBlock->blockTypeName);
     if (typeParams.availableParametrizations && typeParams.availableParametrizations->size() > 1) {
         if (imw::Menu blockTypesMenu("Change type to...", /*enabled*/ true); blockTypesMenu) {
             for (const auto& availableParametrization : *typeParams.availableParametrizations) {
                 if (availableParametrization != typeParams.parametrization && ImGui::MenuItem(availableParametrization.c_str())) {
-                    if (auto owner = ownersFor(*_selectedBlock)) {
-                        _graphModel->sendMessage(toScheduler(*owner, gr::scheduler::property::kReplaceBlock, {{"uniqueName", _selectedBlock->blockUniqueName}, {"type", std::move(typeParams.baseType) + availableParametrization}, {"properties", gr::property_map{{"name", _selectedBlock->blockName}}}}));
+                    if (auto owner = ownersFor(*selectedBlock)) {
+                        _graphModel->sendMessage(toScheduler(*owner, gr::scheduler::property::kReplaceBlock, {{"uniqueName", selectedBlock->blockUniqueName}, {"type", std::move(typeParams.baseType) + availableParametrization}, {"properties", gr::property_map{{"name", selectedBlock->blockName}}}}));
                     }
                 }
             }
@@ -1253,8 +1256,8 @@ void FlowgraphEditor::drawBlockContextMenu() {
     }
 
     if (_editorLevel > 0) {
-        this->drawPortsMenu("Exported input ports...", "input", _selectedBlock->_inputPorts);
-        this->drawPortsMenu("Exported output ports...", "output", _selectedBlock->_outputPorts);
+        this->drawPortsMenu("Exported input ports...", "input", selectedBlock->_inputPorts);
+        this->drawPortsMenu("Exported output ports...", "output", selectedBlock->_outputPorts);
     }
 }
 
@@ -1384,9 +1387,6 @@ void FlowgraphEditor::dropReferencesToDeletedBlocks() {
         }
         return false;
     };
-    if (_selectedBlock != nullptr && !isLiveChild(_selectedBlock)) {
-        _selectedBlock = nullptr;
-    }
     if (_filterBlock != nullptr && !isLiveChild(_filterBlock)) {
         _filterBlock = nullptr;
     }

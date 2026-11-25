@@ -1905,7 +1905,7 @@ struct TestApp : public test::ImGuiTestApp { // NOSONAR (more methods than autho
                     clickCanvasItem(ctx, editor, menuButton);
                     const ImGuiID contextMenuId = frontmostPopupId();
                     expect(contextMenuId != 0u) << fatal << "the menu opens";
-                    expect(editor._selectedBlock == sink);
+                    expect(eq(editor._selectedBlockUniqueName, sink->blockUniqueName));
                     expect(!editor._editPaneContext.selectedBlock()) << "clicking the button does not select the block";
 
                     ctx->SetRef(contextMenuId);
