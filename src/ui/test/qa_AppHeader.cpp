@@ -5,6 +5,8 @@
 #include <common/LookAndFeel.hpp>
 #include <components/AppHeader.hpp>
 
+#include <gnuradio-4.0/meta/utils.hpp>
+
 #include <array>
 #include <format>
 #include <limits>
@@ -39,6 +41,9 @@ struct TestState {
 };
 
 TestState* gState = nullptr;
+
+constexpr const char* kMainMenuWindow      = "MenuPopup_1";
+constexpr const char* kDeveloperMenuWindow = "MenuPopup_2";
 
 ImRect screenRect() { return ImRect(ImVec2{}, ImGui::GetMainViewport()->Size); }
 
@@ -87,6 +92,23 @@ void showScreen(ImGuiTestContext* ctx, ImVec2 screenSize) {
     ctx->Yield();
 }
 
+bool isWindowActive(const char* windowName) {
+    const ImGuiWindow* window = ImGui::FindWindowByName(windowName);
+    return window != nullptr && window->Active;
+}
+
+std::vector<NamedRect> popupButtonRects(ImGuiTestContext* ctx, const char* popupWindowName) {
+    std::vector<NamedRect> rects;
+    if (!isWindowActive(popupWindowName)) {
+        return rects;
+    }
+    ImGuiTestItemList items;
+    ctx->GatherItems(&items, std::format("//{}", popupWindowName).c_str(), 1);
+    for (const ImGuiTestItemInfo& item : items) {
+        rects.push_back({popupWindowName, item.RectFull});
+    }
+    return rects;
+}
 } // namespace
 
 struct TestApp : public test::ImGuiTestApp {
@@ -130,6 +152,38 @@ struct TestApp : public test::ImGuiTestApp {
                 for (float width = kDesktopScreenSize.x; width >= kNarrowestSweptWidth; width -= kWidthSweepStep) {
                     showScreen(ctx, ImVec2{width, kDesktopScreenSize.y});
                     expectRectsAreVisibleAndNonOverlapping(findAllDrawnHeaderItemRects(ctx), std::format("width {}", width));
+                }
+            };
+
+            "the radial menu and hamburger menu icons shouldn't overlap on small screens"_test = [&] {
+                for (const ImVec2 screenSize : kPhoneScreenSizes) {
+                    showScreen(ctx, screenSize);
+                    const std::string context = std::format("{}x{}", screenSize.x, screenSize.y);
+
+                    {
+                        // force windows to stay open after mouse away so we can easily have them both open for the test
+                        gr::on_scope_exit restore = [mouseoutCloseDelaySeconds = std::exchange(LookAndFeel::mutableInstance().popupMenuMouseoutCloseDelaySeconds, std::numeric_limits<float>::infinity())] {
+                            LookAndFeel::mutableInstance().popupMenuMouseoutCloseDelaySeconds = mouseoutCloseDelaySeconds; //
+                        };
+
+                        ctx->MouseMoveToPos(drawnItemRect(ctx, AppHeader::kMenuButtonLabel).GetCenter());
+                        test::waitUntil(ctx, "the main menu is open", [] { return isWindowActive(kMainMenuWindow); });
+                        ctx->MouseMoveToPos(drawnItemRect(ctx, AppHeader::kDeveloperMenuButtonLabel).GetCenter());
+                        test::waitUntil(ctx, "the developer menu has finished opening", [] { return RadialCircularMenu<2>::animationProgress() >= 1.f; });
+
+                        const std::vector<NamedRect> mainMenuButtons      = popupButtonRects(ctx, kMainMenuWindow);
+                        const std::vector<NamedRect> developerMenuButtons = popupButtonRects(ctx, kDeveloperMenuWindow);
+                        expect(!mainMenuButtons.empty() && !developerMenuButtons.empty()) << fatal << context << ": both menus are open";
+                        for (const NamedRect& developerMenuButton : developerMenuButtons) {
+                            expect(screenRect().Contains(developerMenuButton.rect)) << std::format("{}: the developer menu button at {} is inside the screen", context, formatImRect(developerMenuButton.rect));
+                            for (const NamedRect& mainMenuButton : mainMenuButtons) {
+                                expect(!mainMenuButton.rect.Overlaps(developerMenuButton.rect)) << std::format("{}: the main menu button at {} does not overlap the developer menu button at {}", context, formatImRect(mainMenuButton.rect), formatImRect(developerMenuButton.rect));
+                            }
+                        }
+                    }
+
+                    ctx->MouseMoveToPos(screenRect().GetCenter());
+                    test::waitUntil(ctx, "both menus are closed", [] { return !isWindowActive(kMainMenuWindow) && !isWindowActive(kDeveloperMenuWindow); });
                 }
             };
 

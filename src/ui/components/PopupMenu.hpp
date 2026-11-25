@@ -201,6 +201,8 @@ struct PopupMenu {
 
     [[nodiscard]] bool isOpen() const noexcept { return _isOpen; }
 
+    [[nodiscard]] static float animationProgress() noexcept { return _animationProgress; } // 0: closed, 1: fully open
+
     void forceClose() {
         _isOpen            = false;
         _animationProgress = 0.0;

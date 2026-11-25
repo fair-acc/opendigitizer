@@ -373,7 +373,7 @@ struct LookAndFeel {
     float                  popupMenuButtonAlpha                    = 1.f;
     ImVec2                 buttonFramePaddingMultiplier            = {2.f, 1.f}; // of ImGuiStyle::FramePadding
     float                  appHeaderMenuToLogoGap                  = 12.f;
-    float                  appHeaderRightMenuStartDegrees          = 75.f;
+    float                  appHeaderRightMenuStartDegrees          = 90.f;
     float                  appHeaderRightMenuStopDegrees           = 195.f;
     float                  yesNoPopupWidth                         = 300.f;
     ImVec2                 addContextPopupSize                     = {600.f, 120.f};
