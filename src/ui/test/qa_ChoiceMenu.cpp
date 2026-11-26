@@ -262,7 +262,11 @@ void observeRadialMenu(RadialMenuObservations& observations, const char* popupNa
 }
 
 void radialGuiFunc(ImGuiTestContext*) {
-    LookAndFeel::mutableInstance().choiceMenuStyle = ChoiceMenuStyle::Radial;
+    LookAndFeel& lookAndFeel    = LookAndFeel::mutableInstance();
+    lookAndFeel.choiceMenuStyle = ChoiceMenuStyle::Radial;
+    // the tests move the mouse, so a touchscreen connected to the machine that runs them must not make it the primary pointer.
+    // readTouchscreenDevices() sets this at the start of every frame
+    lookAndFeel._isTouchscreenPrimaryPointer = false;
 
     setNextWindowToMainViewport();
     imw::Window window(kTestWindow, nullptr, kTestWindowFlags);
