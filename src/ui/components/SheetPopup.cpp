@@ -45,6 +45,9 @@ constexpr float kAbsentPageVisibleFraction = -1.f;
     };
 }
 
+/// whether the popup has been begun as a sheet by the window that owns `callerStorage`
+[[nodiscard]] bool isDrawnAsSheet(const ImGuiStorage& callerStorage, const SheetStorageIds& storageIds) { return callerStorage.GetFloat(storageIds.pageVisibleFraction, kAbsentPageVisibleFraction) != kAbsentPageVisibleFraction; }
+
 void writeSheetSwipeStorage(ImGuiStorage& storage, const SheetStorageIds& storageIds, PageSwipeState swipe) {
     storage.SetFloat(storageIds.pageVisibleFraction, swipe.pageVisibleFraction);
     storage.SetBool(storageIds.isClosing, swipe.isClosing);
@@ -236,7 +239,7 @@ struct CurrentSheet {
     }
     ImGuiStorage* const   callerStorage = popup.Window->ParentWindow->DC.StateStorage;
     const SheetStorageIds storageIds    = sheetStorageIds(popup.PopupId);
-    if (callerStorage->GetFloat(storageIds.pageVisibleFraction, kAbsentPageVisibleFraction) == kAbsentPageVisibleFraction) {
+    if (!isDrawnAsSheet(*callerStorage, storageIds)) {
         return std::nullopt;
     }
     return CurrentSheet{.popupId = popup.PopupId, .window = popup.Window, .callerStorage = callerStorage, .storageIds = storageIds};
@@ -587,10 +590,13 @@ void closeCurrentPopupSheet() {
 namespace {
 /// @param callerStorage the storage of the window that draws the sheet
 [[nodiscard]] bool isSheetOrItsTopPageAnimating(ImGuiID popupId, const ImGuiStorage& callerStorage) {
-    const SheetStorageIds storageIds         = sheetStorageIds(popupId);
-    const ImGuiID         activeId           = ImGui::GetActiveID();
-    const bool            isSheetAnimating   = isPageSwipeAnimating(readSheetSwipeStorage(callerStorage, storageIds), activeId == storageIds.headerButton);
-    const bool            isTopPageAnimating = isPageSwipeAnimating(readTopPageSwipeState(callerStorage, popupId), activeId == createSheetStorageId(popupId, "##pageSwipe"));
+    const SheetStorageIds storageIds = sheetStorageIds(popupId);
+    if (!isDrawnAsSheet(callerStorage, storageIds)) {
+        return false; // e.g. an imw::Popup, which has no sheet storage to read the swipe state from
+    }
+    const ImGuiID activeId           = ImGui::GetActiveID();
+    const bool    isSheetAnimating   = isPageSwipeAnimating(readSheetSwipeStorage(callerStorage, storageIds), activeId == storageIds.headerButton);
+    const bool    isTopPageAnimating = isPageSwipeAnimating(readTopPageSwipeState(callerStorage, popupId), activeId == createSheetStorageId(popupId, "##pageSwipe"));
     return isSheetAnimating || isTopPageAnimating;
 }
 } // namespace
@@ -603,9 +609,7 @@ bool isAnyPopupSheetAnimating() {
         if (popup.Window == nullptr || popup.Window->ParentWindow == nullptr) {
             continue; // opened in this frame, and not begun yet
         }
-        const ImGuiStorage& callerStorage = *popup.Window->ParentWindow->DC.StateStorage;
-        const bool          isSheet       = callerStorage.GetFloat(sheetStorageIds(popup.PopupId).pageVisibleFraction, kAbsentPageVisibleFraction) != kAbsentPageVisibleFraction;
-        if (isSheet && isSheetOrItsTopPageAnimating(popup.PopupId, callerStorage)) {
+        if (isSheetOrItsTopPageAnimating(popup.PopupId, *popup.Window->ParentWindow->DC.StateStorage)) {
             return true;
         }
     }
