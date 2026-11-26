@@ -253,7 +253,7 @@ struct FlowgraphEditor {
 
     void requestFocusOnBlock(std::string uniqueName) { _focusBlockRequest = std::move(uniqueName); }
 
-    void drawPortExportToggleSubmenu(const char* submenuLabel, const std::vector<UiGraphPort>& ports, const char* portDirection);
+    void drawPortExportToggleSubmenu(const char* submenuLabel, const char* submenuIcon, const std::vector<UiGraphPort>& ports, const char* portDirection);
 
     void requestPortExportChange(const UiGraphPort& port, const char* portDirection, bool exported);
 

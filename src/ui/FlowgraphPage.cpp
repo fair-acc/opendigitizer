@@ -2,6 +2,7 @@
 #include "FlowgraphLayout.hpp"
 
 #include <algorithm>
+#include <array>
 #include <exception>
 
 #include <crude_json.h>
@@ -9,6 +10,8 @@
 #include <format>
 #include <iterator>
 #include <ranges>
+#include <string_view>
+#include <utility>
 
 #include <gnuradio-4.0/PmtTypeHelpers.hpp>
 #include <gnuradio-4.0/Scheduler.hpp>
@@ -80,6 +83,31 @@ std::string withoutNamespaceQualifiers(std::string_view rawName) {
 namespace gr::od {
 
 namespace {
+
+constexpr const char* kFilterIcon       = "\u{f0b0}"; // filter
+constexpr const char* kRemoveFilterIcon = "\u{f12d}"; // eraser
+
+/// The look of the menu choice that changes a block to the template arguments `parametrization`, like "<float32>"
+[[nodiscard]] ChoiceMenuItemLook parametrizationLook(std::string_view parametrization) {
+    constexpr std::array<std::pair<std::string_view, const char*>, 10UZ> kScalarTypeIcons{{
+        {"<int8>", "I8"},
+        {"<int16>", "I16"},
+        {"<int32>", "I32"},
+        {"<int64>", "I64"},
+        {"<uint8>", "U8"},
+        {"<uint16>", "U16"},
+        {"<uint32>", "U32"},
+        {"<uint64>", "U64"},
+        {"<float32>", "F32"},
+        {"<float64>", "F64"},
+    }};
+    const auto                                                           scalarType = std::ranges::find(kScalarTypeIcons, parametrization, &std::pair<std::string_view, const char*>::first);
+    if (scalarType == kScalarTypeIcons.end()) {
+        return {};
+    }
+    const std::string_view typeName = parametrization.substr(1UZ, parametrization.size() - 2UZ);
+    return ChoiceMenuItemLook{.icon = scalarType->second, .color = ImGui::ColorConvertU32ToFloat4(styleForDataType(typeName).color())};
+}
 
 auto displayedPorts(const UiGraphBlock& block, const std::vector<UiGraphPort>& ports) {
     auto result = ports | std::views::transform([](const auto& port) { return &port; }) | std::ranges::to<std::vector>();
@@ -1106,11 +1134,11 @@ void FlowgraphEditor::draw(const ImVec2& contentTopLeft, const ImVec2& contentSi
     }
 
     if (auto backgroundMenu = ChoiceMenu("ctx_menu", ChoiceMenuFlags::WantsExclusiveFocus | ChoiceMenuFlags::SupportsRadialMenu)) {
-        if (choiceMenuAction("Refresh graph")) {
+        if (choiceMenuAction("Refresh graph", {.icon = "\u{f021}"})) { // arrows-rotate
             _graphModel->requestFullUpdate();
             _graphModel->requestAvailableBlocksTypesUpdate();
         }
-        if (_filterBlock != nullptr && choiceMenuAction("Remove filter")) {
+        if (_filterBlock != nullptr && choiceMenuAction("Remove filter", {.icon = kRemoveFilterIcon})) {
             _filterBlock = nullptr;
         }
         drawGroupingChoices(selectedBlockUniqueNames());
@@ -1137,15 +1165,15 @@ void FlowgraphEditor::draw(const ImVec2& contentTopLeft, const ImVec2& contentSi
     }
 }
 
-void FlowgraphEditor::drawPortExportToggleSubmenu(const char* submenuLabel, const std::vector<UiGraphPort>& ports, const char* portDirection) {
+void FlowgraphEditor::drawPortExportToggleSubmenu(const char* submenuLabel, const char* submenuIcon, const std::vector<UiGraphPort>& ports, const char* portDirection) {
     const UiGraphBlock* exportTarget = exportPortTargetBlock();
     if (exportTarget == nullptr || ports.empty()) {
         return; // nowhere to export to, e.g. in the root graph
     }
-    if (auto submenu = Menu(submenuLabel, nullptr)) {
+    if (auto submenu = ChoiceSubmenu(submenuLabel, ChoiceMenuItemLook{.icon = submenuIcon})) {
         for (const UiGraphPort& port : ports) {
             bool isExported = port.isExportedTo(exportTarget);
-            if (choiceMenuToggle(port.portName.c_str(), &isExported)) {
+            if (choiceMenuToggle(port.portName.c_str(), &isExported, {.icon = "\u{f1e6}", .color = ImGui::ColorConvertU32ToFloat4(styleForDataType(port.portType).color())})) { // plug
                 requestPortExportChange(port, portDirection, isExported);
             }
         }
@@ -1198,20 +1226,20 @@ void FlowgraphEditor::drawBlockContextMenu() {
     if (selectedBlock == nullptr && ImGui::IsPopupOpen(kPopupId)) {
         closePopup(kPopupId); // the block was deleted while the menu was open
     }
-    auto blockMenu = ChoiceMenu(kPopupId, ChoiceMenuFlags::WantsExclusiveFocus);
+    auto blockMenu = ChoiceMenu(kPopupId, ChoiceMenuFlags::WantsExclusiveFocus | ChoiceMenuFlags::SupportsRadialMenu);
     if (!blockMenu || selectedBlock == nullptr) {
         return;
     }
 
     const bool isFilter = _filterBlock == selectedBlock;
-    if (choiceMenuAction(isFilter ? "Remove filter" : "Filter")) {
+    if (choiceMenuAction(isFilter ? "Remove filter" : "Filter", {.icon = isFilter ? kRemoveFilterIcon : kFilterIcon})) {
         _filterBlock = isFilter ? nullptr : selectedBlock;
     }
-    if (choiceMenuAction("Delete this block")) {
+    if (choiceMenuAction("Delete this block", {.icon = "\u{f1f8}", .color = LookAndFeel::instance().palette().errorColor})) { // trash
         requestBlockDeletion(selectedBlock->blockUniqueName);
     }
 
-    if ((selectedBlock->isGraph() || selectedBlock->isScheduler()) && choiceMenuAction("Edit block graph...")) {
+    if ((selectedBlock->isGraph() || selectedBlock->isScheduler()) && choiceMenuAction("Edit block graph...", {.icon = "\u{f044}"})) { // pen-to-square
         requestGraphEdit(selectedBlock);
     }
 
@@ -1220,7 +1248,7 @@ void FlowgraphEditor::drawBlockContextMenu() {
         groupNames.push_back(selectedBlock->blockUniqueName);
     }
 
-    if ((selectedBlock->isGraph() || selectedBlock->isScheduler()) && choiceMenuAction("Ungroup blocks")) {
+    if ((selectedBlock->isGraph() || selectedBlock->isScheduler()) && choiceMenuAction("Ungroup blocks", {.icon = "\u{f248}"})) { // object-ungroup
         requestBlocksUngrouping(selectedBlock->blockUniqueName);
     }
 
@@ -1228,9 +1256,9 @@ void FlowgraphEditor::drawBlockContextMenu() {
 
     const auto typeParams = _graphModel->availableParametrizationsFor(selectedBlock->blockTypeName);
     if (typeParams.availableParametrizations && typeParams.availableParametrizations->size() > 1) {
-        if (auto blockTypeMenu = Menu("Change type to...", nullptr)) {
+        if (auto blockTypeMenu = ChoiceSubmenu("Change type to...", ChoiceMenuItemLook{.icon = "\u{f0ec}"})) { // arrow-right-arrow-left
             for (const auto& availableParametrization : *typeParams.availableParametrizations) {
-                if (availableParametrization != typeParams.parametrization && choiceMenuAction(availableParametrization.c_str())) {
+                if (availableParametrization != typeParams.parametrization && choiceMenuAction(availableParametrization.c_str(), parametrizationLook(availableParametrization))) {
                     if (auto owner = ownersFor(*selectedBlock)) {
                         _graphModel->sendMessage(toScheduler(*owner, gr::scheduler::property::kReplaceBlock, {{"uniqueName", selectedBlock->blockUniqueName}, {"type", typeParams.baseType + availableParametrization}, {"properties", gr::property_map{{"name", selectedBlock->blockName}}}}));
                     }
@@ -1240,8 +1268,8 @@ void FlowgraphEditor::drawBlockContextMenu() {
     }
 
     if (_editorLevel > 0) {
-        drawPortExportToggleSubmenu("Exported input ports...", selectedBlock->_inputPorts, "input");
-        drawPortExportToggleSubmenu("Exported output ports...", selectedBlock->_outputPorts, "output");
+        drawPortExportToggleSubmenu("Exported input ports...", "\u{f2f6}", selectedBlock->_inputPorts, "input");    // right-to-bracket
+        drawPortExportToggleSubmenu("Exported output ports...", "\u{f2f5}", selectedBlock->_outputPorts, "output"); // right-from-bracket
     }
 }
 
@@ -1400,10 +1428,10 @@ void FlowgraphEditor::drawGroupingChoices(std::vector<std::string> uniqueNames) 
     });
     const bool    singular = uniqueNames.size() == 1;
     imw::Disabled noSelection(uniqueNames.empty());
-    if (choiceMenuAction(singular ? "Group block" : "Group blocks")) {
+    if (choiceMenuAction(singular ? "Group block" : "Group blocks", {.icon = "\u{f247}"})) { // object-group
         requestBlocksGrouping("gr::Graph", uniqueNames);
     }
-    if (choiceMenuAction(singular ? "Group block and pick graph type..." : "Group blocks and pick graph type...")) {
+    if (choiceMenuAction(singular ? "Group block and pick graph type..." : "Group blocks and pick graph type...", {.icon = "\u{f5fd}"})) { // layer-group
         _pendingGroupBlocksRequest = std::move(uniqueNames);
     }
 }

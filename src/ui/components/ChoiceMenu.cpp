@@ -1,5 +1,6 @@
 #include "ChoiceMenu.hpp"
 
+#include "RadialMenu.hpp"
 #include "StyledWidgets.hpp"
 
 #include "../common/Imw.hpp"
@@ -11,7 +12,7 @@
 namespace gr::od {
 namespace {
 
-enum class ChoiceMenuKind { Desktop, Sheet };
+enum class ChoiceMenuKind { Desktop, Sheet, Radial };
 
 /// Every frame the items will Begin and push this to a stack and then pop it when it Ends
 struct ChoiceMenuFrameState {
@@ -31,7 +32,13 @@ struct ChoiceMenuFrameState {
     return choiceMenusInProgress().back();
 }
 
-[[nodiscard]] ChoiceMenuKind choiceMenuKind() { return LookAndFeel::instance().usesSheetPopups() ? ChoiceMenuKind::Sheet : ChoiceMenuKind::Desktop; }
+[[nodiscard]] ChoiceMenuKind choiceMenuKind(ChoiceMenuFlags flags) {
+    const LookAndFeel& lookAndFeel = LookAndFeel::instance();
+    if (lookAndFeel.choiceMenuStyle == ChoiceMenuStyle::Radial && hasFlag(flags, ChoiceMenuFlags::SupportsRadialMenu)) {
+        return ChoiceMenuKind::Radial;
+    }
+    return lookAndFeel.usesSheetPopups() ? ChoiceMenuKind::Sheet : ChoiceMenuKind::Desktop;
+}
 
 bool beginNonRadialMenu(const char* popupID, ChoiceMenuFlags flags, ChoiceMenuFrameState& menu) {
     const PopupFlags popupFlags = hasFlag(flags, ChoiceMenuFlags::WantsExclusiveFocus) ? PopupFlags::WantsExclusiveFocus : PopupFlags::None;
@@ -53,8 +60,9 @@ bool beginNonRadialMenu(const char* popupID, ChoiceMenuFlags flags, ChoiceMenuFr
 } // namespace
 
 bool beginChoiceMenu(const char* popupID, ChoiceMenuFlags flags) {
-    ChoiceMenuFrameState menu{.kind = choiceMenuKind()};
-    if (!beginNonRadialMenu(popupID, flags, menu)) {
+    ChoiceMenuFrameState menu{.kind = choiceMenuKind(flags)};
+    const bool           isOpen = menu.kind == ChoiceMenuKind::Radial ? beginRadialMenu(popupID) : beginNonRadialMenu(popupID, flags, menu);
+    if (!isOpen) {
         return false;
     }
     choiceMenusInProgress().push_back(menu);
@@ -65,6 +73,7 @@ void endChoiceMenu() {
     const ChoiceMenuKind kind = innermostChoiceMenu().kind;
     choiceMenusInProgress().pop_back();
     switch (kind) {
+    case ChoiceMenuKind::Radial: endRadialMenu(); return;
     case ChoiceMenuKind::Sheet: ImGui::PopStyleVar(2); break;
     case ChoiceMenuKind::Desktop: break;
     }
@@ -78,6 +87,7 @@ bool choiceMenuAction(const char* label, const ChoiceMenuItemLook& look) {
         imw::StyleColor textColor(ImGuiCol_Text, sheetTextColor(look));
         return selectable(label, false, ImGuiSelectableFlags_None, ImVec2{0.f, sheetRowHeight()});
     }
+    case ChoiceMenuKind::Radial: return radialMenuAction(label, look);
     }
     std::unreachable();
 }
@@ -103,8 +113,24 @@ bool choiceMenuToggle(const char* label, bool* isChecked, const ChoiceMenuItemLo
         ImGui::Dummy(ImVec2{0.f, rowHeight - frameHeight - spaceAboveToggle});
         return isClicked;
     }
+    case ChoiceMenuKind::Radial: return radialMenuToggle(label, isChecked, look);
     }
     std::unreachable();
+}
+
+bool beginChoiceSubmenu(const char* label, const ChoiceMenuItemLook& look) {
+    if (innermostChoiceMenu().kind == ChoiceMenuKind::Radial) {
+        return beginRadialSubmenu(label, look);
+    }
+    return beginMenu(label);
+}
+
+void endChoiceSubmenu() {
+    if (innermostChoiceMenu().kind == ChoiceMenuKind::Radial) {
+        endRadialSubmenu();
+    } else {
+        endMenu();
+    }
 }
 
 void choiceMenuSeparator() {
@@ -119,11 +145,12 @@ void choiceMenuSeparator() {
         ImGui::GetWindowDrawList()->AddLine(ImVec2{rowStart.x, lineY}, ImVec2{rowStart.x + width, lineY}, ImGui::GetColorU32(ImGuiCol_Separator));
         return;
     }
+    case ChoiceMenuKind::Radial: return; // separators aren't supported by the radial menu
     }
 }
 
 namespace detail {
-bool isChoiceMenuAnimating(const char* popupID) { return isPopupAnimating(popupID); }
+bool isChoiceMenuAnimating(const char* popupID) { return isPopupAnimating(popupID) || isRadialMenuAnimating(popupID); }
 } // namespace detail
 
 } // namespace gr::od

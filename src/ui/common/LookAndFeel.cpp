@@ -442,6 +442,8 @@ void LookAndFeel::loadFonts() {
     static const ImWchar              glyphRanges[]          = {                    // pick individual glyphs and specific sub-ranges rather than full range
         0XF002, 0XF2ED,                                       // 0xf002 is "magnifying glass", 0xf005 is "", 0xf2ed is "trash can"
         0X2B, 0X2B,                                           // plus
+        0X30, 0X39,                                           // digits
+        0X41, 0X5A,                                           // letters
         0XF055, 0XF055,                                       // circle-plus
         0XF201, 0XF83E,                                       // fa-chart-line, fa-wave-square
         0xF58D, 0xF58D,                                       // grid layout

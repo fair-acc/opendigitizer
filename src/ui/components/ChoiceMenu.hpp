@@ -20,7 +20,7 @@ enum class ChoiceMenuFlags : std::uint8_t {
     None = 0,
     /// darken the background outside of the choice menu if true (only applies for sheet popups ATM)
     WantsExclusiveFocus = 1 << 0,
-    /// This should be specified if the menu is only going to have actions and toggles, it enables
+    /// This should be specified if the menu is only going to have actions, toggles and choice submenus, it enables
     /// radial menu in the event that that is the global popup style. By default a popup assumes that
     /// it doesn't work as a radial menu and just automatically picks based on whether a touchscreen
     /// is in use
@@ -43,6 +43,12 @@ bool choiceMenuAction(const char* label, const ChoiceMenuItemLook& look = {});
 /// Add a toggle control to the menu
 /// @returns true if it wrote to isChecked
 bool choiceMenuToggle(const char* label, bool* isChecked, const ChoiceMenuItemLook& look = {});
+/// Add a submenu to the menu, whose choices are drawn between beginChoiceSubmenu() and endChoiceSubmenu(). On desktop
+/// it opens beside the menu, in a sheet as a page, and in a radial menu as spokes around its item (beginRadialSubmenu())
+/// @returns whether the choices of the submenu should be drawn
+bool beginChoiceSubmenu(const char* label, const ChoiceMenuItemLook& look);
+void endChoiceSubmenu();
+using ChoiceSubmenu = stdex::c_resource<bool, beginChoiceSubmenu, endChoiceSubmenu>;
 void choiceMenuSeparator();
 
 namespace detail {

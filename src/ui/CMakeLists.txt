@@ -320,6 +320,8 @@ add_library(
   components/Keypad.cpp
   components/Keypad.hpp
   components/PopupMenu.hpp
+  components/RadialMenu.cpp
+  components/RadialMenu.hpp
   components/SearchAndFilterComponents.cpp
   components/SearchAndFilterComponents.hpp
   components/SelectedLabelsView.hpp

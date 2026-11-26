@@ -428,17 +428,28 @@ struct LookAndFeel {
     ChartStyle             chartStyle;
     DashboardStyle         dashboardStyle;
     OpenDashboardPageStyle openDashboardPageStyle;
-    ChoiceMenuStyle        choiceMenuStyle                  = ChoiceMenuStyle::Automatic;
-    float                  sheetMaxLengthFractionOfDisplay  = .75f;
-    float                  sheetDismissThresholdFraction    = .3f;
-    float                  sheetHeaderRoundingEms           = 1.f;
-    float                  sheetHandlePillLengthEms         = 2.5f;
-    float                  sheetHandlePillThicknessEms      = .3f;
-    float                  sheetHandlePillAlpha             = .4f; // multiplied with the alpha of ImGuiCol_Text
-    float                  sheetRowHeightFrameHeightRatio   = 1.5f;
-    ImVec2                 sheetMinContentSizeEms           = ImVec2{16.f, 3.f}; // the x component for a sheet on the right edge, y for the bottom edge
-    float                  sheetAnimationDurationSeconds    = .25f;
-    float                  colorPickerWidthFrameHeightRatio = 12.f; // default value is taken from ImGui::ColorEdit4() which uses 12*FrameHeight
+    ChoiceMenuStyle        choiceMenuStyle                           = ChoiceMenuStyle::Automatic;
+    float                  radialMenuItemDiameterFrameHeightRatio    = 1.75f;
+    float                  radialMenuHoveredScale                    = 1.3f;
+    float                  radialMenuSpokeMinLengthItemDiameterRatio = 1.25f; // from the center of the menu to the center of an item
+    float                  radialMenuCenterDotRadiusFrameHeightRatio = .2f;
+    float                  radialMenuOutlineThickness                = 2.f; // when not hovered
+    float                  radialMenuSpokeThickness                  = 2.f;
+    ImVec4                 radialMenuIconColor                       = ImVec4{1.f, 1.f, 1.f, 1.f};
+    float                  radialMenuIconMaxWidthItemDiameterRatio   = .8f; // a wider icon is drawn smaller
+    float                  radialMenuFadeInSeconds                   = .15f;
+    float                  radialMenuHoverAnimationSeconds           = .1f;
+    float                  radialSubmenuExpandSeconds                = .15f;
+    float                  sheetMaxLengthFractionOfDisplay           = .75f;
+    float                  sheetDismissThresholdFraction             = .3f;
+    float                  sheetHeaderRoundingEms                    = 1.f;
+    float                  sheetHandlePillLengthEms                  = 2.5f;
+    float                  sheetHandlePillThicknessEms               = .3f;
+    float                  sheetHandlePillAlpha                      = .4f; // multiplied with the alpha of ImGuiCol_Text
+    float                  sheetRowHeightFrameHeightRatio            = 1.5f;
+    ImVec2                 sheetMinContentSizeEms                    = ImVec2{16.f, 3.f}; // the x component for a sheet on the right edge, y for the bottom edge
+    float                  sheetAnimationDurationSeconds             = .25f;
+    float                  colorPickerWidthFrameHeightRatio          = 12.f; // default value is taken from ImGui::ColorEdit4() which uses 12*FrameHeight
 
     Style style = Style::Light;
     Theme theme = Theme::Classic;
@@ -460,6 +471,7 @@ struct LookAndFeel {
 
     /// whether popups that can be drawn as a sheet, like Popup and Menu, are drawn as one
     [[nodiscard]] bool usesSheetPopups() const;
+    [[nodiscard]] bool touchscreenIsPrimaryPointer() const { return _isTouchscreenPrimaryPointer; }
 
     [[nodiscard]] SheetEdge sheetEdge() const noexcept {
         const ImVec2 displaySize = ImGui::GetIO().DisplaySize;
