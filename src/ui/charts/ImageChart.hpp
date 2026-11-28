@@ -67,7 +67,7 @@ Frames a sink received but the chart never showed are counted and indicated.)"">
     using A = gr::Annotated<T, description, Arguments...>;
 
     static constexpr std::string_view kChartTypeName    = "ImageChart";
-    static constexpr SignalKind       kSupportedSignals = SignalKind::Image2D;
+    static constexpr SignalKind       kSupportedSignals = SignalKind::Image2D | SignalKind::Dataset1D; // a rank-2 DataSet is an image
 
     A<std::string, "chart name", gr::Visible>                                                                                                     chart_name;
     A<std::string, "chart title">                                                                                                                 chart_title;
@@ -213,9 +213,9 @@ Frames a sink received but the chart never showed are counted and indicated.)"">
     }
 
     void fetchFrame(const SignalSink& sink, std::size_t index, std::optional<std::pair<double, double>> shared) {
-        ImageLayer&      layer = _layers[index];
-        auto             guard = sink.dataGuard();
-        const ImageFrame frame = sink.imageFrame(layer.shown + 1U);
+        ImageLayer&     layer = _layers[index];
+        auto            guard = sink.dataGuard();
+        const FrameView frame = sink.frame(layer.shown + 1U);
         if (frame.generation == 0U || frame.generation <= layer.shown || frame.rows * frame.columns == 0UZ) {
             return;
         }
@@ -233,7 +233,7 @@ Frames a sink received but the chart never showed are counted and indicated.)"">
                     convert(layer, index, pixels, [](auto v) { return static_cast<double>(v); }, shared);
                 }
             },
-            frame.pixels);
+            frame.values);
         layer.onGpu = gpu_acceleration && layer.texture.upload(layer.columns, layer.rows, layer.rgba.data());
     }
 

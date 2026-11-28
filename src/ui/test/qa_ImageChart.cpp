@@ -97,10 +97,10 @@ struct TestApp : public test::ImGuiTestApp {
                     if (sink) {
                         expect(gState->waitUntil(ctx, std::format("{} holds a frame", sinkName), [&sink] {
                             auto guard = sink->dataGuard();
-                            return sink->imageFrame().generation > 0U;
+                            return sink->frame().generation > 0U;
                         }));
                         auto       guard = sink->dataGuard();
-                        const auto frame = sink->imageFrame();
+                        const auto frame = sink->frame();
                         expect(eq(frame.rows, 48UZ) && eq(frame.columns, 64UZ)) << sinkName;
                         expect(sink->signalKind() == SignalKind::Image2D) << sinkName;
                     }

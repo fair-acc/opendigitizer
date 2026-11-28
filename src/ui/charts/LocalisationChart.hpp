@@ -203,7 +203,7 @@ Arrival events are associated as DelayLocator does; each event sink is a layer o
                 const auto        events = sink->events();
                 const auto        since  = _generationAtGeometry.find(sink->uniqueName());
                 const std::size_t fresh  = since == _generationAtGeometry.end() ? events.size() : static_cast<std::size_t>(std::min<std::uint64_t>(sink->eventGeneration() - since->second, events.size()));
-                for (const gr::property_map& event : events.last(fresh)) {
+                for (const auto& [arrivalUtcSeconds, event] : events.last(fresh)) {
                     if (const auto result = locatedResultOf(event)) {
                         const auto dated = opendigitizer::localisation::datedOf(event);
                         if (!resultTimeNs || (dated && dated->ns >= *resultTimeNs)) {

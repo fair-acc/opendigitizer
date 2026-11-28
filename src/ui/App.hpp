@@ -58,12 +58,12 @@ inline void publishSinksForBrowserTests() {
     }
     const auto sinks = charts::SinkRegistry::instance().findSinks([](const SignalSink& sink) { return sink.signalKind() == SignalKind::Streaming; });
     for (const auto& sink : sinks) {
-        const auto        guard = sink->dataGuard();
-        const std::size_t n     = sink->size();
-        if (n == 0UZ) {
+        const auto         guard  = sink->dataGuard();
+        const SampleWindow window = sink->samples();
+        if (window.size() == 0UZ) {
             continue;
         }
-        const float value = sink->yAt(n - 1UZ);
+        const double value = window.yAt(window.size() - 1UZ);
         publishForBrowserTests("odSinks", sink->signalName(), std::format(R"({{"value":{},"count":{}}})", std::isfinite(value) ? std::format("{}", value) : std::string("null"), sink->totalSampleCount()));
     }
 }

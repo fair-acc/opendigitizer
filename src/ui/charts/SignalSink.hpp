@@ -6,12 +6,15 @@
 
 #include <gnuradio-4.0/Block.hpp>
 #include <gnuradio-4.0/DataSet.hpp>
+#include <gnuradio-4.0/HistoryBuffer.hpp>
+#include <gnuradio-4.0/Tensor.hpp>
 
 #include <algorithm>
 #include <array>
 #include <atomic>
 #include <chrono>
 #include <cstdint>
+#include <deque>
 #include <functional>
 #include <limits>
 #include <memory>
@@ -20,6 +23,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <unordered_map>
 #include <variant>
 #include <vector>
@@ -46,6 +50,8 @@ struct CapacityRequests {
         std::erase_if(_requests, [now](const auto& entry) { return entry.second.expiry < now; });
         return largest();
     }
+
+    [[nodiscard]] bool empty() const noexcept { return _requests.empty(); }
 
     [[nodiscard]] std::size_t largest() const noexcept {
         std::size_t result = minimum;
@@ -77,69 +83,347 @@ struct ImageAxis {
 
 [[nodiscard]] constexpr double axisCoordinate(const ImageAxis& axis, std::size_t cell) noexcept { return axis.origin + axis.step * static_cast<double>(cell); }
 
-/// latest 2D frame of a Tensor<T> sink, row-major {rows, columns}; uint32 pixels are packed 0xAARRGGBB
-struct ImageFrame {
-    std::variant<std::monostate, std::span<const std::uint32_t>, std::span<const float>, std::span<const double>> pixels;
-    std::size_t                                                                                                   rows       = 0UZ;
-    std::size_t                                                                                                   columns    = 0UZ;
-    std::uint64_t                                                                                                 generation = 0U; // changes with every new frame
-    std::array<ImageAxis, 2>                                                                                      axes{};          // {rows, columns}
+/// one 2D frame of a sink, row-major {rows, columns}: a Tensor frame; a rank-2 DataSet's image, the signal dataset_index selects; or a rank-1 DataSet's signals as rows.
+/// Valid while holding the sink's dataGuard()
+struct FrameView {
+    std::variant<std::monostate, std::span<const std::uint32_t>, std::span<const float>> values; // uint32: packed 0xAARRGGBB
+    std::size_t                                                                          rows       = 0UZ;
+    std::size_t                                                                          columns    = 0UZ;
+    std::uint64_t                                                                        generation = 0U;   // changes with every new frame
+    std::array<ImageAxis, 2>                                                             axes{};            // {rows, columns}
+    std::span<const float>                                                               columnCoordinates; // a DataSet's axis values, not necessarily uniform
+    const gr::DataSet<float>*                                                            dataSet = nullptr; // null unless the frame is a DataSet's
+
+    [[nodiscard]] std::span<const float> row(std::size_t r) const noexcept {
+        const auto* floats = std::get_if<std::span<const float>>(&values);
+        return floats && r < rows ? floats->subspan(r * columns, columns) : std::span<const float>{};
+    }
 };
 
-/// the charts' read access to a sink block's data, not a BlockModel: implementations such as SinkAdapter<T> delegate to the block;
-/// the block receives on the scheduler thread, readers hold dataGuard()
+/// a streaming sink's held samples, oldest first; valid while holding the sink's dataGuard()
+struct SampleWindow {
+    using Values = std::variant<std::span<const float>, std::span<const double>>;
+
+    std::span<const double> x; // UTC seconds
+    Values                  y;
+    std::size_t             first = 0UZ; // the index of x[0] among every sample received, for incremental uploads
+
+    [[nodiscard]] std::size_t size() const noexcept { return x.size(); }
+    [[nodiscard]] double      yAt(std::size_t i) const noexcept {
+        return std::visit([i](auto values) { return static_cast<double>(values[i]); }, y);
+    }
+
+    /// all when fewer than `count` are held
+    [[nodiscard]] SampleWindow newest(std::size_t count) const noexcept {
+        const std::size_t skip = size() - std::min(count, size());
+        return {.x = x.subspan(skip), .y = std::visit([skip](auto values) -> Values { return values.subspan(skip); }, y), .first = first + skip};
+    }
+};
+
+/// a dated property map: a stream's tag at its sample's UTC time, or a tag at its arrival time
+struct DatedMap {
+    double           utcSeconds = 0.0;
+    gr::property_map map;
+};
+
+/// a chart signal: the one store of a sink block, shared by every chart that shows it.
+/// The block creates it, writes on the scheduler thread holding dataGuard(), and copies its settings into `metadata`;
+/// charts read holding dataGuard(), the metadata without it, and keep it after the block is gone, until they rebind by name.
 struct SignalSink {
-    virtual ~SignalSink() = default;
+    struct Metadata {
+        std::string   signalName; // empty: the sink's name
+        std::string   signalQuantity;
+        std::string   signalUnit;
+        std::string   abscissaQuantity = "time";
+        std::string   abscissaUnit     = "s";
+        std::uint32_t color            = 0xFFFFFFU;
+        float         lineWidth        = 1.0f;
+        float         sampleRate       = 1.0f;
+        bool          visible          = true;
+        std::size_t   datasetIndex     = std::numeric_limits<std::size_t>::max(); // the DataSet row 1D charts draw; out of range: row 0
+    };
 
-    [[nodiscard]] virtual std::string_view name() const noexcept       = 0;
-    [[nodiscard]] virtual std::string_view uniqueName() const noexcept = 0;
+    struct Config {
+        SignalKind  kind = SignalKind::Streaming;
+        std::string uniqueName;
+        std::string name;
+        std::size_t capacity      = 2048UZ; // samples, DataSets or events held until a chart asks (required_size)
+        std::size_t capacityFloor = 0UZ;    // a chart's request is raised to at least this
+        bool        doubleSamples = false;  // float64 samples stay double
+    };
 
-    [[nodiscard]] virtual std::string_view signalName() const noexcept = 0;
-    [[nodiscard]] virtual std::uint32_t    color() const noexcept      = 0;
-    [[nodiscard]] virtual float            sampleRate() const noexcept = 0;
+    using Samples = std::variant<gr::HistoryBuffer<float>, gr::HistoryBuffer<double>>;
+    using Frames  = std::variant<std::monostate, std::deque<gr::Tensor<float>>, std::deque<gr::Tensor<std::uint32_t>>>; // a double tensor is kept as float
 
-    [[nodiscard]] virtual float lineWidth() const noexcept = 0;
+    std::string _uniqueName;
+    std::string _name;
+    SignalKind  _kind;
+    Metadata    metadata;
 
-    [[nodiscard]] virtual std::size_t size() const noexcept        = 0;
-    [[nodiscard]] virtual double      xAt(std::size_t index) const = 0;
-    [[nodiscard]] virtual float       yAt(std::size_t index) const = 0;
+    mutable std::mutex _mutex;
+    std::size_t        _configuredCapacity;
+    std::size_t        _capacity;
+    CapacityRequests   _capacityRequests;
 
-    [[nodiscard]] virtual bool                                hasDataSets() const noexcept  = 0;
-    [[nodiscard]] virtual std::size_t                         dataSetCount() const noexcept = 0;
-    [[nodiscard]] virtual std::span<const gr::DataSet<float>> dataSets() const              = 0;
-    [[nodiscard]] virtual SignalKind                          signalKind() const noexcept   = 0;
-    /// the queued frame with generation `next`, else the oldest queued after it; 0 = the newest. Valid while holding dataGuard()
-    [[nodiscard]] virtual ImageFrame imageFrame([[maybe_unused]] std::uint64_t next = 0U) const { return {}; }
+    gr::HistoryBuffer<double>       _xValues;               // streaming samples' UTC seconds, oldest first; double: ns precision
+    Samples                         _yValues;               // oldest first
+    std::deque<DatedMap>            _tags;                  // streaming: at their sample's time; tag sinks: at arrival
+    std::vector<gr::DataSet<float>> _dataSets;              // oldest first; the oldest's buffers take the next DataSet
+    Frames                          _frames;                // tensor sinks: the newest max_backlog + 1 frames
+    std::uint64_t                   _frameGeneration = 0U;  // of the newest frame, counting every frame received
+    std::array<ImageAxis, 2>        _axes{};                // tensor sinks: {rows, columns}, from the gr:axis_* tags
+    std::vector<DatedMap>           _events;                // event and tag sinks: the newest, oldest first, at their arrival time
+    std::atomic<std::uint64_t>      _eventGeneration  = 0U; // read without the guard
+    std::size_t                     _totalSampleCount = 0UZ;
 
-    /// an event sink's newest events, oldest first; empty for other sinks. Valid while holding dataGuard()
-    [[nodiscard]] virtual std::span<const gr::property_map> events() const { return {}; }
-    [[nodiscard]] virtual std::uint64_t                     eventGeneration() const noexcept { return 0U; }
+    explicit SignalSink(Config config)
+        : _uniqueName(std::move(config.uniqueName)), _name(std::move(config.name)), _kind(config.kind), _configuredCapacity(std::max(config.capacity, 1UZ)), _capacity(_configuredCapacity), _capacityRequests{.minimum = config.capacityFloor}, //
+          _xValues(_kind == SignalKind::Streaming ? _capacity : 1UZ),                                                                                                                                                                            //
+          _yValues(config.doubleSamples ? Samples(std::in_place_type<gr::HistoryBuffer<double>>, _xValues.capacity()) : Samples(std::in_place_type<gr::HistoryBuffer<float>>, _xValues.capacity())) {}
 
-    virtual void forEachTag(std::function<void(double timestamp, const gr::property_map& properties)> callback) const = 0;
+    SignalSink(const SignalSink&)            = delete;
+    SignalSink& operator=(const SignalSink&) = delete;
 
-    [[nodiscard]] virtual double timeLast() const noexcept = 0;
+    [[nodiscard]] std::string_view name() const noexcept { return _name; }
+    [[nodiscard]] std::string_view uniqueName() const noexcept { return _uniqueName; }
+    [[nodiscard]] SignalKind       signalKind() const noexcept { return _kind; }
 
-    /// since creation, not only those in the buffer
-    [[nodiscard]] virtual std::size_t totalSampleCount() const noexcept = 0;
+    [[nodiscard]] std::string_view signalName() const noexcept { return metadata.signalName.empty() ? std::string_view(_name) : std::string_view(metadata.signalName); }
+    [[nodiscard]] std::uint32_t    color() const noexcept { return metadata.color; }
+    [[nodiscard]] float            sampleRate() const noexcept { return metadata.sampleRate; }
+    [[nodiscard]] float            lineWidth() const noexcept { return metadata.lineWidth; }
+    [[nodiscard]] bool             drawEnabled() const noexcept { return metadata.visible; }
+    [[nodiscard]] std::string_view signalQuantity() const noexcept { return metadata.signalQuantity; }
+    [[nodiscard]] std::string_view signalUnit() const noexcept { return metadata.signalUnit; }
+    [[nodiscard]] std::string_view abscissaQuantity() const noexcept { return metadata.abscissaQuantity; }
+    [[nodiscard]] std::string_view abscissaUnit() const noexcept { return metadata.abscissaUnit; }
 
-    [[nodiscard]] virtual std::size_t bufferCapacity() const noexcept = 0;
+    [[nodiscard]] DataGuard dataGuard() const { return DataGuard(_mutex); }
 
-    /// a named consumer's minimum history, held until `timeout` passes without a new request
-    virtual void requestCapacity(std::string_view source, std::size_t capacity, std::chrono::seconds timeout = std::chrono::seconds{60}, CapacityRequests::clock::time_point now = CapacityRequests::clock::now()) = 0;
+    /// the streaming samples held
+    [[nodiscard]] std::size_t size() const noexcept { return _xValues.size(); }
 
-    /// drops expired requests and resizes the history to the largest one left
-    virtual void expireCapacityRequests(CapacityRequests::clock::time_point now = CapacityRequests::clock::now()) = 0;
+    [[nodiscard]] SampleWindow samples() const {
+        const auto y = std::visit([](const auto& values) -> SampleWindow::Values { return values.get_span(0); }, _yValues);
+        return {.x = _xValues.get_span(0), .y = y, .first = _totalSampleCount - std::min(_totalSampleCount, _xValues.size())};
+    }
 
-    [[nodiscard]] virtual DataGuard dataGuard() const = 0;
+    [[nodiscard]] bool                                hasDataSets() const noexcept { return !_dataSets.empty(); }
+    [[nodiscard]] std::span<const gr::DataSet<float>> dataSets() const noexcept { return _dataSets; }
 
-    virtual gr::work::Status draw(const gr::property_map& config = {}) = 0;
+    [[nodiscard]] std::size_t datasetRow(const gr::DataSet<float>& dataSet) const noexcept { return metadata.datasetIndex < dataSet.size() ? metadata.datasetIndex : 0UZ; }
 
-    [[nodiscard]] virtual bool drawEnabled() const noexcept = 0;
+    /// the held frame with generation `next`, else the oldest held after it; 0 = the newest.
+    /// A DataSet sink's frames are its DataSets, counted from 1 like its tensor frames
+    [[nodiscard]] FrameView frame(std::uint64_t next = 0U) const {
+        if (_kind == SignalKind::Dataset1D) {
+            if (_dataSets.empty()) {
+                return {};
+            }
+            const auto          newest     = static_cast<std::uint64_t>(_totalSampleCount);
+            const std::uint64_t oldest     = newest + 1U - _dataSets.size();
+            const std::uint64_t generation = next == 0U ? newest : std::clamp(next, oldest, newest);
+            return dataSetFrame(*std::next(_dataSets.begin(), static_cast<std::ptrdiff_t>(generation - oldest)), generation);
+        }
+        return std::visit(
+            [this, next]<typename TFrames>(const TFrames& frames) -> FrameView {
+                if constexpr (std::is_same_v<TFrames, std::monostate>) {
+                    return {};
+                } else {
+                    if (frames.empty()) {
+                        return {};
+                    }
+                    const std::uint64_t oldest     = _frameGeneration + 1U - frames.size();
+                    const std::uint64_t generation = next == 0U ? _frameGeneration : std::clamp(next, oldest, _frameGeneration);
+                    const auto&         frame      = *std::next(frames.begin(), static_cast<std::ptrdiff_t>(generation - oldest));
+                    if (frame.rank() != 2UZ) {
+                        return {};
+                    }
+                    using V = typename TFrames::value_type::value_type;
+                    return {.values = std::span<const V>(frame.data(), frame.size()), .rows = frame.extents()[0], .columns = frame.extents()[1], .generation = generation, .axes = _axes, .columnCoordinates = {}, .dataSet = nullptr};
+                }
+            },
+            _frames);
+    }
 
-    [[nodiscard]] virtual std::string_view signalQuantity() const noexcept   = 0;
-    [[nodiscard]] virtual std::string_view signalUnit() const noexcept       = 0;
-    [[nodiscard]] virtual std::string_view abscissaQuantity() const noexcept = 0;
-    [[nodiscard]] virtual std::string_view abscissaUnit() const noexcept     = 0;
+    [[nodiscard]] FrameView dataSetFrame(const gr::DataSet<float>& dataSet, std::uint64_t generation) const {
+        const auto axisOf = [&dataSet](std::size_t d) {
+            ImageAxis axis{.origin = 0.0, .step = 1.0, .name = d < dataSet.axis_names.size() ? std::string(dataSet.axis_names[d]) : std::string{}, .unit = d < dataSet.axis_units.size() ? std::string(dataSet.axis_units[d]) : std::string{}};
+            if (d < dataSet.axis_values.size() && !dataSet.axis_values[d].empty()) {
+                const auto& values = dataSet.axis_values[d];
+                axis.origin        = static_cast<double>(values[0]);
+                axis.step          = values.size() > 1UZ ? static_cast<double>(values[1] - values[0]) : 1.0;
+            }
+            return axis;
+        };
+        const auto coordinates = [&dataSet](std::size_t d) { return d < dataSet.axis_values.size() ? std::span<const float>(dataSet.axis_values[d]) : std::span<const float>{}; };
+        if (dataSet.extents.size() == 2UZ) {
+            const auto rows    = static_cast<std::size_t>(std::max(dataSet.extents[0], 0));
+            const auto columns = static_cast<std::size_t>(std::max(dataSet.extents[1], 0));
+            const auto image   = dataSet.size() == 0UZ ? std::span<const float>{} : dataSet.signalValues(datasetRow(dataSet));
+            if (image.size() != rows * columns) {
+                return {};
+            }
+            return {.values = image, .rows = rows, .columns = columns, .generation = generation, .axes = {axisOf(0UZ), axisOf(1UZ)}, .columnCoordinates = coordinates(1UZ), .dataSet = &dataSet};
+        }
+        const std::size_t columns = dataSet.axis_values.empty() ? 0UZ : dataSet.axis_values[0].size();
+        if (columns == 0UZ || dataSet.signal_values.size() != dataSet.size() * columns) {
+            return {};
+        }
+        return {.values = std::span<const float>(dataSet.signal_values), .rows = dataSet.size(), .columns = columns, .generation = generation, .axes = {ImageAxis{.origin = 0.0, .step = 1.0, .name = "signal", .unit = {}}, axisOf(0UZ)}, .columnCoordinates = coordinates(0UZ), .dataSet = &dataSet};
+    }
+
+    [[nodiscard]] std::span<const DatedMap> events() const noexcept { return _events; }
+    [[nodiscard]] std::uint64_t             eventGeneration() const noexcept { return _eventGeneration.load(std::memory_order_acquire); }
+
+    void forEachTag(std::function<void(double timestamp, const gr::property_map& properties)> callback) const {
+        for (const DatedMap& tag : _tags) {
+            callback(tag.utcSeconds, tag.map);
+        }
+    }
+
+    [[nodiscard]] double timeLast() const noexcept { return _xValues.empty() ? 0.0 : _xValues.get_span(0).back(); }
+
+    /// since creation, not only those held: samples, DataSets or frames
+    [[nodiscard]] std::size_t totalSampleCount() const noexcept { return _totalSampleCount; }
+    [[nodiscard]] std::size_t bufferCapacity() const noexcept { return _capacity; }
+
+    /// a named consumer's minimum history, held until `timeout` passes without a new request; takes the guard itself
+    void requestCapacity(std::string_view source, std::size_t capacity, std::chrono::seconds timeout = std::chrono::seconds{60}, CapacityRequests::clock::time_point now = CapacityRequests::clock::now()) {
+        std::lock_guard lock(_mutex);
+        std::ignore = _capacityRequests.request(source, capacity, now + timeout);
+        applyCapacity();
+    }
+
+    void expireCapacityRequests(CapacityRequests::clock::time_point now = CapacityRequests::clock::now()) {
+        std::lock_guard lock(_mutex);
+        std::ignore = _capacityRequests.expire(now);
+        applyCapacity();
+    }
+
+    /// the configured capacity until a chart asks, then the charts' largest live request (at least the floor);
+    /// an event sink keeps at least the configured capacity.
+    /// Charts never change the configured capacity.
+    [[nodiscard]] std::size_t wantedCapacity() const noexcept {
+        if (_capacityRequests.empty()) {
+            return _configuredCapacity;
+        }
+        return _kind == SignalKind::Events ? std::max(_configuredCapacity, _capacityRequests.largest()) : std::max(_capacityRequests.largest(), 1UZ);
+    }
+
+    void setConfiguredCapacity(std::size_t capacity) {
+        _configuredCapacity = std::max(capacity, 1UZ);
+        applyCapacity();
+    }
+
+    void applyCapacity() { // a shrinking store drops its oldest items
+        const std::size_t capacity = wantedCapacity();
+        if (capacity == _capacity) {
+            return;
+        }
+        _capacity             = capacity;
+        const auto keepNewest = [capacity](auto& buffer) {
+            while (buffer.size() > capacity) {
+                buffer.pop_front();
+            }
+            buffer.resize(capacity);
+        };
+        switch (_kind) {
+        case SignalKind::Streaming:
+            keepNewest(_xValues);
+            std::visit(keepNewest, _yValues);
+            dropTagsBeforeOldestSample();
+            break;
+        case SignalKind::Dataset1D: _dataSets.erase(_dataSets.begin(), _dataSets.end() - static_cast<std::ptrdiff_t>(std::min(_dataSets.size(), capacity))); break;
+        case SignalKind::Events: keepNewestEvents(capacity); break;
+        default: break; // tensor frames: max_backlog decides
+        }
+    }
+
+    template<typename V>
+    void pushSample(double utcSeconds, V value) {
+        _xValues.push_back(utcSeconds);
+        std::visit([value](auto& values) { values.push_back(static_cast<typename std::remove_cvref_t<decltype(values)>::value_type>(value)); }, _yValues);
+        ++_totalSampleCount;
+    }
+
+    /// moves every held sample and tag in time: the provisional history rebased onto the first valid trigger
+    void shiftTimes(double seconds) {
+        for (std::size_t i = 0UZ, n = _xValues.size(); i < n; ++i) {
+            const double utcSeconds = _xValues.front();
+            _xValues.pop_front();
+            _xValues.push_back(utcSeconds + seconds);
+        }
+        for (DatedMap& tag : _tags) {
+            tag.utcSeconds += seconds;
+        }
+    }
+
+    gr::property_map& pushTag(double utcSeconds, gr::property_map map) { return _tags.emplace_back(utcSeconds, std::move(map)).map; }
+
+    void dropTagsBeforeOldestSample() {
+        if (!_xValues.empty()) {
+            const double oldest = _xValues.get_span(0).front();
+            std::erase_if(_tags, [oldest](const DatedMap& tag) { return tag.utcSeconds < oldest; });
+        }
+    }
+
+    /// every event counts in eventGeneration(), held or not
+    void pushEvent(double utcSeconds, gr::property_map event) {
+        _events.push_back(DatedMap{.utcSeconds = utcSeconds, .map = std::move(event)});
+        _eventGeneration.fetch_add(1U, std::memory_order_release);
+    }
+
+    void keepNewestEvents(std::size_t count) { _events.erase(_events.begin(), _events.end() - static_cast<std::ptrdiff_t>(std::min(_events.size(), count))); }
+
+    void countSamples(std::size_t count) noexcept { _totalSampleCount += count; } // a tag sink's stream
+
+    /// a full history assigns the DataSet into its oldest entry's buffers: no allocation once the sizes repeat
+    void pushDataSet(const gr::DataSet<float>& dataSet) {
+        if (_dataSets.size() < _capacity) {
+            _dataSets.push_back(dataSet);
+        } else {
+            std::ranges::rotate(_dataSets, std::next(_dataSets.begin()));
+            _dataSets.back() = dataSet;
+        }
+        ++_totalSampleCount;
+    }
+
+    void pushDataSet(gr::DataSet<float>&& dataSet) {
+        if (_dataSets.size() >= _capacity) {
+            _dataSets.erase(_dataSets.begin());
+        }
+        _dataSets.push_back(std::move(dataSet));
+        ++_totalSampleCount;
+    }
+
+    /// the newest `keep` of `frames` (TensorViews), reusing the dropped oldest frames' buffers; every frame counts
+    template<typename V>
+    void pushFrames(const std::ranges::random_access_range auto& frames, std::size_t keep) {
+        if (!std::holds_alternative<std::deque<gr::Tensor<V>>>(_frames)) {
+            _frames.template emplace<std::deque<gr::Tensor<V>>>();
+        }
+        auto&             held  = std::get<std::deque<gr::Tensor<V>>>(_frames);
+        const std::size_t count = std::ranges::size(frames);
+        for (std::size_t i = count - std::min(count, keep); i < count; ++i) {
+            gr::Tensor<V> recycled{};
+            if (held.size() >= keep) {
+                recycled = std::move(held.front());
+                held.pop_front();
+            }
+            const auto& frame = frames[i];
+            if (!std::ranges::equal(recycled.extents(), frame.extents())) {
+                recycled.resize(frame.extents());
+            }
+            std::ranges::transform(std::span(frame.data(), frame.size()), recycled.data(), [](auto value) { return static_cast<V>(value); });
+            held.push_back(std::move(recycled));
+        }
+        while (held.size() > keep) {
+            held.pop_front();
+        }
+        _frameGeneration += count;
+        _totalSampleCount += count;
+    }
 };
 
 template<std::ranges::range TSinks>
@@ -154,345 +438,6 @@ template<std::ranges::range TSinks>
     }
     return guards;
 }
-
-/// non-owning SignalSink over a sink block that the graph owns
-template<gr::BlockLike T>
-struct SinkAdapter : public SignalSink {
-    std::atomic<T*> _block; // nullptr after invalidate()
-
-    // valid after invalidate()
-    std::string _cachedName;
-    std::string _cachedUniqueName;
-
-    // outlives the block: no TOCTOU between blockPtr() and dataMutex()
-    std::shared_ptr<std::mutex> _sharedMutex;
-
-    mutable std::mutex _fallbackMutex; // for a block without sharedDataMutex()
-
-    explicit SinkAdapter(T& block) : _block(&block), _cachedName(block.name.value), _cachedUniqueName(block.unique_name) {
-        if constexpr (requires { block.sharedDataMutex(); }) {
-            _sharedMutex = block.sharedDataMutex();
-        }
-    }
-
-    ~SinkAdapter() override = default;
-
-    SinkAdapter(const SinkAdapter&)            = delete;
-    SinkAdapter& operator=(const SinkAdapter&) = delete;
-    SinkAdapter(SinkAdapter&&)                 = delete;
-    SinkAdapter& operator=(SinkAdapter&&)      = delete;
-
-    /// called by the owning block's destructor to prevent dangling access
-    void invalidate() noexcept { _block.store(nullptr, std::memory_order_release); }
-
-    [[nodiscard]] T* blockPtr() const noexcept { return _block.load(std::memory_order_acquire); }
-
-    [[nodiscard]] std::string_view name() const noexcept override { return _cachedName; }
-
-    [[nodiscard]] std::string_view uniqueName() const noexcept override { return _cachedUniqueName; }
-
-    [[nodiscard]] std::string_view signalName() const noexcept override {
-        auto* b = blockPtr();
-        if (!b) {
-            return _cachedName;
-        }
-        if constexpr (requires { b->signalName(); }) {
-            return b->signalName();
-        } else {
-            return b->name.value;
-        }
-    }
-
-    [[nodiscard]] std::uint32_t color() const noexcept override {
-        auto* b = blockPtr();
-        if (!b) {
-            return 0xFFFFFF;
-        }
-        if constexpr (requires { b->color.value; }) {
-            return b->color.value;
-        }
-        return 0xFFFFFF;
-    }
-
-    [[nodiscard]] float sampleRate() const noexcept override {
-        auto* b = blockPtr();
-        if (!b) {
-            return 1.0f;
-        }
-        if constexpr (requires { b->sampleRate(); }) {
-            return b->sampleRate();
-        } else if constexpr (requires { b->sample_rate.value; }) {
-            return static_cast<float>(b->sample_rate.value);
-        }
-        return 1.0f;
-    }
-
-    [[nodiscard]] float lineWidth() const noexcept override {
-        auto* b = blockPtr();
-        if (!b) {
-            return 1.0f;
-        }
-        if constexpr (requires { b->lineWidth(); }) {
-            return b->lineWidth();
-        } else if constexpr (requires { b->line_width.value; }) {
-            return static_cast<float>(b->line_width.value);
-        }
-        return 1.0f;
-    }
-
-    [[nodiscard]] std::string_view signalQuantity() const noexcept override {
-        auto* b = blockPtr();
-        if (!b) {
-            return "";
-        }
-        if constexpr (requires { b->signalQuantity(); }) {
-            return b->signalQuantity();
-        } else if constexpr (requires { b->signal_quantity; }) {
-            return b->signal_quantity.value;
-        }
-        return "";
-    }
-
-    [[nodiscard]] std::string_view signalUnit() const noexcept override {
-        auto* b = blockPtr();
-        if (!b) {
-            return "";
-        }
-        if constexpr (requires { b->signalUnit(); }) {
-            return b->signalUnit();
-        } else if constexpr (requires { b->signal_unit; }) {
-            return b->signal_unit.value;
-        }
-        return "";
-    }
-
-    [[nodiscard]] std::string_view abscissaQuantity() const noexcept override {
-        auto* b = blockPtr();
-        if (!b) {
-            return "time";
-        }
-        if constexpr (requires { b->abscissaQuantity(); }) {
-            return b->abscissaQuantity();
-        } else if constexpr (requires { b->abscissa_quantity; }) {
-            return b->abscissa_quantity.value;
-        }
-        return "time";
-    }
-
-    [[nodiscard]] std::string_view abscissaUnit() const noexcept override {
-        auto* b = blockPtr();
-        if (!b) {
-            return "s";
-        }
-        if constexpr (requires { b->abscissaUnit(); }) {
-            return b->abscissaUnit();
-        } else if constexpr (requires { b->abscissa_unit; }) {
-            return b->abscissa_unit.value;
-        }
-        return "s";
-    }
-
-    [[nodiscard]] std::size_t size() const noexcept override {
-        auto* b = blockPtr();
-        if (!b) {
-            return 0;
-        }
-        if constexpr (requires { b->size(); }) {
-            return b->size();
-        }
-        return 0;
-    }
-
-    [[nodiscard]] double xAt(std::size_t index) const override {
-        auto* b = blockPtr();
-        if (!b) {
-            return 0.0;
-        }
-        if constexpr (requires { b->xAt(index); }) {
-            return b->xAt(index);
-        }
-        return 0.0;
-    }
-
-    [[nodiscard]] float yAt(std::size_t index) const override {
-        auto* b = blockPtr();
-        if (!b) {
-            return 0.0f;
-        }
-        if constexpr (requires { b->yAt(index); }) {
-            return b->yAt(index);
-        }
-        return 0.0f;
-    }
-
-    [[nodiscard]] bool hasDataSets() const noexcept override {
-        auto* b = blockPtr();
-        if (!b) {
-            return false;
-        }
-        if constexpr (requires { b->hasDataSets(); }) {
-            return b->hasDataSets();
-        }
-        return false;
-    }
-
-    [[nodiscard]] std::size_t dataSetCount() const noexcept override {
-        auto* b = blockPtr();
-        if (!b) {
-            return 0;
-        }
-        if constexpr (requires { b->dataSetCount(); }) {
-            return b->dataSetCount();
-        }
-        return 0;
-    }
-
-    [[nodiscard]] std::span<const gr::DataSet<float>> dataSets() const override {
-        auto* b = blockPtr();
-        if (!b) {
-            return {};
-        }
-        if constexpr (requires { b->dataSets(); }) {
-            return b->dataSets();
-        }
-        return {};
-    }
-
-    [[nodiscard]] SignalKind signalKind() const noexcept override {
-        auto* b = blockPtr();
-        if (!b) {
-            return {};
-        }
-        if constexpr (requires { b->signalKind(); }) {
-            return b->signalKind();
-        }
-        return SignalKind::None;
-    }
-
-    [[nodiscard]] ImageFrame imageFrame(std::uint64_t next = 0U) const override {
-        auto* b = blockPtr();
-        if constexpr (requires { b->imageFrame(next); }) {
-            if (b) {
-                return b->imageFrame(next);
-            }
-        }
-        return {};
-    }
-
-    [[nodiscard]] std::span<const gr::property_map> events() const override {
-        auto* b = blockPtr();
-        if constexpr (requires { b->events(); }) {
-            if (b) {
-                return b->events();
-            }
-        }
-        return {};
-    }
-
-    [[nodiscard]] std::uint64_t eventGeneration() const noexcept override {
-        auto* b = blockPtr();
-        if constexpr (requires { b->eventGeneration(); }) {
-            if (b) {
-                return b->eventGeneration();
-            }
-        }
-        return 0U;
-    }
-
-    void forEachTag(std::function<void(double, const gr::property_map&)> callback) const override {
-        auto* b = blockPtr();
-        if (!b) {
-            return;
-        }
-        if constexpr (requires { b->forEachTag(callback); }) {
-            b->forEachTag(callback);
-        }
-    }
-
-    [[nodiscard]] double timeLast() const noexcept override {
-        auto* b = blockPtr();
-        if (!b) {
-            return 0.0;
-        }
-        if constexpr (requires { b->timeLast(); }) {
-            return b->timeLast();
-        }
-        return 0.0;
-    }
-
-    [[nodiscard]] std::size_t totalSampleCount() const noexcept override {
-        auto* b = blockPtr();
-        if (!b) {
-            return 0;
-        }
-        if constexpr (requires { b->totalSampleCount(); }) {
-            return b->totalSampleCount();
-        } else if constexpr (requires { b->_sampleCount; }) {
-            return b->_sampleCount;
-        }
-        return 0;
-    }
-
-    [[nodiscard]] std::size_t bufferCapacity() const noexcept override {
-        auto* b = blockPtr();
-        if (!b) {
-            return 0;
-        }
-        if constexpr (requires { b->bufferCapacity(); }) {
-            return b->bufferCapacity();
-        }
-        return 0;
-    }
-
-    void requestCapacity(std::string_view source, std::size_t capacity, std::chrono::seconds timeout = std::chrono::seconds{60}, CapacityRequests::clock::time_point now = CapacityRequests::clock::now()) override {
-        auto* b = blockPtr();
-        if (!b) {
-            return;
-        }
-        if constexpr (requires { b->requestCapacity(source, capacity, timeout, now); }) {
-            b->requestCapacity(source, capacity, timeout, now);
-        }
-    }
-
-    void expireCapacityRequests(CapacityRequests::clock::time_point now = CapacityRequests::clock::now()) override {
-        auto* b = blockPtr();
-        if (!b) {
-            return;
-        }
-        if constexpr (requires { b->expireCapacityRequests(now); }) {
-            b->expireCapacityRequests(now);
-        }
-    }
-
-    [[nodiscard]] DataGuard dataGuard() const override {
-        if (_sharedMutex) {
-            return DataGuard(*_sharedMutex);
-        }
-        return DataGuard(_fallbackMutex);
-    }
-
-    gr::work::Status draw(const gr::property_map& config = {}) override {
-        auto* b = blockPtr();
-        if (!b) {
-            return gr::work::Status::OK;
-        }
-        if constexpr (requires { b->draw(config); }) {
-            return b->draw(config);
-        }
-        return gr::work::Status::OK;
-    }
-
-    [[nodiscard]] bool drawEnabled() const noexcept override {
-        auto* b = blockPtr();
-        if (!b) {
-            return true;
-        }
-        if constexpr (requires { b->visible.value; }) {
-            return b->visible.value;
-        }
-        return true;
-    }
-};
 
 } // namespace gr::od
 

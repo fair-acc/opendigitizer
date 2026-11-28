@@ -162,8 +162,8 @@ struct TestApp : public test::ImGuiTestApp {
                 expect(!chart->follow_inputs.value) << "a drag stops following the inputs";
                 expect(gState->waitUntil(ctx, "the display shows it, right-aligned", [&] { return display->_drawnNumber == std::format("{:.1f}", dragged) && std::abs(display->_drawnRightGap) < 0.5f; })) << display->_drawnNumber;
                 expect(gState->waitUntil(ctx, "the time plot's sink receives it", [&] {
-                    std::lock_guard lock(sink->dataMutex());
-                    return sink->size() > 0UZ;
+                    const DataGuard guard = sink->signalSink()->dataGuard();
+                    return sink->signalSink()->size() > 0UZ;
                 }));
 
                 const auto [low, upper, marker] = *chart->drawnHandles();
@@ -270,9 +270,9 @@ struct TestApp : public test::ImGuiTestApp {
                         if (block == nullptr) {
                             return std::nullopt;
                         }
-                        const auto*     sink = static_cast<const ImPlotSink<gr::DataSet<float>>*>(block->raw());
-                        std::lock_guard lock(sink->dataMutex());
-                        return sink->dataSets().empty() ? std::nullopt : std::optional(sink->dataSets().back());
+                        const auto*     sink  = static_cast<const ImPlotSink<gr::DataSet<float>>*>(block->raw());
+                        const DataGuard guard = sink->signalSink()->dataGuard();
+                        return sink->signalSink()->dataSets().empty() ? std::nullopt : std::optional(sink->signalSink()->dataSets().back());
                     };
                     expect(gState->waitUntil(ctx, std::format("{}: a triggered snapshot and a spectrum", array), [&] { return newest(std::format("snapshotSink{}", shown.front())) && newest("spectrum"); })) << array;
                     if (array != "Square") { // the fork arrays: the first two band-passed channels against each other
@@ -319,12 +319,12 @@ struct TestApp : public test::ImGuiTestApp {
                     if (block == nullptr) {
                         return std::nullopt;
                     }
-                    const auto*     sink = static_cast<const ImPlotSink<gr::DataSet<float>>*>(block->raw());
-                    std::lock_guard lock(sink->dataMutex());
-                    if (sink->dataSets().empty()) {
+                    const auto*     sink  = static_cast<const ImPlotSink<gr::DataSet<float>>*>(block->raw());
+                    const DataGuard guard = sink->signalSink()->dataGuard();
+                    if (sink->signalSink()->dataSets().empty()) {
                         return std::nullopt;
                     }
-                    for (const auto& [index, map] : sink->dataSets().back().timing_events | std::views::join) {
+                    for (const auto& [index, map] : sink->signalSink()->dataSets().back().timing_events | std::views::join) {
                         if (const auto it = map.find(gr::tag::kTriggerName); it != map.end() && it->second.value_or(std::string_view{}) == std::format("audio{}", channel)) {
                             return index - 1440; // n_pre
                         }

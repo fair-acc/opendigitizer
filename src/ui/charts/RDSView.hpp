@@ -56,7 +56,7 @@ With `tuner` set, e.g. to "RTLSDR:frequency", the panel also tunes the radio: th
     static constexpr double                             kBandLow             = 87.5e6;
     static constexpr double                             kBandHigh            = 108e6;
     static constexpr int                                kMajorTickMHz        = 5;
-    static constexpr SignalKind                         kSupportedSignals    = SignalKind::Streaming;
+    static constexpr SignalKind                         kSupportedSignals    = SignalKind::Events;
     static constexpr std::string_view                   kChartTypeName       = "RDSView";
 
     struct TrafficEntry {
@@ -334,14 +334,14 @@ With `tuner` set, e.g. to "RTLSDR:frequency", the panel also tunes the radio: th
             const auto& sink   = _signalSinks.front();
             auto        guard  = sink->dataGuard();
             double      newest = _lastTagUtcSeconds;
-            sink->forEachTag([this, &newest](double utcSeconds, const gr::property_map& tag) {
+            for (const auto& [utcSeconds, tag] : sink->events()) {
                 if (utcSeconds > _lastTagUtcSeconds) {
                     if (utcSeconds >= _tunedUtcSeconds + kRetuneSettleSeconds) {
                         _reception.add(utcSeconds, tag);
                     }
                     newest = std::max(newest, utcSeconds);
                 }
-            });
+            }
             _lastTagUtcSeconds = newest;
             bitCount           = sink->totalSampleCount();
         }

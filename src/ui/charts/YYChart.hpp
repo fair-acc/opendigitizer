@@ -166,10 +166,10 @@ struct YYChart : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui
         }
 
         struct XYContext {
-            const SignalSink* sink;
-            std::size_t       offset;
+            SampleWindow window;
+            std::size_t  offset;
         };
-        XYContext   ctx{sinkPtr.get(), offset};
+        XYContext   ctx{sinkPtr->samples(), offset};
         std::string signalLabel = plotLabel(*sinkPtr);
 
         plotSeries(
@@ -177,9 +177,7 @@ struct YYChart : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui
             [](int idx, void* user_data) -> ImPlotPoint {
                 auto*       c         = static_cast<XYContext*>(user_data);
                 std::size_t actualIdx = c->offset + static_cast<std::size_t>(idx);
-                double      x         = c->sink->xAt(actualIdx);
-                double      y         = static_cast<double>(c->sink->yAt(actualIdx));
-                return ImPlotPoint(x, y);
+                return ImPlotPoint(c->window.x[actualIdx], c->window.yAt(actualIdx));
             },
             &ctx, dataCount, sinkColor(sinkPtr->color()), seriesLineWidth(*sinkPtr));
 
@@ -210,8 +208,7 @@ struct YYChart : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui
             return;
         }
 
-        std::size_t count  = std::min(totalCount, static_cast<std::size_t>(n_history.value));
-        std::size_t offset = totalCount - count;
+        std::size_t count = std::min(totalCount, static_cast<std::size_t>(n_history.value));
 
         if (!TouchHandler<>::beginZoomablePlot(chart_name.value, size, plotFlags)) {
             return;
@@ -238,28 +235,25 @@ struct YYChart : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui
         {
             ImVec4 xColor = sinkColor(sinkXPtr->color());
             ImPlot::SetNextLineStyle(xColor);
-            double      dummyX       = static_cast<double>(sinkXPtr->yAt(offset));
-            double      dummyY       = static_cast<double>(sinkYPtr->yAt(offset));
+            double      dummyX       = sinkXPtr->samples().newest(count).yAt(0UZ);
+            double      dummyY       = sinkYPtr->samples().newest(count).yAt(0UZ);
             std::string xLegendLabel = plotLabel(*sinkXPtr);
             ImPlot::PlotLine(xLegendLabel.c_str(), &dummyX, &dummyY, 1, ImPlotLineFlags_NoClip);
         }
 
-        struct CorrelationContext {
-            const SignalSink* sinkX;
-            const SignalSink* sinkY;
-            std::size_t       offset;
+        struct CorrelationContext { // paired from the newest end: the sinks may hold different counts
+            SampleWindow x;
+            SampleWindow y;
         };
-        CorrelationContext ctx{sinkXPtr.get(), sinkYPtr.get(), offset};
+        CorrelationContext ctx{sinkXPtr->samples().newest(count), sinkYPtr->samples().newest(count)};
         std::string        yLegendLabel = plotLabel(*sinkYPtr);
 
         plotSeries(
             yLegendLabel.c_str(),
             [](int idx, void* user_data) -> ImPlotPoint {
-                auto*       c         = static_cast<CorrelationContext*>(user_data);
-                std::size_t actualIdx = c->offset + static_cast<std::size_t>(idx);
-                double      x         = static_cast<double>(c->sinkX->yAt(actualIdx));
-                double      y         = static_cast<double>(c->sinkY->yAt(actualIdx));
-                return ImPlotPoint(x, y);
+                const auto*       c = static_cast<const CorrelationContext*>(user_data);
+                const std::size_t i = static_cast<std::size_t>(idx);
+                return ImPlotPoint(c->x.yAt(i), c->y.yAt(i));
             },
             &ctx, count, sinkColor(sinkYPtr->color()), seriesLineWidth(*sinkYPtr));
 
@@ -346,16 +340,15 @@ struct YYChart : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui
             auto   lockX  = sinkXPtr->dataGuard();
             ImVec4 xColor = sinkColor(sinkXPtr->color());
             ImPlot::SetNextLineStyle(xColor);
-            double      dummyX       = static_cast<double>(sinkXPtr->yAt(0));
-            double      dummyY       = static_cast<double>(sinkXPtr->yAt(0));
+            double      dummyX       = sinkXPtr->samples().yAt(0UZ);
+            double      dummyY       = dummyX;
             std::string xLegendLabel = plotLabel(*sinkXPtr);
             ImPlot::PlotLine(xLegendLabel.c_str(), &dummyX, &dummyY, 1, ImPlotLineFlags_NoClip);
         }
 
-        struct PlotContext {
-            const SignalSink* sinkX;
-            const SignalSink* sinkY;
-            std::size_t       offset;
+        struct PlotContext { // paired from the newest end: the sinks may hold different counts
+            SampleWindow x;
+            SampleWindow y;
         };
 
         for (std::size_t i = 1; i < _signalSinks.size(); ++i) {
@@ -375,22 +368,19 @@ struct YYChart : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui
                 continue;
             }
 
-            std::size_t count  = std::min(totalCount, static_cast<std::size_t>(n_history.value));
-            std::size_t offset = totalCount - count;
+            std::size_t count = std::min(totalCount, static_cast<std::size_t>(n_history.value));
 
             std::size_t yAxisIdx = axis::findAxisForSink(sinkYPtr->uniqueName(), false, std::array<std::vector<std::string>, 3>{}, yAxisGroups);
             ImPlot::SetAxes(ImAxis_X1, static_cast<ImAxis>(ImAxis_Y1 + yAxisIdx));
 
-            PlotContext ctx{sinkXPtr.get(), sinkYPtr.get(), offset};
+            PlotContext ctx{sinkXPtr->samples().newest(count), sinkYPtr->samples().newest(count)};
             std::string yLabel = plotLabel(*sinkYPtr);
             plotSeries(
                 yLabel.c_str(),
                 [](int idx, void* user_data) -> ImPlotPoint {
-                    auto*       c         = static_cast<PlotContext*>(user_data);
-                    std::size_t actualIdx = c->offset + static_cast<std::size_t>(idx);
-                    double      x         = static_cast<double>(c->sinkX->yAt(actualIdx));
-                    double      y         = static_cast<double>(c->sinkY->yAt(actualIdx));
-                    return ImPlotPoint(x, y);
+                    const auto* c      = static_cast<const PlotContext*>(user_data);
+                    const auto  sample = static_cast<std::size_t>(idx);
+                    return ImPlotPoint(c->x.yAt(sample), c->y.yAt(sample));
                 },
                 &ctx, count, sinkColor(sinkYPtr->color()), seriesLineWidth(*sinkYPtr));
         }

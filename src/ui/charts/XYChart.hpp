@@ -27,7 +27,18 @@ namespace gr::od::charts {
 
 struct DataSetPlotContext {
     const gr::DataSet<float>* dataSet;
+    std::size_t               row     = 0UZ;
+    double                    yOffset = 0.0;
 };
+
+struct HistoryTrace {
+    float  opacity = 1.0f;
+    double yOffset = 0.0;
+};
+
+[[nodiscard]] inline HistoryTrace historyTrace(std::size_t age, float opacityDecay, float verticalOffset) noexcept { //
+    return {.opacity = std::pow(1.0f - std::clamp(opacityDecay, 0.0f, 1.0f), static_cast<float>(age)), .yOffset = static_cast<double>(age) * static_cast<double>(verticalOffset)};
+}
 
 struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui">>, Chart {
     using Description = gr::Doc<"Y values over a common X axis: signals grouped onto several axes by quantity and unit, with a UTC, relative-time or sample-index X axis, tags and a fading DataSet history.">;
@@ -198,7 +209,7 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
 
             auto dataLock = sink->dataGuard();
 
-            if (sink->size() > 0) {
+            if (sink->hasDataSets() || sink->size() > 0) {
                 ImVec4 baseColor = sinkColor(sink->color());
 
                 if (sink->hasDataSets()) {
@@ -215,13 +226,11 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
                     drawStreamingSignal(*sink);
 
                     if (show_tags.value && (tags_of_every_signal.value || !tagsDrawnForFirstSink)) {
-                        std::size_t totalCount = sink->size();
-                        std::size_t dataCount  = std::min(totalCount, static_cast<std::size_t>(n_history.value));
-                        std::size_t offset     = totalCount - dataCount;
-                        double      xMin       = sink->xAt(offset);
-                        double      xMax       = sink->xAt(offset + dataCount - 1);
-                        AxisScale   xAxisScale = _xCategories[xAxisIdx].has_value() ? _xCategories[xAxisIdx]->scale : AxisScale::Linear;
-                        ImVec4      tagColor   = baseColor;
+                        const SampleWindow window     = sink->samples().newest(static_cast<std::size_t>(n_history.value));
+                        const double       xMin       = window.x.front();
+                        const double       xMax       = window.x.back();
+                        AxisScale          xAxisScale = _xCategories[xAxisIdx].has_value() ? _xCategories[xAxisIdx]->scale : AxisScale::Linear;
+                        ImVec4             tagColor   = baseColor;
                         tagColor.w *= LookAndFeel::instance().chartStyle.tagAlpha;
                         tags::drawTags([&](auto&& fn) { sink->forEachTag(fn); }, xAxisScale, xMin, xMax, tagColor);
                         tagsDrawnForFirstSink = true;
@@ -287,12 +296,13 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
             }
         }
         if (refreshDue || snap.x.empty()) {
-            const double shift = xOffset(xAxisScale, sink.xAt(offset), sink.xAt(offset + dataCount - 1));
+            const SampleWindow window = sink.samples();
+            const double       shift  = xOffset(xAxisScale, window.x[offset], window.x[offset + dataCount - 1]);
             snap.x.resize(dataCount);
             snap.y.resize(dataCount);
             for (std::size_t i = 0; i < dataCount; ++i) {
-                snap.x[i] = sink.xAt(offset + i) - shift;
-                snap.y[i] = static_cast<double>(sink.yAt(offset + i));
+                snap.x[i] = window.x[offset + i] - shift;
+                snap.y[i] = window.yAt(offset + i);
             }
             axis::reduceToColumns(snap.x, snap.y, static_cast<std::size_t>(std::max(ImPlot::GetPlotSize().x, 0.0f)));
             snap.sourceCount = dataCount;
@@ -318,31 +328,29 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
         const std::size_t spanSize = allDataSets.size();
         const std::size_t offset   = spanSize - historySize;
         for (std::size_t i = 0; i < historySize; ++i) {
-            const auto&        ds = allDataSets[offset + i];
-            DataSetPlotContext ctx{&ds};
-
-            const bool isNewest = (i == historySize - 1);
-            float      opacity  = isNewest ? 1.0f : (0.2f + (static_cast<float>(i) / static_cast<float>(std::max(historySize, std::size_t{2}) - 1)) * 0.8f);
+            const auto& ds = allDataSets[offset + i];
+            if (ds.axis_values.empty() || ds.axis_values[0].empty() || ds.extents.size() > 1UZ) {
+                continue; // a rank-2 DataSet is an image: ImageChart shows it
+            }
+            const std::size_t  age   = historySize - 1UZ - i;
+            const HistoryTrace trace = historyTrace(age, history_opacity_decay, history_vertical_offset);
+            DataSetPlotContext ctx{.dataSet = &ds, .row = sink.datasetRow(ds), .yOffset = trace.yOffset};
 
             ImVec4 lineColor = baseColor;
-            lineColor.w      = opacity;
+            lineColor.w      = trace.opacity;
             ImPlot::SetNextLineStyle(lineColor, seriesLineWidth(sink));
 
-            std::string label = isNewest ? baseLabel : std::format("##{}_hist_{}", sink.uniqueName(), i);
-
-            if (ds.axis_values.empty() || ds.axis_values[0].empty()) {
-                continue;
-            }
-            int dataCount = static_cast<int>(ds.axis_values[0].size());
+            std::string label     = age == 0UZ ? baseLabel : std::format("##{}_hist_{}", sink.uniqueName(), i);
+            int         dataCount = static_cast<int>(ds.axis_values[0].size());
 
             const ImPlotGetter dataSetPoint = [](int idx, void* user_data) -> ImPlotPoint {
                 auto*       context = static_cast<DataSetPlotContext*>(user_data);
                 const auto& dataSet = *context->dataSet;
                 double      xVal    = static_cast<double>(dataSet.axis_values[0][static_cast<std::size_t>(idx)]);
-                double      yVal    = 0.0;
-                auto        sigVals = dataSet.signalValues(0UZ);
+                double      yVal    = context->yOffset;
+                auto        sigVals = dataSet.signalValues(context->row);
                 if (static_cast<std::size_t>(idx) < sigVals.size()) {
-                    yVal = static_cast<double>(sigVals[static_cast<std::size_t>(idx)]);
+                    yVal += static_cast<double>(sigVals[static_cast<std::size_t>(idx)]);
                 }
                 return ImPlotPoint(xVal, yVal);
             };

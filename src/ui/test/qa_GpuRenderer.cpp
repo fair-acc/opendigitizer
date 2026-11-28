@@ -21,16 +21,15 @@ using namespace boost::ut;
 
 namespace {
 using charts::XYChart;
-using test::TestStreamingSink;
 
 constexpr ImVec2 kGpuPos{50.f, 50.f};
 constexpr ImVec2 kCpuPos{750.f, 50.f};
 constexpr ImVec2 kChartSize{640.f, 400.f};
 
 struct TestState {
-    std::shared_ptr<TestStreamingSink> sink;
-    std::unique_ptr<XYChart>           gpu;
-    std::unique_ptr<XYChart>           cpu;
+    std::shared_ptr<SignalSink> sink;
+    std::unique_ptr<XYChart>    gpu;
+    std::unique_ptr<XYChart>    cpu;
 };
 
 TestState* gState = nullptr;
@@ -146,11 +145,11 @@ int main(int argc, char* argv[]) {
     TestApp app(options);
     app.initImGui();
 
-    state.sink = std::make_shared<TestStreamingSink>("gpu_line", 1024UZ);
-    state.sink->setColor(0x00C000);
-    std::ignore = charts::SinkRegistry::instance().registerSink(state.sink);
-    state.gpu   = makeChart("gpu", true);
-    state.cpu   = makeChart("cpu", false);
+    state.sink                 = test::makeTestStreamingSink("gpu_line", 1024UZ);
+    state.sink->metadata.color = 0x00C000;
+    std::ignore                = charts::SinkRegistry::instance().registerSink(state.sink);
+    state.gpu                  = makeChart("gpu", true);
+    state.cpu                  = makeChart("cpu", false);
 
     const bool result = app.runTests();
     state.gpu.reset();

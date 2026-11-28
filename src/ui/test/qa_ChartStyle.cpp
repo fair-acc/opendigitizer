@@ -20,7 +20,6 @@ using namespace boost;
 using namespace boost::ut;
 
 namespace {
-using test::TestStreamingSink;
 
 constexpr ImVec2 kChartPos{50.f, 50.f};
 constexpr ImVec2 kChartSize{640.f, 400.f};
@@ -28,23 +27,23 @@ constexpr ImVec2 kChartSize{640.f, 400.f};
 using Mode = charts::ChartMode;
 
 struct TestState {
-    std::shared_ptr<TestStreamingSink> voltage;
-    std::shared_ptr<TestStreamingSink> current;
-    std::unique_ptr<charts::XYChart>   singleAxis;
-    std::unique_ptr<charts::XYChart>   twoAxes;
-    charts::XYChart*                   drawn = nullptr;
-    Mode                               mode  = Mode::View;
-    std::optional<ImVec4>              hostBackground;
-    std::optional<ChartStyle>          fontProbeStyle;
-    ImFont*                            probedFont     = nullptr;
-    float                              probedFontSize = 0.f;
+    std::shared_ptr<SignalSink>      voltage;
+    std::shared_ptr<SignalSink>      current;
+    std::unique_ptr<charts::XYChart> singleAxis;
+    std::unique_ptr<charts::XYChart> twoAxes;
+    charts::XYChart*                 drawn = nullptr;
+    Mode                             mode  = Mode::View;
+    std::optional<ImVec4>            hostBackground;
+    std::optional<ChartStyle>        fontProbeStyle;
+    ImFont*                          probedFont     = nullptr;
+    float                            probedFontSize = 0.f;
 };
 
-std::shared_ptr<TestStreamingSink> makeSink(std::string name, std::uint32_t color, std::string quantity, std::string unit, double amplitude, double phase) {
-    auto sink = std::make_shared<TestStreamingSink>(std::move(name), 512);
-    sink->setColor(color);
-    sink->setSignalQuantity(std::move(quantity));
-    sink->setSignalUnit(std::move(unit));
+std::shared_ptr<SignalSink> makeSink(std::string name, std::uint32_t color, std::string quantity, std::string unit, double amplitude, double phase) {
+    auto sink                     = test::makeTestStreamingSink(std::move(name), 512);
+    sink->metadata.color          = color;
+    sink->metadata.signalQuantity = std::move(quantity);
+    sink->metadata.signalUnit     = std::move(unit);
     for (std::size_t i = 0UZ; i < 400UZ; ++i) {
         const double t = static_cast<double>(i) / 100.0;
         sink->pushSample(t, static_cast<float>(amplitude * std::sin(2.0 * std::numbers::pi * t + phase)));
@@ -228,12 +227,12 @@ struct TestApp : public test::ImGuiTestApp {
             };
 
             "a series takes its sink's line width unless the host's style sets one"_test = [&] {
-                const auto thin = drawAndCapture(ctx, *state.singleAxis, Mode::View, {});
-                state.voltage->setLineWidth(4.f);
-                const auto thick         = drawAndCapture(ctx, *state.singleAxis, Mode::View, {});
-                const auto hostOverrides = drawAndCapture(ctx, *state.singleAxis, Mode::View, chartStyle([](ChartStyle& s) { s.lineWidth = 1.f; }));
-                state.voltage->setLineWidth(1.f);
-                const auto nThin = thin->count(kPlotInterior, isVoltageGreen);
+                const auto thin                   = drawAndCapture(ctx, *state.singleAxis, Mode::View, {});
+                state.voltage->metadata.lineWidth = 4.f;
+                const auto thick                  = drawAndCapture(ctx, *state.singleAxis, Mode::View, {});
+                const auto hostOverrides          = drawAndCapture(ctx, *state.singleAxis, Mode::View, chartStyle([](ChartStyle& s) { s.lineWidth = 1.f; }));
+                state.voltage->metadata.lineWidth = 1.f;
+                const auto nThin                  = thin->count(kPlotInterior, isVoltageGreen);
                 expect(nThin > 500UZ) << fatal;
                 expect(thick->count(kPlotInterior, isVoltageGreen) > 5UZ * nThin / 2UZ) << std::format("sink width 4: {} green pixels, sink width 1: {}", thick->count(kPlotInterior, isVoltageGreen), nThin);
                 expect(hostOverrides->count(kPlotInterior, isVoltageGreen) < 6UZ * nThin / 5UZ) << std::format("host width 1 over sink width 4: {} green pixels, 1 px line: {}", hostOverrides->count(kPlotInterior, isVoltageGreen), nThin);
