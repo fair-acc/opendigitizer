@@ -3,7 +3,6 @@
 #include "LogHistory.hpp"
 #include "blocks/Arithmetic.hpp"
 #include "blocks/ImPlotSink.hpp"
-#include "blocks/TestSpectrumGenerator.hpp"
 #include "components/ImGuiNotify.hpp"
 
 #include <boost/ut.hpp>
@@ -45,7 +44,6 @@ void registerDemoDashboardBlocks() {
     gr::blocklib::initGrTestingBlocks(registry);
     gr::od::registerWithIdPrefix<gr::od::Arithmetic, float>(registry, gr::od::kOpendigitizerIdPrefix);
     gr::od::registerWithIdPrefix<gr::od::ImPlotSink, float, gr::DataSet<float>>(registry, gr::od::kOpendigitizerIdPrefix);
-    gr::od::registerWithIdPrefix<gr::od::TestSpectrumGenerator, float>(registry, gr::od::kOpendigitizerIdPrefix);
 }
 
 std::string demoDashboardGrc() {

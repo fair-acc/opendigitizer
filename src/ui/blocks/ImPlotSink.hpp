@@ -275,17 +275,9 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
     }
 
     void updateAxes(const gr::property_map& tag) {
-        const auto field   = [&tag](std::string_view key) { return tag.find_value(key).value_or(gr::pmt::Value{}); };
-        const auto doubles = [&field](std::string_view key) {
-            const gr::pmt::Value value = field(key);
-            const auto           view  = value.get_if<gr::TensorView<double>>();
-            return view ? std::vector<double>(view->begin(), view->end()) : std::vector<double>{};
-        };
-        const auto strings = [&field](std::string_view key) {
-            const gr::pmt::Value value = field(key);
-            const auto           view  = value.get_if<gr::TensorView<gr::pmt::Value>>();
-            return view ? *view | std::views::transform([](const gr::pmt::Value& v) { return v.value_or(std::string{}); }) | std::ranges::to<std::vector>() : std::vector<std::string>{};
-        };
+        const auto                     field   = [&tag](std::string_view key) { return tag.find_value(key).value_or(gr::pmt::Value{}); };
+        const auto                     doubles = [&field](std::string_view key) { return gr::pmt::convertTo_or<std::vector<double>>(field(key), std::vector<double>{}); };
+        const auto                     strings = [&field](std::string_view key) { return gr::pmt::convertTo_or<std::vector<std::string>>(field(key), std::vector<std::string>{}); };
         const std::vector<double>      origins = doubles(gr::tag::kAxisOrigin.key());
         const std::vector<double>      steps   = doubles(gr::tag::kAxisStep.key());
         const std::vector<std::string> names   = strings(gr::tag::kAxisName.key());
@@ -307,19 +299,10 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
         }
     }
 
-    /// a value as the sink keeps a DataSet's: an UncertainValue's value, a complex number's real part, as float
-    [[nodiscard]] static float valueOf(const auto& x) {
-        if constexpr (gr::UncertainValueLike<std::remove_cvref_t<decltype(x)>>) {
-            return static_cast<float>(x.value);
-        } else if constexpr (gr::meta::complex_like<std::remove_cvref_t<decltype(x)>>) {
-            return static_cast<float>(x.real());
-        } else {
-            return static_cast<float>(x);
-        }
-    }
+    [[nodiscard]] static float valueOf(const auto& x) { return static_cast<float>(std::real(gr::value(x))); }
 
     [[nodiscard]] static DataSetErrors errorsOf(const T& dataSet) {
-        const auto deviations = [](const auto& values) { return values | std::views::transform([](const auto& x) { return static_cast<float>(x.uncertainty); }) | std::ranges::to<std::vector>(); };
+        const auto deviations = [](const auto& values) { return values | std::views::transform([](const auto& x) { return static_cast<float>(gr::uncertainty(x)); }) | std::ranges::to<std::vector>(); };
         return {.signals = deviations(dataSet.signal_values), .axes = dataSet.axis_values | std::views::transform(deviations) | std::ranges::to<std::vector>()};
     }
 

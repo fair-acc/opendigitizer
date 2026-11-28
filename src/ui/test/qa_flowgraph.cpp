@@ -31,7 +31,6 @@
 #include "blocks/ImControlTrigger.hpp"
 #include "blocks/ImPlotSink.hpp"
 #include "blocks/ImPropertyReadout.hpp"
-#include "blocks/TestSpectrumGenerator.hpp" // symbol unused here: static block registration
 
 #include <cmrc/cmrc.hpp>
 

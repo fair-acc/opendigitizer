@@ -10,7 +10,6 @@
 
 #include <blocks/Arithmetic.hpp>
 #include <blocks/ImPlotSink.hpp>
-#include <blocks/TestSpectrumGenerator.hpp>
 
 #include <gnuradio-4.0/AtomicRef.hpp>
 #include <gnuradio-4.0/Scheduler.hpp>

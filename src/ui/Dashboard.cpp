@@ -121,36 +121,6 @@ void fetch(std::shared_ptr<opencmw::client::RestClient> client, const std::share
     errCb();
 }
 
-std::vector<std::string> readStringList(const gr::property_map& map, std::string_view key) {
-    std::vector<std::string> result;
-    const auto               value = map.find_value(key);
-    if (!value) {
-        return result;
-    }
-    const auto view = value->get_if<gr::TensorView<gr::pmt::Value>>();
-    if (!view) {
-        return result;
-    }
-    for (const auto& element : *view) {
-        if (element.is_string()) {
-            result.push_back(element.value_or(std::string{}));
-        }
-    }
-    return result;
-}
-
-DashboardDescription::StringMap readStringMap(const gr::property_map& map, std::string_view key) {
-    DashboardDescription::StringMap result;
-    if (const auto nested = map.get_if<gr::property_map>(key)) {
-        for (const auto& [entryKey, entryValue] : *nested) {
-            if (entryValue.is_string()) {
-                result.emplace(entryKey, entryValue.value_or(std::string{}));
-            }
-        }
-    }
-    return result;
-}
-
 } // namespace
 
 DashboardStorageInfo::~DashboardStorageInfo() noexcept {
@@ -818,7 +788,9 @@ void DashboardDescription::loadAndThen(std::shared_ptr<opencmw::client::RestClie
 
             auto lastUsed = rootMap.contains("lastUsed") && valueForKey("lastUsed").is_string() ? getDate(valueForKey("lastUsed").value_or(std::string())) : std::nullopt;
 
-            cb(std::make_shared<DashboardDescription>(DashboardDescription{.name = std::filesystem::path(name).stem().native(), .storageInfo = storageInfo, .filename = name, .isFavorite = isFavorite, .lastUsed = lastUsed, .tags = readStringList(rootMap, "tags"), .keyValueTags = readStringMap(rootMap, "keyValueTags")}));
+            const auto tags         = gr::pmt::convertTo_or<std::vector<std::string>>(valueForKey("tags"), std::vector<std::string>{});
+            const auto keyValueTags = gr::pmt::convertTo_or<DashboardDescription::StringMap>(valueForKey("keyValueTags"), DashboardDescription::StringMap{});
+            cb(std::make_shared<DashboardDescription>(DashboardDescription{.name = std::filesystem::path(name).stem().native(), .storageInfo = storageInfo, .filename = name, .isFavorite = isFavorite, .lastUsed = lastUsed, .tags = tags, .keyValueTags = keyValueTags}));
         },
         [cb]() { cb({}); });
 }

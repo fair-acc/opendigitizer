@@ -17,7 +17,6 @@
 #include "blocks/Arithmetic.hpp"
 #include "blocks/ImControlValue.hpp"
 #include "blocks/ImPlotSink.hpp"
-#include "blocks/TestSpectrumGenerator.hpp"
 #include "blocks/ValueSource.hpp"
 #include "charts/LocalisationChart.hpp"
 #include "charts/SpectrumPlot.hpp"
@@ -401,7 +400,6 @@ void registerTestBlocks(Registry& registry) {
 #pragma GCC diagnostic ignored "-Wunused-variable"
     registerWithIdPrefix<Arithmetic, float>(registry, kOpendigitizerIdPrefix);
     registerWithIdPrefix<ImPlotSink, float, gr::DataSet<float>>(registry, kOpendigitizerIdPrefix);
-    registerWithIdPrefix<TestSpectrumGenerator, float>(registry, kOpendigitizerIdPrefix); // the spectrum range demo's, as in the application
 #pragma GCC diagnostic pop
 }
 } // namespace

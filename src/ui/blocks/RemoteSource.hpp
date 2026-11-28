@@ -105,10 +105,27 @@ struct RemoteSourceCommon {
     void startSubscription();
     void start();
     void stop() { stopSubscription(); }
+    /// the count of a "Warning: skipped <n>" reply; nullopt for any other reply
+    [[nodiscard]] static std::optional<long> skippedUpdatesIn(std::string_view error) {
+        constexpr std::string_view kSkipWarningPrefix = "Warning: skipped ";
+        if (!error.starts_with(kSkipWarningPrefix)) {
+            return std::nullopt;
+        }
+        const std::string_view digits = error.substr(kSkipWarningPrefix.size());
+        long                   count  = 0;
+        std::from_chars(digits.data(), digits.data() + digits.size(), count);
+        return count;
+    }
+
+    void reconnectAfterTimeout() {
+        const auto* self = static_cast<Derived*>(this);
+        _reconnect.store(gr::settings::convertTimePointToUint64Ns(std::chrono::system_clock::now()) + static_cast<std::uint64_t>(self->reconnect_timeout * 1.e9f), std::memory_order_seq_cst);
+    }
+
     void maybeReconnect() {
         const auto*         self        = static_cast<Derived*>(this);
         std::uint64_t       reconnectNs = _reconnect.load(std::memory_order_seq_cst);
-        const std::uint64_t nowNs       = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count());
+        const std::uint64_t nowNs       = gr::settings::convertTimePointToUint64Ns(std::chrono::system_clock::now());
 
         if (reconnectNs != 0ULL && reconnectNs < nowNs && !self->host.empty() && !self->remote_uri.empty() && _reconnect.compare_exchange_strong(reconnectNs, 0ULL, std::memory_order_seq_cst)) {
             if (_subscription) {
@@ -471,9 +488,8 @@ struct RemoteStreamSource : RemoteSourceBase, RemoteSourceCommon<RemoteStreamSou
                 };
                 if (timestamp != 0) {
                     map.insert({gr::tag::kTriggerTime, {static_cast<std::uint64_t>(timestamp)}});
-                    const auto now     = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch());
-                    auto       latency = now - std::chrono::nanoseconds(timestamp);
-                    map.insert({"REMOTE_SOURCE_LATENCY", static_cast<int64_t>(latency.count())});
+                    const auto nowNs = static_cast<std::int64_t>(gr::settings::convertTimePointToUint64Ns(std::chrono::system_clock::now()));
+                    map.insert({"REMOTE_SOURCE_LATENCY", nowNs - static_cast<std::int64_t>(timestamp)});
                 }
                 const auto yamlMap = gr::pmt::yaml::deserialize(yaml);
                 if (yamlMap) {
@@ -501,16 +517,11 @@ struct RemoteStreamSource : RemoteSourceBase, RemoteSourceCommon<RemoteStreamSou
     std::optional<gr::Message> propertyCallbackLifecycleState(std::string_view propertyName, gr::Message message) { return Parent::propertyCallbackLifecycleState(propertyName, std::move(message)); }
 
     RemoteSubscriptionHandle copyRestResponseDataIntoQueue(const opencmw::mdp::Message& rep, const std::weak_ptr<Queue>& maybeQueue) {
-        long           skippedUpdates     = 0;
-        constexpr auto kSkipWarningPrefix = "Warning: skipped ";
-        if (rep.error.starts_with(kSkipWarningPrefix)) {
-            const std::string_view count = std::string_view(rep.error).substr(std::string_view(kSkipWarningPrefix).size());
-            std::from_chars(count.data(), count.data() + count.size(), skippedUpdates);
-        } else if (!rep.error.empty()) {
+        const std::optional<long> skipped        = this->skippedUpdatesIn(rep.error);
+        const long                skippedUpdates = skipped.value_or(0L);
+        if (!skipped && !rep.error.empty()) {
             gr::emit<gr::message::Command::Notify>(this->msgOut, gr::Error(std::format("Error in subscription:{}. Re-subscribing {}", rep.error, remote_uri)), {.endpoint = "subscription", .serviceName = this->unique_name});
-            uint64_t nowTimeoutNs = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count()) //
-                                    + static_cast<std::uint64_t>(reconnect_timeout * 1.e9f);
-            this->_reconnect.store(nowTimeoutNs, std::memory_order_seq_cst);
+            this->reconnectAfterTimeout();
 
             auto queue = maybeQueue.lock();
             if (!queue) {
@@ -601,16 +612,11 @@ struct RemoteDataSetSource : RemoteSourceBase, RemoteSourceCommon<RemoteDataSetS
     std::optional<gr::Message> propertyCallbackLifecycleState(std::string_view propertyName, gr::Message message) { return Parent::propertyCallbackLifecycleState(propertyName, std::move(message)); }
 
     RemoteSubscriptionHandle copyRestResponseDataIntoQueue(const opencmw::mdp::Message& rep, const std::weak_ptr<Queue>& maybeQueue) {
-        long           skippedSamples     = 0;
-        constexpr auto kSkipWarningPrefix = "Warning: skipped ";
-        if (rep.error.starts_with(kSkipWarningPrefix)) {
-            const std::string_view count = std::string_view(rep.error).substr(std::string_view(kSkipWarningPrefix).size());
-            std::from_chars(count.data(), count.data() + count.size(), skippedSamples);
-        } else if (!rep.error.empty()) {
+        const std::optional<long> skipped        = this->skippedUpdatesIn(rep.error);
+        const long                skippedSamples = skipped.value_or(0L);
+        if (!skipped && !rep.error.empty()) {
             emit<gr::message::Command::Notify>(this->msgOut, gr::Error(std::format("Error in subscription: {}. Re-subscribing {}\n", rep.error, remote_uri)), {.endpoint = "subscription", .serviceName = this->unique_name});
-            uint64_t nowTimeoutNs = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count()) //
-                                    + static_cast<std::uint64_t>(reconnect_timeout * 1.e9f);
-            this->_reconnect.store(nowTimeoutNs, std::memory_order_seq_cst);
+            this->reconnectAfterTimeout();
             return std::move(this->_subscription); // release/unsubscribe
         }
         if (rep.data.empty()) {
@@ -660,7 +666,8 @@ struct RemoteDataSetSource : RemoteSourceBase, RemoteSourceCommon<RemoteDataSetS
         const auto     nSignals = static_cast<std::size_t>(acq.channelValues.n(0));
         const auto     nSamples = static_cast<std::size_t>(acq.channelValues.n(1));
         gr::DataSet<T> ds;
-        ds.timestamp  = acq.acqLocalTimeStamp.value(); // UTC timestamp [ns]
+        // UTC [ns]; an undated acquisition is dated on arrival, as GR4's producers date theirs
+        ds.timestamp  = acq.acqLocalTimeStamp.value() > 0 ? acq.acqLocalTimeStamp.value() : static_cast<std::int64_t>(gr::settings::convertTimePointToUint64Ns(std::chrono::system_clock::now()));
         ds.extents    = {static_cast<int32_t>(nSamples)};
         ds.layout     = gr::LayoutRight{};
         ds.axis_names = {"x-axis"};
@@ -677,9 +684,7 @@ struct RemoteDataSetSource : RemoteSourceBase, RemoteSourceCommon<RemoteDataSetS
         }
         if (nSignals == acq.channelRangeMin.size() && nSignals == acq.channelRangeMax.size()) {
             ds.signal_ranges.resize(nSignals);
-            for (std::size_t i = 0; i < nSignals; i++) {
-                ds.signal_ranges[i] = {floatToDatasetTypeConvert(acq.channelRangeMin[i]), floatToDatasetTypeConvert(acq.channelRangeMax[i])};
-            }
+            std::ranges::transform(acq.channelRangeMin.value(), acq.channelRangeMax.value(), ds.signal_ranges.begin(), [](float min, float max) { return gr::Range<T>{floatToDatasetTypeConvert(min), floatToDatasetTypeConvert(max)}; });
         }
         copySignalValues(ds, acq, nSignals * nSamples);
         ds.meta_information.assign(nSignals, gr::property_map{{"subscription-updates-skipped", skippedSamples}});

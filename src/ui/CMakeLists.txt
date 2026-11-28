@@ -457,7 +457,6 @@ add_library(
   blocks/SchedulerStateIndicator.hpp
   blocks/StridedWindow.hpp
   blocks/TagToSample.hpp
-  blocks/TestSpectrumGenerator.hpp
   blocks/ToUncertainValue.hpp
   blocks/ImControl.hpp
   blocks/ImControlCamera.hpp

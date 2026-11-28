@@ -3,11 +3,13 @@
 #include "blocks/Arithmetic.hpp"
 #include "blocks/ImPlotSink.hpp"
 #include "blocks/RemoteSource.hpp"
+
 #include "blocks/TagSink.hpp"
 #include "blocks/ToUncertainValue.hpp"
 #include "charts/ImageChart.hpp"
 #include "charts/RDSView.hpp"
 #include "charts/SpectrumHelper.hpp"
+#include <gnuradio-4.0/test/GraphFixture.hpp>
 
 #include <boost/ut.hpp>
 #include <gnuradio-4.0/Graph.hpp>
@@ -243,54 +245,48 @@ int main() {
         constexpr gr::Size_t kFftSize = 64U;
         constexpr gr::Size_t kSpectra = 10U;
 
-        gr::Graph graph;
-        auto&     source = graph.emplaceBlock<gr::testing::TagSource<float>>({{"n_samples_max", kFftSize * kSpectra}, {"mark_tag", false}});
+        gr::testing::GraphFixture<> graph;
+        auto&                       source = graph.emplace<gr::testing::TagSource<float>>({{"n_samples_max", kFftSize * kSpectra}, {"mark_tag", false}});
         for (gr::Size_t i = 0U; i < kSpectra; ++i) {
             gr::property_map trigger;
             gr::tag::put(trigger, gr::tag::kTriggerName, std::string("CMD_DIAG_TRIGGER1"));
             gr::tag::put(trigger, gr::tag::kTriggerTime, std::uint64_t{1'000'000'000U} * (i + 1U));
             source._tags.push_back({i * kFftSize, std::move(trigger)});
         }
-        auto& fft  = graph.emplaceBlock<gr::blocks::fft::FFT<float, gr::DataSet<float>>>({{"fft_size", kFftSize}});
-        auto& sink = graph.emplaceBlock<ImPlotSink<gr::DataSet<float>>>();
+        auto& fft  = graph.emplace<gr::blocks::fft::FFT<float, gr::DataSet<float>>>({{"fft_size", kFftSize}});
+        auto& sink = graph.emplace<ImPlotSink<gr::DataSet<float>>>();
         expect(graph.connect<"out", "in">(source, fft).has_value());
         expect(graph.connect<"out", "in">(fft, sink).has_value());
 
-        gr::scheduler::Simple<> scheduler;
-        expect(scheduler.exchange(std::move(graph)).has_value());
-        expect(scheduler.runAndWait().has_value());
+        expect(graph.run().has_value());
         expect(eq(sink.signalSink()->totalSampleCount(), std::size_t{kSpectra}));
     };
 
     "trigger tags do not reset the streaming count"_test = [] {
         constexpr gr::Size_t kSamples = 1000U;
 
-        gr::Graph graph;
-        auto&     source = graph.emplaceBlock<gr::testing::TagSource<float>>({{"n_samples_max", kSamples}, {"mark_tag", false}});
+        gr::testing::GraphFixture<> graph;
+        auto&                       source = graph.emplace<gr::testing::TagSource<float>>({{"n_samples_max", kSamples}, {"mark_tag", false}});
         for (gr::Size_t i = 0U; i < 5U; ++i) {
             gr::property_map trigger;
             gr::tag::put(trigger, gr::tag::kTriggerName, std::string("CMD_DIAG_TRIGGER1"));
             gr::tag::put(trigger, gr::tag::kTriggerTime, std::uint64_t{1'000'000'000U} * (i + 1U));
             source._tags.push_back({i * 200U, std::move(trigger)});
         }
-        auto& sink = graph.emplaceBlock<ImPlotSink<float>>();
+        auto& sink = graph.emplace<ImPlotSink<float>>();
         expect(graph.connect<"out", "in">(source, sink).has_value());
 
-        gr::scheduler::Simple<> scheduler;
-        expect(scheduler.exchange(std::move(graph)).has_value());
-        expect(scheduler.runAndWait().has_value());
+        expect(graph.run().has_value());
         expect(eq(sink.signalSink()->totalSampleCount(), std::size_t{kSamples}));
     };
 
     // ground truth by construction: the source counts 0, 1, 2, …; 5000 of them into a sink of 8192, then a chart asks 3000
     "a chart's request shrinks the sink to its newest samples and leaves required_size alone"_test = [] {
-        gr::Graph graph;
-        auto&     source = graph.emplaceBlock<gr::testing::TagSource<float>>({{"n_samples_max", gr::Size_t{5000U}}, {"mark_tag", false}});
-        auto&     sink   = graph.emplaceBlock<ImPlotSink<float>>({{"required_size", gr::Size_t{8192U}}});
+        gr::testing::GraphFixture<> graph;
+        auto&                       source = graph.emplace<gr::testing::TagSource<float>>({{"n_samples_max", gr::Size_t{5000U}}, {"mark_tag", false}});
+        auto&                       sink   = graph.emplace<ImPlotSink<float>>({{"required_size", gr::Size_t{8192U}}});
         expect(graph.connect<"out", "in">(source, sink).has_value());
-        gr::scheduler::Simple<> scheduler;
-        expect(scheduler.exchange(std::move(graph)).has_value());
-        expect(scheduler.runAndWait().has_value());
+        expect(graph.run().has_value());
         expect(eq(sink.signalSink()->bufferCapacity(), 8192UZ));
         expect(eq(sink.signalSink()->size(), 5000UZ) >> fatal);
 
@@ -311,14 +307,12 @@ int main() {
     // 2^53 + 1 lies halfway between 2^53 and 2^53 + 2 and rounds to the even one, 2^53
     "an integer stream is kept exactly, as float up to 16 bits and as double above"_test = [] {
         const auto received = []<typename T>(std::vector<T> values) {
-            gr::Graph graph;
-            auto&     source = graph.emplaceBlock<gr::testing::TagSource<T>>({{"n_samples_max", static_cast<gr::Size_t>(values.size())}, {"mark_tag", false}});
-            source.values    = gr::Tensor<T>(gr::data_from, values);
-            auto& sink       = graph.emplaceBlock<ImPlotSink<T>>();
+            gr::testing::GraphFixture<> graph;
+            auto&                       source = graph.emplace<gr::testing::TagSource<T>>({{"n_samples_max", static_cast<gr::Size_t>(values.size())}, {"mark_tag", false}});
+            source.values                      = gr::Tensor<T>(gr::data_from, values);
+            auto& sink                         = graph.emplace<ImPlotSink<T>>();
             expect(graph.connect<"out", "in">(source, sink).has_value());
-            gr::scheduler::Simple<> scheduler;
-            expect(scheduler.exchange(std::move(graph)).has_value());
-            expect(scheduler.runAndWait().has_value());
+            expect(graph.run().has_value());
             return sink.signalSink(); // the store outlives its block
         };
         const auto asFloat = [](const SampleWindow& window) { return std::holds_alternative<std::span<const float>>(window.y); };
@@ -344,32 +338,28 @@ int main() {
 
     // ground truth by construction: means 1 and 2 with standard deviations 0.1 and 0.2, paired in order
     "ToUncertainValue pairs each value with its standard deviation, which a sink keeps for the charts"_test = [] {
-        gr::Graph graph;
-        auto&     means   = graph.emplaceBlock<gr::testing::TagSource<float>>({{"n_samples_max", gr::Size_t{2U}}, {"mark_tag", false}});
-        means.values      = gr::Tensor<float>(gr::data_from, std::vector{1.f, 2.f});
-        auto& deviations  = graph.emplaceBlock<gr::testing::TagSource<float>>({{"n_samples_max", gr::Size_t{2U}}, {"mark_tag", false}});
-        deviations.values = gr::Tensor<float>(gr::data_from, std::vector{0.1f, 0.2f});
-        auto& pair        = graph.emplaceBlock<ToUncertainValue<float>>();
-        auto& sink        = graph.emplaceBlock<ImPlotSink<gr::UncertainValue<float>>>({{"name", "pairedSink"}});
+        gr::testing::GraphFixture<> graph;
+        auto&                       means = graph.emplace<gr::testing::TagSource<float>>({{"n_samples_max", gr::Size_t{2U}}, {"mark_tag", false}});
+        means.values                      = gr::Tensor<float>(gr::data_from, std::vector{1.f, 2.f});
+        auto& deviations                  = graph.emplace<gr::testing::TagSource<float>>({{"n_samples_max", gr::Size_t{2U}}, {"mark_tag", false}});
+        deviations.values                 = gr::Tensor<float>(gr::data_from, std::vector{0.1f, 0.2f});
+        auto& pair                        = graph.emplace<ToUncertainValue<float>>();
+        auto& sink                        = graph.emplace<ImPlotSink<gr::UncertainValue<float>>>({{"name", "pairedSink"}});
         expect(graph.connect<"out", "value">(means, pair).has_value());
         expect(graph.connect<"out", "uncertainty">(deviations, pair).has_value());
         expect(graph.connect<"out", "in">(pair, sink).has_value());
-        gr::scheduler::Simple<> scheduler;
-        expect(scheduler.exchange(std::move(graph)).has_value());
-        expect(scheduler.runAndWait().has_value());
+        expect(graph.run().has_value());
         const SampleWindow window = sink.signalSink()->samples();
         expect(eq(window.size(), 2UZ) >> fatal);
         expect(eq(window.yAt(1UZ), 2.0) && approx(window.yErrorAt(0UZ), 0.1, 1e-6) && approx(window.yErrorAt(1UZ), 0.2, 1e-6));
     };
 
     "a DataSet of UncertainValues keeps its values and their standard deviations, signal and axis"_test = [] {
-        gr::Graph graph;
-        auto&     source = graph.emplaceBlock<UncertainDataSetSource>();
-        auto&     sink   = graph.emplaceBlock<ImPlotSink<gr::DataSet<gr::UncertainValue<float>>>>();
+        gr::testing::GraphFixture<> graph;
+        auto&                       source = graph.emplace<UncertainDataSetSource>();
+        auto&                       sink   = graph.emplace<ImPlotSink<gr::DataSet<gr::UncertainValue<float>>>>();
         expect(graph.connect<"out", "in">(source, sink).has_value());
-        gr::scheduler::Simple<> scheduler;
-        expect(scheduler.exchange(std::move(graph)).has_value());
-        expect(scheduler.runAndWait().has_value());
+        expect(graph.run().has_value());
 
         const auto& signal = *sink.signalSink();
         expect(signal.hasErrors());
@@ -386,14 +376,12 @@ int main() {
     // ground truth by construction: the same uint32 frame, 0xFF0000FF (opaque red) and 1000, read as colour and as values
     "a uint32 tensor sink keeps packed colour, or integer values when packed_colour is false"_test = [] {
         const auto received = [](bool packedColour) {
-            gr::Graph graph;
-            auto&     source = graph.emplaceBlock<gr::testing::TensorSource<std::uint32_t>>();
+            gr::testing::GraphFixture<> graph;
+            auto&                       source = graph.emplace<gr::testing::TensorSource<std::uint32_t>>();
             source._frames.push_back({.extents = {1UZ, 2UZ}, .elements = {0xFF0000FFU, 1000U}});
-            auto& sink = graph.emplaceBlock<ImPlotSink<gr::Tensor<std::uint32_t>>>({{"packed_colour", packedColour}});
+            auto& sink = graph.emplace<ImPlotSink<gr::Tensor<std::uint32_t>>>({{"packed_colour", packedColour}});
             expect(graph.connect<"out", "in">(source, sink).has_value());
-            gr::scheduler::Simple<> scheduler;
-            expect(scheduler.exchange(std::move(graph)).has_value());
-            expect(scheduler.runAndWait().has_value());
+            expect(graph.run().has_value());
             return sink.signalSink();
         };
         const auto      colourSink = received(true);
@@ -409,18 +397,16 @@ int main() {
 
     // ground truth by construction: 1 + 2i and 3 + 4i, σ 0.1 + 0.2i
     "a complex stream is two signals, its real part under the block's name and its imaginary part beside it"_test = [] {
-        gr::Graph graph;
-        auto&     source = graph.emplaceBlock<gr::testing::TagSource<std::complex<float>>>({{"n_samples_max", gr::Size_t{2U}}, {"mark_tag", false}});
-        source.values    = gr::Tensor<std::complex<float>>(gr::data_from, std::vector<std::complex<float>>{{1.f, 2.f}, {3.f, 4.f}});
-        auto& convert    = graph.emplaceBlock<ToUncertainComplex>();
-        auto& plain      = graph.emplaceBlock<ImPlotSink<std::complex<float>>>({{"name", "iqSink"}, {"signal_name", "iq"}});
-        auto& uncertain  = graph.emplaceBlock<ImPlotSink<gr::UncertainValue<std::complex<float>>>>({{"name", "uncertainIqSink"}}); // a sink registers with its first settings, as a dashboard's do
+        gr::testing::GraphFixture<> graph;
+        auto&                       source = graph.emplace<gr::testing::TagSource<std::complex<float>>>({{"n_samples_max", gr::Size_t{2U}}, {"mark_tag", false}});
+        source.values                      = gr::Tensor<std::complex<float>>(gr::data_from, std::vector<std::complex<float>>{{1.f, 2.f}, {3.f, 4.f}});
+        auto& convert                      = graph.emplace<ToUncertainComplex>();
+        auto& plain                        = graph.emplace<ImPlotSink<std::complex<float>>>({{"name", "iqSink"}, {"signal_name", "iq"}});
+        auto& uncertain                    = graph.emplace<ImPlotSink<gr::UncertainValue<std::complex<float>>>>({{"name", "uncertainIqSink"}}); // a sink registers with its first settings, as a dashboard's do
         expect(graph.connect<"out", "in">(source, plain).has_value());
         expect(graph.connect<"out", "in">(source, convert).has_value());
         expect(graph.connect<"out", "in">(convert, uncertain).has_value());
-        gr::scheduler::Simple<> scheduler;
-        expect(scheduler.exchange(std::move(graph)).has_value());
-        expect(scheduler.runAndWait().has_value());
+        expect(graph.run().has_value());
 
         const auto real      = plain.signalSink();
         const auto imaginary = SinkRegistry::instance().getSink(std::format("{}{}", plain.unique_name, kImaginaryPartSuffix));
@@ -440,13 +426,11 @@ int main() {
     };
 
     "a complex DataSet arrives as two real rows per signal, Re and Im, selected by dataset_index"_test = [] {
-        gr::Graph graph;
-        auto&     source = graph.emplaceBlock<ComplexDataSetSource>();
-        auto&     sink   = graph.emplaceBlock<ImPlotSink<gr::DataSet<std::complex<float>>>>({{"dataset_index", gr::Size_t{1U}}});
+        gr::testing::GraphFixture<> graph;
+        auto&                       source = graph.emplace<ComplexDataSetSource>();
+        auto&                       sink   = graph.emplace<ImPlotSink<gr::DataSet<std::complex<float>>>>({{"dataset_index", gr::Size_t{1U}}});
         expect(graph.connect<"out", "in">(source, sink).has_value());
-        gr::scheduler::Simple<> scheduler;
-        expect(scheduler.exchange(std::move(graph)).has_value());
-        expect(scheduler.runAndWait().has_value());
+        expect(graph.run().has_value());
 
         const auto& signal = *sink.signalSink();
         expect(eq(signal.dataSets().size(), 1UZ) >> fatal);
@@ -461,17 +445,15 @@ int main() {
     };
 
     "an integer DataSet and an 8-bit image arrive as float"_test = [] {
-        gr::Graph graph;
-        auto&     dataSetSource = graph.emplaceBlock<Int16DataSetSource>();
-        auto&     dataSetSink   = graph.emplaceBlock<ImPlotSink<gr::DataSet<std::int16_t>>>();
-        auto&     imageSource   = graph.emplaceBlock<gr::testing::TensorSource<std::uint8_t>>();
+        gr::testing::GraphFixture<> graph;
+        auto&                       dataSetSource = graph.emplace<Int16DataSetSource>();
+        auto&                       dataSetSink   = graph.emplace<ImPlotSink<gr::DataSet<std::int16_t>>>();
+        auto&                       imageSource   = graph.emplace<gr::testing::TensorSource<std::uint8_t>>();
         imageSource._frames.push_back({.extents = {2UZ, 2UZ}, .elements = {0U, 1U, 254U, 255U}});
-        auto& imageSink = graph.emplaceBlock<ImPlotSink<gr::Tensor<std::uint8_t>>>();
+        auto& imageSink = graph.emplace<ImPlotSink<gr::Tensor<std::uint8_t>>>();
         expect(graph.connect<"out", "in">(dataSetSource, dataSetSink).has_value());
         expect(graph.connect<"out", "in">(imageSource, imageSink).has_value());
-        gr::scheduler::Simple<> scheduler;
-        expect(scheduler.exchange(std::move(graph)).has_value());
-        expect(scheduler.runAndWait().has_value());
+        expect(graph.run().has_value());
 
         const auto dataSets = dataSetSink.signalSink()->dataSets();
         expect(eq(dataSets.size(), 1UZ) >> fatal);
@@ -483,15 +465,13 @@ int main() {
     };
 
     "an UncertainValue sink keeps the values"_test = [] {
-        gr::Graph graph;
-        auto&     source  = graph.emplaceBlock<gr::testing::TagSource<float>>({{"n_samples_max", gr::Size_t{100U}}, {"mark_tag", false}});
-        auto&     convert = graph.emplaceBlock<FixedUncertainty>();
-        auto&     sink    = graph.emplaceBlock<ImPlotSink<gr::UncertainValue<float>>>();
+        gr::testing::GraphFixture<> graph;
+        auto&                       source  = graph.emplace<gr::testing::TagSource<float>>({{"n_samples_max", gr::Size_t{100U}}, {"mark_tag", false}});
+        auto&                       convert = graph.emplace<FixedUncertainty>();
+        auto&                       sink    = graph.emplace<ImPlotSink<gr::UncertainValue<float>>>();
         expect(graph.connect<"out", "in">(source, convert).has_value());
         expect(graph.connect<"out", "in">(convert, sink).has_value());
-        gr::scheduler::Simple<> scheduler;
-        expect(scheduler.exchange(std::move(graph)).has_value());
-        expect(scheduler.runAndWait().has_value());
+        expect(graph.run().has_value());
 
         expect(sink.signalSink()->signalKind() == SignalKind::Streaming);
         expect(sink.signalSink()->hasErrors());
@@ -1134,8 +1114,14 @@ int main() {
         acq.triggerIndices             = std::vector<int64_t>{1};
         acq.triggerYamlPropertyMaps    = std::vector<std::string>{"trigger_name: CMD_X\n"};
 
-        const auto ds = RemoteDataSetSource<float>::toDataSet(acq, 7U);
+        const auto nowNs  = [] { return std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count(); };
+        const auto before = nowNs();
+        const auto ds     = RemoteDataSetSource<float>::toDataSet(acq, 7U);
+        const auto after  = nowNs();
         expect(gr::dataset::checkConsistency(ds).has_value()) << "as GR4 checks a DataSet";
+        expect(ds.timestamp >= before && ds.timestamp <= after) << "an undated acquisition is dated on arrival";
+        acq.acqLocalTimeStamp = 1'700'000'000'000'000'000;
+        expect(eq(RemoteDataSetSource<float>::toDataSet(acq, 7U).timestamp, 1'700'000'000'000'000'000)) << "a dated one keeps its time";
         expect(eq(ds.meta_information.size(), 2UZ) && eq(ds.timing_events.size(), 2UZ)) << "one entry per signal";
         expect(eq(ds.timing_events[1].size(), 1UZ) && eq(ds.timing_events[1][0].first, 1)) << "the trigger at sample 1 of the second signal too";
         expect(eq(ds.signalValues(1)[2], 6.f));

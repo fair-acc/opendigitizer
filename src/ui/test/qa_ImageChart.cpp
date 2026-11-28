@@ -15,7 +15,6 @@
 #include <ToolbarView.hpp>
 
 #include "blocks/ImControlCamera.hpp"
-#include "blocks/TestSpectrumGenerator.hpp"
 #include "charts/ImageChart.hpp"
 #include "charts/TensorRowsChart.hpp"
 
@@ -288,7 +287,6 @@ int main(int argc, char* argv[]) {
 
     auto& registry = gr::globalBlockRegistry();
     registerAppBlocks(registry);
-    registerWithIdPrefix<TestSpectrumGenerator, float>(registry, kOpendigitizerIdPrefix); // the spectrum range demo's, as in the application
 #if defined(OD_ACOUSTIC_CAMERA)
     std::ignore = gr::registerBlock<opendigitizer::video::BrowserMicrophonePairs>(registry); // the browser variant's, built not started
 #endif

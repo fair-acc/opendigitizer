@@ -66,17 +66,6 @@ target_link_libraries(qa_DashboardPreview PRIVATE ut opendigitizer-uilib opendig
 target_include_directories(qa_DashboardPreview PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/..)
 add_test(NAME qa_DashboardPreview COMMAND qa_DashboardPreview)
 
-add_executable(qa_TestSpectrumGenerator qa_TestSpectrumGenerator.cpp)
-target_link_libraries(
-  qa_TestSpectrumGenerator
-  PRIVATE ut
-          gnuradio4::gnuradio-core
-          gnuradio4::gnuradio-blocklib-core
-          opendigitizer-options)
-target_include_directories(qa_TestSpectrumGenerator PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/..
-                                                            ${CMAKE_CURRENT_SOURCE_DIR}/../../utils/include)
-add_test(NAME qa_TestSpectrumGenerator COMMAND qa_TestSpectrumGenerator)
-
 add_executable(qa_AudioSynthesis qa_AudioSynthesis.cpp)
 target_link_libraries(
   qa_AudioSynthesis

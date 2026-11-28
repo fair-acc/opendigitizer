@@ -5,11 +5,11 @@ blocks:
       sample_rate: 25
       chunk_size: 1
       n_samples_max: 0
-  - id: opendigitizer::TestSpectrumGenerator<float32>
+  - id: gr::testing::TestSpectrumGenerator<float32>
     parameters:
       name: SpectrumGenerator
       spectrum_size: 4096
-      center_freq: 100e6
+      centre_freq: 100e6
       signal_bandwidth: 1e6
       clock_rate: 25
       seed: 42

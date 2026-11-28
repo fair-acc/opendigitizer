@@ -113,13 +113,7 @@ void forEachNewSpectrum(const SpectrumFrame& newest, std::size_t count, Fn&& fn)
     }
 }
 
-[[nodiscard]] inline double timestampFromNanos(int64_t ns) {
-    double sec = static_cast<double>(ns) * 1e-9;
-    if (sec <= 0.0) {
-        sec = static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count()) * 1e-9;
-    }
-    return sec;
-}
+[[nodiscard]] constexpr double timestampFromNanos(int64_t ns) { return static_cast<double>(ns) * 1e-9; }
 
 /// max-hold, min-hold and exponential-average traces over successive spectrum frames;
 /// the holds decay with a time constant in frames, tau = 0 holds for ever

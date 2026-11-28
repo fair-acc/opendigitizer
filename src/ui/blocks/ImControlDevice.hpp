@@ -23,13 +23,7 @@
 namespace gr::od {
 
 /// a std::vector<std::string> setting as it arrives in UiGraphBlock::blockSettings: a tensor of string values
-[[nodiscard]] inline std::vector<std::string> stringList(const gr::pmt::Value& value) {
-    const auto strings = value.get_if<gr::TensorView<gr::pmt::Value>>();
-    if (!strings) {
-        return {};
-    }
-    return *strings | std::views::filter(&gr::pmt::Value::is_string) | std::views::transform([](const gr::pmt::Value& v) { return v.value_or(std::string{}); }) | std::ranges::to<std::vector>();
-}
+[[nodiscard]] inline std::vector<std::string> stringList(const gr::pmt::Value& value) { return gr::pmt::convertTo_or<std::vector<std::string>>(value, std::vector<std::string>{}); }
 
 /// one of the target settings a control lists in `target_settings_keys`, or T{} where absent
 template<typename T>
