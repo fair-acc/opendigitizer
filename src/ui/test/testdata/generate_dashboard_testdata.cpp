@@ -141,7 +141,7 @@ std::vector<BlockSpec> makeSources() {
             source.parameters["frequency"] = static_cast<float>(randomRangeReal(0.05, 2.0));
             break;
         case SourceKind::spectrum:
-            source.id   = "opendigitizer::TestSpectrumGenerator<float32>";
+            source.id   = "gr::testing::TestSpectrumGenerator<float32>";
             source.name = std::format("spectrumSource{}", i + 1);
             break;
         case SourceKind::remote: {

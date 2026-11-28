@@ -62,6 +62,7 @@ void registerAppBlocks(gr::BlockRegistry& blockRegistry) {
     gr::registerBlock<gr::filter::BasicFilterProto<float, gr::Resampling<100UZ, 1UZ, false>>, "gr::filter::BasicFilterProto<float32, gr::Resampling<100, 1, false>>">(blockRegistry);
     gr::registerBlock<gr::filter::BasicFilterProto<float, gr::Resampling<40UZ, 1UZ, false>>, "gr::filter::BasicFilterProto<float32, gr::Resampling<40, 1, false>>">(blockRegistry);
     gr::registerBlock<gr::filter::BasicFilterProto<float, gr::Resampling<1UZ, 1UZ, false>>, "gr::filter::BasicFilterProto<float32, gr::Resampling<1, 1, false>>">(blockRegistry);
+    gr::registerBlock<gr::filter::BasicFilterProto<gr::UncertainValue<float>, gr::Resampling<1UZ, 1UZ, false>>, "gr::filter::BasicFilterProto<gr::UncertainValue<float32>, gr::Resampling<1, 1, false>>">(blockRegistry);
 
 #ifndef __EMSCRIPTEN__
     gr::registerBlock<fair::picoscope::Picoscope<float, fair::picoscope::Picoscope4000a>, "">(blockRegistry);

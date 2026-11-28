@@ -3,7 +3,6 @@
 
 #include <array>
 #include <chrono>
-#include <cmath>
 #include <cstdint>
 #include <format>
 #include <limits>
@@ -14,6 +13,7 @@
 #include <type_traits>
 
 #include <gnuradio-4.0/Profiler.hpp>
+#include <gnuradio-4.0/algorithm/RunningStatistics.hpp>
 
 namespace gr::profiling {
 
@@ -23,83 +23,6 @@ inline constexpr std::size_t kMaxTimestamps = kMaxSegments + 2UZ; // begin + seg
 
 inline constexpr std::size_t kBegin    = 0UZ;
 inline constexpr std::size_t kPrevious = std::numeric_limits<std::size_t>::max();
-
-namespace detail {
-
-struct Stats {
-    std::uint64_t            count{0};
-    std::chrono::nanoseconds sum{0};
-    double                   sumSq{0.0}; // ms²
-    std::chrono::nanoseconds min{std::chrono::nanoseconds::max()};
-    std::chrono::nanoseconds max{std::chrono::nanoseconds::min()};
-
-    constexpr void add(std::chrono::nanoseconds d) noexcept {
-        ++count;
-        sum += d;
-        const double ms = std::chrono::duration<double, std::milli>(d).count();
-        sumSq += ms * ms;
-        if (d < min) {
-            min = d;
-        }
-        if (d > max) {
-            max = d;
-        }
-    }
-
-    constexpr void reset() noexcept { *this = Stats{}; }
-
-    [[nodiscard]] double avgMs() const noexcept { return count > 0 ? std::chrono::duration<double, std::milli>(sum / count).count() : 0.0; }
-
-    [[nodiscard]] double rmsMs() const noexcept {
-        if (count < 2) {
-            return 0.0;
-        }
-        const double avg      = avgMs();
-        const double variance = (sumSq / static_cast<double>(count)) - (avg * avg);
-        return variance > 0.0 ? std::sqrt(variance) : 0.0;
-    }
-
-    [[nodiscard]] double minMs() const noexcept { return count > 0 ? std::chrono::duration<double, std::milli>(min).count() : 0.0; }
-
-    [[nodiscard]] double maxMs() const noexcept { return count > 0 ? std::chrono::duration<double, std::milli>(max).count() : 0.0; }
-};
-
-template<typename T>
-struct MetricStats {
-    std::uint64_t count{0};
-    T             sum{};
-    double        sumSq{0.0};
-    T             min{std::numeric_limits<T>::max()};
-    T             max{std::numeric_limits<T>::lowest()};
-
-    constexpr void add(T v) noexcept {
-        ++count;
-        sum += v;
-        const auto vd = static_cast<double>(v);
-        sumSq += vd * vd;
-        if (v < min) {
-            min = v;
-        }
-        if (v > max) {
-            max = v;
-        }
-    }
-
-    constexpr void reset() noexcept { *this = MetricStats{}; }
-
-    [[nodiscard]] double avg() const noexcept { return count > 0 ? static_cast<double>(sum) / static_cast<double>(count) : 0.0; }
-
-    [[nodiscard]] double rms() const noexcept {
-        if (count < 2) {
-            return 0.0;
-        }
-        const double a        = avg();
-        const double variance = (sumSq / static_cast<double>(count)) - (a * a);
-        return variance > 0.0 ? std::sqrt(variance) : 0.0;
-    }
-};
-
-} // namespace detail
 
 // min/max/avg/rms of the begin()-to-begin() period, of snapshot() segments (since the previous timestamp unless refIdx is given)
 // and of metric() values, emitted every `interval` as Chrome-trace counter events; no-op under NDEBUG unless FORCE_PERIODIC_TIMERS.
@@ -120,16 +43,16 @@ struct PeriodicTimer {
     using instant_fn_t = void (*)(void*, std::string_view, std::string_view, std::initializer_list<arg_value>);
 
     struct Segment {
-        detail::Stats stats{};
-        std::string   label{};
-        std::size_t   refIdx{0};
-        bool          used{false};
+        gr::algorithm::RunningStatistics stats{}; // ms
+        std::string                      label{};
+        std::size_t                      refIdx{0};
+        bool                             used{false};
     };
 
     struct Metric {
-        detail::MetricStats<double> stats{};
-        std::string                 label{};
-        bool                        used{false};
+        gr::algorithm::RunningStatistics stats{};
+        std::string                      label{};
+        bool                             used{false};
     };
 
     void*        _handler{nullptr};
@@ -149,7 +72,7 @@ struct PeriodicTimer {
     std::size_t                            _timestamp_idx{0};
     std::size_t                            _next_seg_idx{0};
 
-    detail::Stats                     _period{};
+    gr::algorithm::RunningStatistics  _period{}; // ms
     std::array<Segment, kMaxSegments> _segments{};
     std::array<Metric, kMaxMetrics>   _metrics{};
 
@@ -178,7 +101,7 @@ struct PeriodicTimer {
             const auto now = Clock::now();
 
             if (_began) {
-                _period.add(now - _timestamps[0]);
+                _period.add(std::chrono::duration<double, std::milli>(now - _timestamps[0]).count());
             }
             _began         = true;
             _timestamps[0] = now;
@@ -277,7 +200,7 @@ private:
         }
 
         auto& seg = _segments[segIdx];
-        seg.stats.add(delta);
+        seg.stats.add(std::chrono::duration<double, std::milli>(delta).count());
         if (!label.empty() && seg.label.empty()) {
             seg.label = std::string(label);
         }
@@ -352,10 +275,10 @@ private:
         args.emplace_back("file", file);
         args.emplace_back("line", static_cast<int>(_loc.line()));
 
-        args.emplace_back("p_avg_ms", _period.avgMs());
-        args.emplace_back("p_rms_ms", _period.rmsMs());
-        args.emplace_back("p_min_ms", _period.minMs());
-        args.emplace_back("p_max_ms", _period.maxMs());
+        args.emplace_back("p_avg_ms", _period.mean);
+        args.emplace_back("p_rms_ms", _period.populationStdDev());
+        args.emplace_back("p_min_ms", _period.smallest);
+        args.emplace_back("p_max_ms", _period.largest);
         args.emplace_back("p_n", static_cast<int>(_period.count));
 
         for (std::size_t i = 0; i < kMaxSegments; ++i) {
@@ -365,10 +288,10 @@ private:
             }
 
             const std::string prefix = seg.label.empty() ? std::format("s{}", i) : seg.label;
-            args.emplace_back(std::format("{}_avg_ms", prefix), seg.stats.avgMs());
-            args.emplace_back(std::format("{}_rms_ms", prefix), seg.stats.rmsMs());
-            args.emplace_back(std::format("{}_min_ms", prefix), seg.stats.minMs());
-            args.emplace_back(std::format("{}_max_ms", prefix), seg.stats.maxMs());
+            args.emplace_back(std::format("{}_avg_ms", prefix), seg.stats.mean);
+            args.emplace_back(std::format("{}_rms_ms", prefix), seg.stats.populationStdDev());
+            args.emplace_back(std::format("{}_min_ms", prefix), seg.stats.smallest);
+            args.emplace_back(std::format("{}_max_ms", prefix), seg.stats.largest);
             args.emplace_back(std::format("{}_n", prefix), static_cast<int>(seg.stats.count));
         }
 
@@ -378,10 +301,10 @@ private:
                 continue;
             }
 
-            args.emplace_back(std::format("{}_avg", m.label), m.stats.avg());
-            args.emplace_back(std::format("{}_rms", m.label), m.stats.rms());
-            args.emplace_back(std::format("{}_min", m.label), static_cast<double>(m.stats.min));
-            args.emplace_back(std::format("{}_max", m.label), static_cast<double>(m.stats.max));
+            args.emplace_back(std::format("{}_avg", m.label), m.stats.mean);
+            args.emplace_back(std::format("{}_rms", m.label), m.stats.populationStdDev());
+            args.emplace_back(std::format("{}_min", m.label), m.stats.smallest);
+            args.emplace_back(std::format("{}_max", m.label), m.stats.largest);
             args.emplace_back(std::format("{}_n", m.label), static_cast<int>(m.stats.count));
         }
 
@@ -392,12 +315,12 @@ private:
             printStats();
         }
 
-        _period.reset();
+        _period = {};
         for (auto& seg : _segments) {
-            seg.stats.reset();
+            seg.stats = {};
         }
         for (auto& m : _metrics) {
-            m.stats.reset();
+            m.stats = {};
         }
         _last_report = now;
     }
@@ -411,16 +334,16 @@ private:
                 return 0.0;
             }
             if (std::string_view(suffix) == "avg") {
-                return seg.stats.avgMs();
+                return seg.stats.mean;
             }
             if (std::string_view(suffix) == "rms") {
-                return seg.stats.rmsMs();
+                return seg.stats.populationStdDev();
             }
             if (std::string_view(suffix) == "min") {
-                return seg.stats.minMs();
+                return seg.stats.smallest;
             }
             if (std::string_view(suffix) == "max") {
-                return seg.stats.maxMs();
+                return seg.stats.largest;
             }
             return 0.0;
         };
@@ -439,10 +362,10 @@ private:
                 {"file", file},
                 {"line", static_cast<int>(_loc.line())},
 
-                {"p_avg_ms", _period.avgMs()},
-                {"p_rms_ms", _period.rmsMs()},
-                {"p_min_ms", _period.minMs()},
-                {"p_max_ms", _period.maxMs()},
+                {"p_avg_ms", _period.mean},
+                {"p_rms_ms", _period.populationStdDev()},
+                {"p_min_ms", _period.smallest},
+                {"p_max_ms", _period.largest},
                 {"p_n", static_cast<int>(_period.count)},
 
                 {"s0_label", getSegLabel(0)},
@@ -497,7 +420,7 @@ private:
     }
 
     void printStats() const noexcept {
-        std::print("[{}] period: {:.2f}±{:.2f}ms [{:.2f},{:.2f}] ({})", _name, _period.avgMs(), _period.rmsMs(), _period.minMs(), _period.maxMs(), _period.count);
+        std::print("[{}] period: {:.2f}±{:.2f}ms [{:.2f},{:.2f}] ({})", _name, _period.mean, _period.populationStdDev(), _period.smallest, _period.largest, _period.count);
 
         for (std::size_t i = 0; i < kMaxSegments; ++i) {
             const auto& seg = _segments[i];
@@ -507,7 +430,7 @@ private:
 
             const std::string label = seg.label.empty() ? std::format("s{}", i) : seg.label;
 
-            std::print(" | {}: {:.2f}±{:.2f}ms [{:.2f},{:.2f}]", label, seg.stats.avgMs(), seg.stats.rmsMs(), seg.stats.minMs(), seg.stats.maxMs());
+            std::print(" | {}: {:.2f}±{:.2f}ms [{:.2f},{:.2f}]", label, seg.stats.mean, seg.stats.populationStdDev(), seg.stats.smallest, seg.stats.largest);
         }
 
         for (std::size_t i = 0; i < kMaxMetrics; ++i) {
@@ -516,7 +439,7 @@ private:
                 continue;
             }
 
-            std::print(" | {}: {:.2f}±{:.2f} [{:.2f},{:.2f}]", m.label, m.stats.avg(), m.stats.rms(), static_cast<double>(m.stats.min), static_cast<double>(m.stats.max));
+            std::print(" | {}: {:.2f}±{:.2f} [{:.2f},{:.2f}]", m.label, m.stats.mean, m.stats.populationStdDev(), m.stats.smallest, m.stats.largest);
         }
 
         std::print("\n");

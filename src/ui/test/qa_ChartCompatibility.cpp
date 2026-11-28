@@ -269,9 +269,9 @@ struct TestApp : public test::ImGuiTestApp {
                 gState->waitForScheduler(ctx);
                 test::waitUntilAllSamplesDrawn(ctx, *gState->dashboard);
 
-                expect(dipoleSink->size() > 0) << "DipoleCurrentSink has no data";
-                expect(intensitySink->size() > 0) << "IntensitySink has no data";
-                expect(dipoleDataSetSink->dataSetCount() > 0) << "DipoleCurrentDataSetSink has no datasets";
+                expect(dipoleSink->sampleCount() > 0) << "DipoleCurrentSink has no data";
+                expect(intensitySink->sampleCount() > 0) << "IntensitySink has no data";
+                expect(!dipoleDataSetSink->dataSets().empty()) << "DipoleCurrentDataSetSink has no datasets";
 
                 captureScreenshot(*ctx);
             };

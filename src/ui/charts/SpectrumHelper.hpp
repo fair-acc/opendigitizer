@@ -20,6 +20,7 @@
 #include <vector>
 
 #include <gnuradio-4.0/DataSet.hpp>
+#include <gnuradio-4.0/Logger.hpp>
 
 #include "../common/LookAndFeel.hpp"
 #include "../utils/ShaderHelper.hpp"
@@ -41,14 +42,13 @@ inline std::array<uint32_t, kColormapSize> buildColormapLut(ImPlotColormap cmap)
 }
 
 inline ImVec4 contrastingGridColor(ImPlotColormap cmap, float alpha = 0.3f) {
-    float         luminance = 0.f;
-    constexpr int kSamples  = 16;
+    float         meanLuminance = 0.f;
+    constexpr int kSamples      = 16;
     for (int i = 0; i < kSamples; ++i) {
-        ImVec4 c = ImPlot::SampleColormap(static_cast<float>(i) / static_cast<float>(kSamples - 1), cmap);
-        luminance += 0.299f * c.x + 0.587f * c.y + 0.114f * c.z; // ITU-R BT.601
+        meanLuminance += luminance(ImPlot::SampleColormap(static_cast<float>(i) / static_cast<float>(kSamples - 1), cmap));
     }
-    luminance /= static_cast<float>(kSamples);
-    float grid = (luminance > 0.5f) ? 0.f : 1.f;
+    meanLuminance /= static_cast<float>(kSamples);
+    float grid = (meanLuminance > 0.5f) ? 0.f : 1.f;
     return ImVec4(grid, grid, grid, alpha);
 }
 
@@ -59,16 +59,6 @@ inline uint32_t colormapLookup(double value, double scaleMin, double scaleMax, s
     double norm = (value - scaleMin) / (scaleMax - scaleMin);
     auto   idx  = static_cast<std::size_t>(std::clamp(norm, 0.0, 1.0) * static_cast<double>(kColormapSize - 1));
     return lut[idx];
-}
-
-inline constexpr float kEmptyDensityFraction = 1.f / static_cast<float>(kColormapSize - 1UZ);
-static_assert(kColormapSize == 256UZ, "the colormap shader's empty-density threshold is 1/255");
-
-inline uint32_t densityColour(float density, float maxDensity, std::span<const uint32_t, kColormapSize> lut) {
-    if (density < maxDensity * kEmptyDensityFraction) {
-        return 0U;
-    }
-    return colormapLookup(static_cast<double>(density), 0.0, static_cast<double>(maxDensity), lut);
 }
 
 struct SpectrumFrame {
@@ -123,13 +113,7 @@ void forEachNewSpectrum(const SpectrumFrame& newest, std::size_t count, Fn&& fn)
     }
 }
 
-[[nodiscard]] inline double timestampFromNanos(int64_t ns) {
-    double sec = static_cast<double>(ns) * 1e-9;
-    if (sec <= 0.0) {
-        sec = static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count()) * 1e-9;
-    }
-    return sec;
-}
+[[nodiscard]] constexpr double timestampFromNanos(int64_t ns) { return static_cast<double>(ns) * 1e-9; }
 
 /// max-hold, min-hold and exponential-average traces over successive spectrum frames;
 /// the holds decay with a time constant in frames, tau = 0 holds for ever
@@ -234,27 +218,15 @@ inline void buildLogBinnedRow(std::span<const float> freqs, std::span<const floa
         const auto col = std::min(static_cast<std::size_t>((std::log(freq) - logMin) / span * static_cast<double>(nCols)), nCols - 1);
         out[col]       = std::max(out[col], mags[k]);
     }
-    float carry     = 0.0f;
-    bool  seen      = false;
-    float firstVal  = 0.0f;
-    bool  haveFirst = false;
+    // empty columns take their left neighbour's value; leading ones the first finite value, all of them 0 when none is finite
+    const auto firstFinite = std::ranges::find_if(out, [](float v) { return std::isfinite(v); });
+    float      carry       = firstFinite == out.end() ? 0.0f : *firstFinite;
     for (float& v : out) {
         if (std::isfinite(v)) {
             carry = v;
-            seen  = true;
-            if (!haveFirst) {
-                firstVal  = v;
-                haveFirst = true;
-            }
-        } else if (seen) {
+        } else {
             v = carry;
         }
-    }
-    for (float& v : out) {
-        if (std::isfinite(v)) {
-            break;
-        }
-        v = haveFirst ? firstVal : 0.0f;
     }
 }
 
@@ -312,7 +284,7 @@ inline int formatTimeOfDay(double value, char* buff, int size, void* /*userData*
 }
 
 // ImPlotScale_Time is X-axis-only: time is Linear with a custom formatter on either axis
-inline void setupTimeAxis(ImAxis timeAxis, AxisScale scale, bool showGrid, std::string& unitStorage) {
+inline void setupTimeAxis(ImAxis timeAxis, AxisScale scale, bool showGrid) {
     ImPlotAxisFlags tFlags = (showGrid ? ImPlotAxisFlags_None : ImPlotAxisFlags_NoGridLines) | ImPlotAxisFlags_Foreground;
     ImPlot::SetupAxis(timeAxis, "", tFlags);
 
@@ -321,8 +293,8 @@ inline void setupTimeAxis(ImAxis timeAxis, AxisScale scale, bool showGrid, std::
         ImPlot::SetupAxisScale(timeAxis, ImPlotScale_Linear);
         return;
     }
-    unitStorage = "s";
-    ImPlot::SetupAxisFormat(timeAxis, axis::formatMetric, const_cast<void*>(static_cast<const void*>(unitStorage.c_str())));
+    static constexpr const char* kSeconds = "s"; // formatMetric only reads its unit
+    ImPlot::SetupAxisFormat(timeAxis, axis::formatMetric, const_cast<void*>(static_cast<const void*>(kSeconds)));
     switch (scale) {
     case AxisScale::Log10: ImPlot::SetupAxisScale(timeAxis, ImPlotScale_Log10); break;
     case AxisScale::SymLog: ImPlot::SetupAxisScale(timeAxis, ImPlotScale_SymLog); break;
@@ -341,102 +313,171 @@ template<typename T>
     return resized;
 }
 
-inline void followColourScale(double& scaleMin, double& scaleMax, double frameMin, double frameMax, bool first) {
+/// a dB spectrum has -inf where the magnitude is 0, which would drag a colour scale with it
+[[nodiscard]] inline std::optional<std::pair<double, double>> finiteRange(std::ranges::forward_range auto&& values) {
+    auto finite = values | std::views::transform([](auto value) { return static_cast<double>(value); }) | std::views::filter([](double value) { return std::isfinite(value); });
+    if (std::ranges::empty(finite)) {
+        return std::nullopt;
+    }
+    const auto [lowest, highest] = std::ranges::minmax(finite);
+    return std::pair{lowest, highest};
+}
+
+inline void followColourScale(double& scaleMin, double& scaleMax, std::span<const float> values, bool first) {
+    const auto range = finiteRange(values);
+    if (!range || range->second <= range->first) {
+        return;
+    }
     if (first) {
-        scaleMin = frameMin;
-        scaleMax = frameMax;
+        scaleMin = range->first;
+        scaleMax = range->second;
         return;
     }
     constexpr double kAlpha = 0.05;
-    scaleMin += (frameMin - scaleMin) * kAlpha;
-    scaleMax += (frameMax - scaleMax) * kAlpha;
+    scaleMin += (range->first - scaleMin) * kAlpha;
+    scaleMax += (range->second - scaleMax) * kAlpha;
 }
 
 namespace gl = shader;
 
-template<typename TexId = ImTextureID>
-[[nodiscard]] TexId toTextureId(GLuint id) {
-    if constexpr (std::is_pointer_v<TexId>) {
-        return reinterpret_cast<TexId>(static_cast<std::uintptr_t>(id));
-    } else {
-        return static_cast<TexId>(id);
+enum class DensityNormalisation : std::uint8_t {
+    peak,   // a cell every spectrum hits is at full scale
+    maximum // the densest cell is at full scale
+};
+
+/// a frequency-vs-amplitude density of successive spectra, row 0 at yMax:
+/// each spectrum decays every cell by (1 − 1/τ) (τ = 0: no decay) and adds 1 to the cell its value lies in, per column, clamped to the edge rows;
+/// NaN adds nothing.
+/// `peak` is the density of a cell every spectrum hits, p ← p (1 − 1/τ) + 1, which converges to τ
+struct DensityGrid {
+    std::size_t        columns = 0UZ;
+    std::size_t        rows    = 0UZ;
+    std::vector<float> cells; // [rows, columns]
+    float              peak = 0.f;
+
+    void resize(std::size_t nColumns, std::size_t nRows) {
+        columns = nColumns;
+        rows    = nRows;
+        cells.assign(columns * rows, 0.f);
+        peak = 0.f;
     }
-}
 
-template<typename TFn>
-void withTextureBound(GLuint texture, TFn&& fn) {
-    GLint previous = 0;
-    glGetIntegerv(GL_TEXTURE_BINDING_2D, &previous);
-    glBindTexture(GL_TEXTURE_2D, texture);
-    fn();
-    glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(previous));
-}
+    void clear() {
+        std::ranges::fill(cells, 0.f);
+        peak = 0.f;
+    }
 
-/// a frequency-vs-amplitude histogram of successive spectrum lines with exponential decay, colour-mapped into an RGBA8 texture for ImPlot::PlotImage.
-/// The GPU path (GLES3 / WebGL2) draws two fullscreen-triangle passes:
-/// pass 1 decays the previous histogram and accumulates the new spectrum (ping-pong R32F FBOs),
-/// pass 2 normalises by the peak density and samples a 256-entry colormap LUT into RGBA8.
-/// Without EXT_color_buffer_float or on a shader compile failure, an equivalent CPU path runs.
+    void accumulate(std::span<const float> spectrum, double yMin, double yMax, double decayTau) {
+        const float decay = decayTau > 0.0 ? static_cast<float>(1.0 - 1.0 / decayTau) : 1.f;
+        std::ranges::transform(cells, cells.begin(), [decay](float cell) { return cell * decay; });
+        peak = peak * decay + 1.f;
+        if (yMax <= yMin || rows == 0UZ) {
+            return;
+        }
+        const double rowsPerUnit = static_cast<double>(rows) / (yMax - yMin);
+        const double lastRow     = static_cast<double>(rows - 1UZ);
+        for (std::size_t column = 0UZ; column < std::min(columns, spectrum.size()); ++column) {
+            const auto value = static_cast<double>(spectrum[column]);
+            if (std::isnan(value)) {
+                continue;
+            }
+            const auto row = static_cast<std::size_t>(std::clamp((yMax - value) * rowsPerUnit, 0.0, lastRow));
+            cells[row * columns + column] += 1.f;
+        }
+    }
+
+    /// the density drawn at full scale, at least 1
+    [[nodiscard]] float fullScale(DensityNormalisation normalisation) const {
+        const float densest = cells.empty() ? 0.f : *std::ranges::max_element(cells);
+        return std::max(normalisation == DensityNormalisation::peak ? peak : densest, 1.f);
+    }
+};
+
+/// a DensityGrid drawn with ImPlot::PlotImage: its cells go up as an R32F texture,
+/// and one GLSL pass divides them by the full scale and looks the result up in the colormap, into an RGBA8 image;
+/// a cell below 1/255 of full scale is empty
 struct DensityHistogram {
-    std::size_t _specBins      = 0;
-    std::size_t _ampBins       = 0;
-    double      _binningYMin   = 0.0;
-    double      _binningYMax   = 0.0;
-    bool        _preferGpu     = true;
-    bool        _initAttempted = false;
-    bool        _gpuAvailable  = false;
-
-    std::array<GLuint, 2UZ> _histogramTextures{};
-    std::array<GLuint, 2UZ> _histogramFBOs{};
-    int                     _pingPongIndex      = 0;
-    GLuint                  _colormapTexture    = 0;
-    GLuint                  _colormapFBO        = 0;
-    GLuint                  _spectrumTexture    = 0;
-    GLuint                  _colormapLutTexture = 0;
-    ImPlotColormap          _activeColormap     = -1;
-    GLuint                  _emptyVAO           = 0;
-    GLuint                  _accumulateProgram  = 0;
-    GLuint                  _colormapProgram    = 0;
-    GLint                   _locAccPrevHist     = -1;
-    GLint                   _locAccSpecLine     = -1;
-    GLint                   _locAccDecay        = -1;
-    GLint                   _locAccAmpBins      = -1;
-    GLint                   _locCmHist          = -1;
-    GLint                   _locCmLut           = -1;
-    GLint                   _locCmMaxDensity    = -1;
-    float                   _peakDensity        = 0.f;
-
-    std::vector<float> _scratchBuffer;
+    DensityGrid        _grid;
+    double             _binningYMin = 0.0;
+    double             _binningYMax = 0.0;
     std::vector<float> _logBinnedRow;
+    gl::Texture2D      _cells{{.format = gl::Texture2D::Format::r32f}};
+    gl::Texture2D      _colormapLut{{.format = gl::Texture2D::Format::rgba8, .minFilter = GL_LINEAR, .magFilter = GL_LINEAR}};
+    gl::Texture2D      _image;
+    GLuint             _imageFBO       = 0;
+    GLuint             _program        = 0;
+    GLuint             _emptyVAO       = 0;
+    GLint              _locCells       = -1;
+    GLint              _locLut         = -1;
+    GLint              _locFullScale   = -1;
+    bool               _initAttempted  = false;
+    bool               _needsColouring = false;
+    ImPlotColormap     _activeColormap = -1;
 
-    std::vector<float>                  _cpuHistogram;
-    std::vector<uint32_t>               _cpuPixels;
-    GLuint                              _cpuTexture        = 0;
-    ImPlotColormap                      _cpuActiveColormap = -1;
-    std::array<uint32_t, kColormapSize> _cpuColormapLut{};
-    bool                                _cpuNeedsRecolour = false;
-
-    DensityHistogram() = default;
-
-    ~DensityHistogram() { destroyAllResources(); }
-
+    DensityHistogram()                                   = default;
     DensityHistogram(const DensityHistogram&)            = delete;
     DensityHistogram& operator=(const DensityHistogram&) = delete;
 
-    void init() {
-        if (_initAttempted) {
-            return;
+    ~DensityHistogram() {
+        if (gl::hasCurrentContext()) {
+            glDeleteFramebuffers(1, &_imageFBO);
+            glDeleteProgram(_program);
+            glDeleteVertexArrays(1, &_emptyVAO);
         }
-        _initAttempted = true;
-        _gpuAvailable  = _preferGpu && tryInitGpu();
     }
 
-    [[nodiscard]] bool tryInitGpu() {
-        using namespace shader;
+    void reset() {
+        _grid.clear();
+        _needsColouring = true;
+    }
 
-        // fullscreen triangle from gl_VertexID, with an empty VAO and no VBO:
-        // the vertices (-1,-1), (3,-1), (-1,3) are clipped by the GPU to the viewport
-        static constexpr auto* kVertBody = R"glsl(
+    void update(std::span<const float> spectrum, std::size_t ampBins, double decayTau, double yMin, double yMax, ImPlotColormap colormap) {
+        if (_grid.columns != spectrum.size() || _grid.rows != ampBins) {
+            _grid.resize(spectrum.size(), ampBins);
+        } else if (_binningYMin != yMin || _binningYMax != yMax) {
+            _grid.clear(); // the cells mean other amplitudes now
+        }
+        _binningYMin = yMin;
+        _binningYMax = yMax;
+        _grid.accumulate(spectrum, yMin, yMax, decayTau);
+        if (_activeColormap != colormap) {
+            _activeColormap = colormap;
+            const auto lut  = buildColormapLut(colormap);
+            std::ignore     = _colormapLut.upload(kColormapSize, 1UZ, lut.data());
+        }
+        _needsColouring = true;
+    }
+
+    void accumulateAndPlot(const SpectrumFrame& newest, std::size_t nNew, const std::optional<LogFreqRange>& logRange, std::size_t ampBins, double decayTau, double yMin, double yMax, ImPlotColormap colormap, DensityNormalisation normalisation) {
+        if (logRange) {
+            forEachNewSpectrum(newest, nNew, [&](const SpectrumFrame& s) {
+                _logBinnedRow.resize(kLogSpectrumColumns);
+                buildLogBinnedRow(s.xValues, s.yValues, s.nBins, logRange->min, logRange->max, _logBinnedRow);
+                update(_logBinnedRow, ampBins, decayTau, yMin, yMax, colormap);
+            });
+            plot(logRange->min, logRange->max, yMin, yMax, normalisation);
+        } else {
+            forEachNewSpectrum(newest, nNew, [&](const SpectrumFrame& s) { update(s.yValues.first(s.nBins), ampBins, decayTau, yMin, yMax, colormap); });
+            plot(static_cast<double>(newest.xValues.front()), static_cast<double>(newest.xValues.back()), yMin, yMax, normalisation);
+        }
+    }
+
+    void plot(double freqMin, double freqMax, double yMin, double yMax, DensityNormalisation normalisation) {
+        if (_grid.cells.empty() || !initProgram()) {
+            return;
+        }
+        if (_needsColouring) {
+            colour(_grid.fullScale(normalisation));
+            _needsColouring = false;
+        }
+        ImPlot::PlotImage("##density", _image.id(), ImPlotPoint(freqMin, yMin), ImPlotPoint(freqMax, yMax));
+    }
+
+    [[nodiscard]] bool initProgram() {
+        if (!_initAttempted) {
+            _initAttempted = true;
+            // a fullscreen triangle from gl_VertexID, with an empty VAO: (-1,-1), (3,-1), (-1,3), clipped to the viewport
+            static constexpr auto* kVertBody   = R"glsl(
 out vec2 v_uv;
 void main() {
     float x = -1.0 + float((gl_VertexID & 1) << 2);
@@ -445,427 +486,70 @@ void main() {
     gl_Position = vec4(x, y, 0.0, 1.0);
 }
 )glsl";
-
-        // the spectrum line (R32F, specBins×1) arrives normalised to [0,1]; (1-specVal) puts high amplitudes at the top of the texture
-        // a fragment accumulates when its amplitude bin lies within ±0.5 bins of the new spectrum value
-        static constexpr auto* kAccumulateFragBody = R"glsl(
-in vec2 v_uv;
-out float fragDensity;
-
-uniform sampler2D u_prevHistogram;  // ping-pong R32F, specBins × ampBins
-uniform sampler2D u_spectrumLine;   // R32F, specBins × 1, values in [0,1]
-uniform float     u_decayFactor;    // (1 - 1/tau), applied to previous density
-uniform float     u_ampBins;        // number of amplitude bins (float for GPU arithmetic)
-
-void main() {
-    float prev    = texture(u_prevHistogram, v_uv).r * u_decayFactor;
-    float specVal = texture(u_spectrumLine, vec2(v_uv.x, 0.5)).r;
-    float thisBin = v_uv.y * u_ampBins;
-    float hitBin  = (1.0 - specVal) * u_ampBins;
-    float hit     = step(abs(thisBin - hitBin), 0.5) * step(0.0, specVal);
-    fragDensity   = prev + hit;
-}
-)glsl";
-
-        static constexpr auto* kColormapFragBody = R"glsl(
+            static constexpr auto* kColourBody = R"glsl(
 in vec2 v_uv;
 out vec4 fragColor;
-
-uniform sampler2D u_histogram;    // accumulated R32F density from the accumulate pass
-uniform sampler2D u_colormapLut;  // RGBA8, 256×1, built from ImPlot colormap on CPU
-uniform float     u_maxDensity;   // CPU-tracked peak density (converges to tau)
-
+uniform sampler2D u_cells;       // R32F, the DensityGrid's cells
+uniform sampler2D u_colormapLut; // RGBA8, 256 x 1
+uniform float     u_fullScale;
 void main() {
-    float density = texture(u_histogram, v_uv).r;
-    float norm    = clamp(density / max(u_maxDensity, 1.0), 0.0, 1.0);
-    fragColor     = norm < 1.0 / 255.0 ? vec4(0.0) : texture(u_colormapLut, vec2(norm, 0.5)); // empty: as densityColour()
+    float norm = clamp(texture(u_cells, v_uv).r / u_fullScale, 0.0, 1.0);
+    fragColor  = norm < 1.0 / 255.0 ? vec4(0.0) : texture(u_colormapLut, vec2(norm, 0.5));
 }
 )glsl";
-
-        GLuint vs  = compileShader(GL_VERTEX_SHADER, kGlslPrefix, kVertBody);
-        GLuint fsA = compileShader(GL_FRAGMENT_SHADER, kGlslPrefix, kAccumulateFragBody);
-        GLuint fsC = compileShader(GL_FRAGMENT_SHADER, kGlslPrefix, kColormapFragBody);
-
-        _accumulateProgram = linkProgram(vs, fsA);
-        _colormapProgram   = linkProgram(vs, fsC);
-
-        glDeleteShader(vs);
-        glDeleteShader(fsA);
-        glDeleteShader(fsC);
-
-        if (!_accumulateProgram || !_colormapProgram) {
-            destroyGpuResources();
-            return false;
-        }
-
-        _locAccPrevHist = glGetUniformLocation(_accumulateProgram, "u_prevHistogram");
-        _locAccSpecLine = glGetUniformLocation(_accumulateProgram, "u_spectrumLine");
-        _locAccDecay    = glGetUniformLocation(_accumulateProgram, "u_decayFactor");
-        _locAccAmpBins  = glGetUniformLocation(_accumulateProgram, "u_ampBins");
-
-        _locCmHist       = glGetUniformLocation(_colormapProgram, "u_histogram");
-        _locCmLut        = glGetUniformLocation(_colormapProgram, "u_colormapLut");
-        _locCmMaxDensity = glGetUniformLocation(_colormapProgram, "u_maxDensity");
-
-        glGenVertexArrays(1, &_emptyVAO);
-
-        if (!supportsR32FFBO()) {
-            destroyGpuResources();
-            return false;
-        }
-
-        return true;
-    }
-
-    void destroyGpuTextures() {
-        glDeleteTextures(static_cast<GLsizei>(_histogramTextures.size()), _histogramTextures.data());
-        glDeleteFramebuffers(static_cast<GLsizei>(_histogramFBOs.size()), _histogramFBOs.data());
-        _histogramTextures = {};
-        _histogramFBOs     = {};
-
-        if (_colormapTexture) {
-            glDeleteTextures(1, &_colormapTexture);
-            _colormapTexture = 0;
-        }
-        if (_colormapFBO) {
-            glDeleteFramebuffers(1, &_colormapFBO);
-            _colormapFBO = 0;
-        }
-        if (_spectrumTexture) {
-            glDeleteTextures(1, &_spectrumTexture);
-            _spectrumTexture = 0;
-        }
-        if (_colormapLutTexture) {
-            glDeleteTextures(1, &_colormapLutTexture);
-            _colormapLutTexture = 0;
-        }
-        _activeColormap = -1;
-    }
-
-    void destroyGpuResources() {
-        destroyGpuTextures();
-        if (_accumulateProgram) {
-            glDeleteProgram(_accumulateProgram);
-            _accumulateProgram = 0;
-        }
-        if (_colormapProgram) {
-            glDeleteProgram(_colormapProgram);
-            _colormapProgram = 0;
-        }
-        if (_emptyVAO) {
-            glDeleteVertexArrays(1, &_emptyVAO);
-            _emptyVAO = 0;
-        }
-    }
-
-    void destroyCpuResources() {
-        _cpuHistogram.clear();
-        _cpuPixels.clear();
-        _cpuActiveColormap = -1;
-        if (_cpuTexture) {
-            glDeleteTextures(1, &_cpuTexture);
-            _cpuTexture = 0;
-        }
-    }
-
-    void destroyAllResources() {
-        destroyGpuResources();
-        destroyCpuResources();
-        _initAttempted = false;
-        _gpuAvailable  = false;
-    }
-
-    void gpuResize(std::size_t specBins, std::size_t ampBins) {
-        destroyGpuTextures();
-        _specBins      = specBins;
-        _ampBins       = ampBins;
-        _pingPongIndex = 0;
-        _peakDensity   = 0.f;
-
-        const auto w = static_cast<GLsizei>(_specBins);
-        const auto h = static_cast<GLsizei>(_ampBins);
-
-        for (int i = 0; i < 2; ++i) {
-            gl::createR32FTexture(_histogramTextures[static_cast<std::size_t>(i)], w, h);
-            _histogramFBOs[static_cast<std::size_t>(i)] = gl::attachFBO(_histogramTextures[static_cast<std::size_t>(i)]);
-        }
-
-        gl::createRGBA8Texture(_colormapTexture, w, h);
-        _colormapFBO = gl::attachFBO(_colormapTexture);
-
-        gl::createR32FTexture(_spectrumTexture, w, 1);
-
-        const auto nTexels = static_cast<std::size_t>(w) * static_cast<std::size_t>(h);
-        _scratchBuffer.resize(nTexels);
-        std::ranges::fill(_scratchBuffer, 0.f);
-        for (auto tex : _histogramTextures) {
-            glBindTexture(GL_TEXTURE_2D, tex);
-            glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, w, h, GL_RED, GL_FLOAT, _scratchBuffer.data());
-        }
-    }
-
-    void gpuReset() {
-        if (_specBins == 0 || _ampBins == 0) {
-            return;
-        }
-        const auto w       = static_cast<GLsizei>(_specBins);
-        const auto h       = static_cast<GLsizei>(_ampBins);
-        const auto nTexels = static_cast<std::size_t>(w) * static_cast<std::size_t>(h);
-        _scratchBuffer.resize(nTexels);
-        std::ranges::fill(_scratchBuffer, 0.f);
-        for (auto tex : _histogramTextures) {
-            glBindTexture(GL_TEXTURE_2D, tex);
-            glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, w, h, GL_RED, GL_FLOAT, _scratchBuffer.data());
-        }
-        _peakDensity   = 0.f;
-        _pingPongIndex = 0;
-    }
-
-    void gpuUpdateColormapLut(ImPlotColormap colormap) {
-        if (_activeColormap == colormap && _colormapLutTexture != 0) {
-            return;
-        }
-        _activeColormap = colormap;
-        auto lut        = buildColormapLut(colormap);
-
-        if (!_colormapLutTexture) {
-            gl::createRGBA8Texture(_colormapLutTexture, static_cast<GLsizei>(kColormapSize), 1);
-        }
-        glBindTexture(GL_TEXTURE_2D, _colormapLutTexture);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, static_cast<GLsizei>(kColormapSize), 1, GL_RGBA, GL_UNSIGNED_BYTE, lut.data());
-    }
-
-    void gpuUpdate(std::span<const float> yValues, std::size_t nBins, std::size_t ampBins, double decayTau, double yMin, double yMax, ImPlotColormap colormap) {
-        // before any GL call: resize, reset and upload all change bindings
-        GLint                  prevFBO = 0, prevProgram = 0, prevActiveTexture = 0, prevVAO = 0;
-        GLint                  prevTexture0 = 0, prevTexture1 = 0;
-        std::array<GLint, 4UZ> prevViewport{};
-        glGetIntegerv(GL_FRAMEBUFFER_BINDING, &prevFBO);
-        glGetIntegerv(GL_CURRENT_PROGRAM, &prevProgram);
-        glGetIntegerv(GL_VIEWPORT, prevViewport.data());
-        glGetIntegerv(GL_ACTIVE_TEXTURE, &prevActiveTexture);
-        glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &prevVAO);
-        glActiveTexture(GL_TEXTURE0);
-        glGetIntegerv(GL_TEXTURE_BINDING_2D, &prevTexture0);
-        glActiveTexture(GL_TEXTURE1);
-        glGetIntegerv(GL_TEXTURE_BINDING_2D, &prevTexture1);
-
-        if (_specBins != nBins || _ampBins != ampBins) {
-            gpuResize(nBins, ampBins);
-            _binningYMin = yMin;
-            _binningYMax = yMax;
-        }
-
-        if (_binningYMin != yMin || _binningYMax != yMax) {
-            gpuReset();
-            _binningYMin = yMin;
-            _binningYMax = yMax;
-        }
-
-        gpuUpdateColormapLut(colormap);
-
-        _scratchBuffer.resize(nBins);
-        const double ampRange = yMax - yMin;
-        if (ampRange > 0.0) {
-            const double invRange = 1.0 / ampRange;
-            for (std::size_t i = 0; i < nBins; ++i) {
-                _scratchBuffer[i] = static_cast<float>(std::clamp((static_cast<double>(yValues[i]) - yMin) * invRange, 0.0, 1.0));
+            _program                           = gl::buildProgram(kVertBody, kColourBody);
+            if (_program != 0U) {
+                _locCells     = glGetUniformLocation(_program, "u_cells");
+                _locLut       = glGetUniformLocation(_program, "u_colormapLut");
+                _locFullScale = glGetUniformLocation(_program, "u_fullScale");
+                glGenVertexArrays(1, &_emptyVAO);
+            } else {
+                gr::log::warning("[DensityHistogram] the colour-map shader did not build: no density image");
             }
-        } else {
-            std::ranges::fill(_scratchBuffer, 0.f);
         }
+        return _program != 0U;
+    }
 
-        glBindTexture(GL_TEXTURE_2D, _spectrumTexture);
-        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, static_cast<GLsizei>(nBins), 1, GL_RED, GL_FLOAT, _scratchBuffer.data());
+    void colour(float fullScale) {
+        const bool resized = _image.width() != _grid.columns || _image.height() != _grid.rows;
+        if (!_cells.upload(_grid.columns, _grid.rows, _grid.cells.data()) || (resized && !_image.upload(_grid.columns, _grid.rows, nullptr))) {
+            return;
+        }
+        if (resized) {
+            glDeleteFramebuffers(1, &_imageFBO);
+            _imageFBO = gl::attachFBO(_image.handle());
+        }
+        GLint                  previousFBO = 0, previousProgram = 0, previousActiveTexture = 0, previousVAO = 0, previousTexture0 = 0, previousTexture1 = 0;
+        std::array<GLint, 4UZ> previousViewport{};
+        glGetIntegerv(GL_FRAMEBUFFER_BINDING, &previousFBO);
+        glGetIntegerv(GL_CURRENT_PROGRAM, &previousProgram);
+        glGetIntegerv(GL_VIEWPORT, previousViewport.data());
+        glGetIntegerv(GL_ACTIVE_TEXTURE, &previousActiveTexture);
+        glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &previousVAO);
+        glActiveTexture(GL_TEXTURE0);
+        glGetIntegerv(GL_TEXTURE_BINDING_2D, &previousTexture0);
+        glBindTexture(GL_TEXTURE_2D, _cells.handle());
+        glActiveTexture(GL_TEXTURE1);
+        glGetIntegerv(GL_TEXTURE_BINDING_2D, &previousTexture1);
+        glBindTexture(GL_TEXTURE_2D, _colormapLut.handle());
 
-        const auto w = static_cast<GLsizei>(_specBins);
-        const auto h = static_cast<GLsizei>(_ampBins);
-
+        glBindFramebuffer(GL_FRAMEBUFFER, _imageFBO);
+        glViewport(0, 0, static_cast<GLsizei>(_grid.columns), static_cast<GLsizei>(_grid.rows));
+        glUseProgram(_program);
+        glUniform1i(_locCells, 0);
+        glUniform1i(_locLut, 1);
+        glUniform1f(_locFullScale, fullScale);
         glBindVertexArray(_emptyVAO);
-
-        const auto src = static_cast<std::size_t>(_pingPongIndex);
-        const auto dst = static_cast<std::size_t>(1 - _pingPongIndex);
-
-        glBindFramebuffer(GL_FRAMEBUFFER, _histogramFBOs[dst]);
-        glViewport(0, 0, w, h);
-        glUseProgram(_accumulateProgram);
-
-        const float decayFactor = (decayTau > 0.0) ? static_cast<float>(1.0 - 1.0 / decayTau) : 1.f;
-
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, _histogramTextures[src]);
-        glUniform1i(_locAccPrevHist, 0);
-
-        glActiveTexture(GL_TEXTURE1);
-        glBindTexture(GL_TEXTURE_2D, _spectrumTexture);
-        glUniform1i(_locAccSpecLine, 1);
-
-        glUniform1f(_locAccDecay, decayFactor);
-        glUniform1f(_locAccAmpBins, static_cast<float>(_ampBins));
-
         glDrawArrays(GL_TRIANGLES, 0, 3);
 
-        _pingPongIndex = 1 - _pingPongIndex;
-
-        _peakDensity = _peakDensity * decayFactor + 1.f;
-
-        glBindFramebuffer(GL_FRAMEBUFFER, _colormapFBO);
-        glViewport(0, 0, w, h);
-        glUseProgram(_colormapProgram);
-
+        glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(previousTexture1));
         glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, _histogramTextures[static_cast<std::size_t>(_pingPongIndex)]);
-        glUniform1i(_locCmHist, 0);
-
-        glActiveTexture(GL_TEXTURE1);
-        glBindTexture(GL_TEXTURE_2D, _colormapLutTexture);
-        glUniform1i(_locCmLut, 1);
-
-        glUniform1f(_locCmMaxDensity, std::max(_peakDensity, 1.f));
-
-        glDrawArrays(GL_TRIANGLES, 0, 3);
-
-        glActiveTexture(GL_TEXTURE1);
-        glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(prevTexture1));
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(prevTexture0));
-        glBindVertexArray(static_cast<GLuint>(prevVAO));
-        glActiveTexture(static_cast<GLenum>(prevActiveTexture));
-        glUseProgram(static_cast<GLuint>(prevProgram));
-        glBindFramebuffer(GL_FRAMEBUFFER, static_cast<GLuint>(prevFBO));
-        glViewport(prevViewport[0], prevViewport[1], prevViewport[2], prevViewport[3]);
-    }
-
-    void cpuResize(std::size_t specBins, std::size_t ampBins) {
-        _specBins         = specBins;
-        _ampBins          = ampBins;
-        const auto nCells = _ampBins * _specBins;
-        _cpuHistogram.assign(nCells, 0.f);
-        _cpuPixels.assign(nCells, 0U);
-
-        if (_cpuTexture) {
-            glDeleteTextures(1, &_cpuTexture);
-        }
-        glGenTextures(1, &_cpuTexture);
-        glBindTexture(GL_TEXTURE_2D, _cpuTexture);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, static_cast<GLsizei>(_specBins), static_cast<GLsizei>(_ampBins), 0, GL_RGBA, GL_UNSIGNED_BYTE, _cpuPixels.data());
-    }
-
-    void cpuReset() {
-        std::ranges::fill(_cpuHistogram, 0.f);
-        std::ranges::fill(_cpuPixels, uint32_t(0));
-        if (_cpuTexture && _specBins > 0 && _ampBins > 0) {
-            glBindTexture(GL_TEXTURE_2D, _cpuTexture);
-            glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, static_cast<GLsizei>(_specBins), static_cast<GLsizei>(_ampBins), GL_RGBA, GL_UNSIGNED_BYTE, _cpuPixels.data());
-        }
-    }
-
-    void cpuUpdate(std::span<const float> yValues, std::size_t nBins, std::size_t ampBins, double decayTau, double yMin, double yMax, ImPlotColormap colormap) {
-        if (_specBins != nBins || _ampBins != ampBins) {
-            cpuResize(nBins, ampBins);
-            _binningYMin = yMin;
-            _binningYMax = yMax;
-        }
-
-        if (_binningYMin != yMin || _binningYMax != yMax) {
-            cpuReset();
-            _binningYMin = yMin;
-            _binningYMax = yMax;
-        }
-
-        const double decayFactor = (decayTau > 0.0) ? (1.0 - 1.0 / decayTau) : 1.0;
-        for (auto& cell : _cpuHistogram) {
-            cell *= static_cast<float>(decayFactor);
-        }
-
-        const double ampRange = yMax - yMin;
-        if (ampRange > 0.0) {
-            const double invRange = static_cast<double>(_ampBins) / ampRange;
-            for (std::size_t i = 0; i < nBins; ++i) {
-                const auto val = static_cast<double>(yValues[i]);
-                const auto bin = static_cast<std::size_t>(std::clamp((yMax - val) * invRange, 0.0, static_cast<double>(_ampBins - 1)));
-                _cpuHistogram[bin * _specBins + i] += 1.f;
-            }
-        }
-
-        if (_cpuActiveColormap != colormap) {
-            _cpuActiveColormap = colormap;
-            _cpuColormapLut    = buildColormapLut(colormap);
-        }
-        _cpuNeedsRecolour = true;
-    }
-
-    void cpuRecolour() {
-        const float maxDensity = std::max(*std::ranges::max_element(_cpuHistogram), 1.f);
-        std::ranges::transform(_cpuHistogram, _cpuPixels.begin(), [&](float density) { return densityColour(density, maxDensity, _cpuColormapLut); });
-
-        glBindTexture(GL_TEXTURE_2D, _cpuTexture);
-        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, static_cast<GLsizei>(_specBins), static_cast<GLsizei>(_ampBins), GL_RGBA, GL_UNSIGNED_BYTE, _cpuPixels.data());
-        _cpuNeedsRecolour = false;
-    }
-
-    void resize(std::size_t specBins, std::size_t ampBins) {
-        if (_gpuAvailable) {
-            gpuResize(specBins, ampBins);
-        } else {
-            cpuResize(specBins, ampBins);
-        }
-    }
-
-    void reset() {
-        if (_gpuAvailable) {
-            gpuReset();
-        } else {
-            cpuReset();
-        }
-    }
-
-    void update(std::span<const float> yValues, std::size_t nBins, std::size_t ampBins, double decayTau, double yMin, double yMax, ImPlotColormap colormap, bool preferGpu = true) {
-        if (_preferGpu != preferGpu) {
-            destroyAllResources();
-            _specBins  = 0;
-            _ampBins   = 0;
-            _preferGpu = preferGpu;
-        }
-        init();
-        if (_gpuAvailable) {
-            gpuUpdate(yValues, nBins, ampBins, decayTau, yMin, yMax, colormap);
-        } else {
-            cpuUpdate(yValues, nBins, ampBins, decayTau, yMin, yMax, colormap);
-        }
-    }
-
-    void plot(std::span<const float> xValues, double yMin, double yMax) { plot(static_cast<double>(xValues.front()), static_cast<double>(xValues.back()), yMin, yMax); }
-
-    void accumulateAndPlot(const SpectrumFrame& newest, std::size_t nNew, const std::optional<LogFreqRange>& logRange, std::size_t ampBins, double decayTau, double yMin, double yMax, ImPlotColormap colormap, bool preferGpu) {
-        if (logRange) {
-            forEachNewSpectrum(newest, nNew, [&](const SpectrumFrame& s) {
-                _logBinnedRow.resize(kLogSpectrumColumns);
-                buildLogBinnedRow(s.xValues, s.yValues, s.nBins, logRange->min, logRange->max, _logBinnedRow);
-                update(_logBinnedRow, kLogSpectrumColumns, ampBins, decayTau, yMin, yMax, colormap, preferGpu);
-            });
-            plot(logRange->min, logRange->max, yMin, yMax);
-        } else {
-            forEachNewSpectrum(newest, nNew, [&](const SpectrumFrame& s) { update(s.yValues, s.nBins, ampBins, decayTau, yMin, yMax, colormap, preferGpu); });
-            plot(newest.xValues, yMin, yMax);
-        }
-    }
-
-    void plot(double freqMin, double freqMax, double yMin, double yMax) {
-        GLuint tex = _gpuAvailable ? _colormapTexture : _cpuTexture;
-        if (!tex) {
-            return;
-        }
-        if (!_gpuAvailable && _cpuNeedsRecolour) {
-            cpuRecolour();
-        }
-        ImPlot::PlotImage("##density", toTextureId(tex), ImPlotPoint(freqMin, yMin), ImPlotPoint(freqMax, yMax));
+        glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(previousTexture0));
+        glActiveTexture(static_cast<GLenum>(previousActiveTexture));
+        glBindVertexArray(static_cast<GLuint>(previousVAO));
+        glUseProgram(static_cast<GLuint>(previousProgram));
+        glBindFramebuffer(GL_FRAMEBUFFER, static_cast<GLuint>(previousFBO));
+        glViewport(previousViewport[0], previousViewport[1], previousViewport[2], previousViewport[3]);
     }
 };
 
@@ -884,8 +568,8 @@ struct WaterfallBuffer {
     std::size_t _filledRows = 0;
 
     std::vector<uint32_t> _pixels;
-    std::vector<double>   _timestamps; // UTC seconds per row (parallel ring buffer)
-    GLuint                _texture = 0;
+    std::vector<double>   _timestamps;                                          // UTC seconds per row (parallel ring buffer)
+    gl::Texture2D         _texture{gl::Texture2D::Options{.wrapT = GL_REPEAT}}; // time wraps: the write row scrolls
 
     ImPlotColormap                      _activeColormap = -1;
     std::array<uint32_t, kColormapSize> _colormapLut{};
@@ -893,12 +577,7 @@ struct WaterfallBuffer {
     double _scaleMin = 0.0;
     double _scaleMax = 0.0;
 
-    bool                       _preferGpu = true;
-    std::vector<float>         _rawMagnitudes; // CPU path: raw magnitude ring buffer
-    mutable std::vector<float> _linearized;    // CPU path: scratch for rendering
-    double                     _effectiveScaleMin = 0.0;
-    double                     _effectiveScaleMax = 0.0;
-    std::vector<float>         _logBinnedRow;
+    std::vector<float> _logBinnedRow;
 
     WaterfallBuffer() = default;
 
@@ -907,7 +586,7 @@ struct WaterfallBuffer {
     WaterfallBuffer(const WaterfallBuffer&)            = delete;
     WaterfallBuffer& operator=(const WaterfallBuffer&) = delete;
 
-    void init(std::size_t width, std::size_t height, bool preferGpu = true) {
+    void init(std::size_t width, std::size_t height) {
         destroy();
         _width      = width;
         _height     = height;
@@ -915,34 +594,23 @@ struct WaterfallBuffer {
         _filledRows = 0;
         _scaleMin   = 0.0;
         _scaleMax   = 0.0;
-        _preferGpu  = preferGpu;
 
         _timestamps.assign(_height, 0.0);
 
-        // always the GPU texture: PlotImage maps it in screen space, so it renders correctly on log-frequency axes,
-        // whereas PlotHeatmap places cells in linear data space and mis-positions log-binned columns.
-        // The renderCpu/PlotHeatmap path below is only the fallback for when no GL texture can be allocated.
-        glGenTextures(1, &_texture);
-        if (_texture != 0U) {
-            _pixels.assign(_width * _height, 0U);
-            glBindTexture(GL_TEXTURE_2D, _texture);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, static_cast<GLsizei>(_width), static_cast<GLsizei>(_height), 0, GL_RGBA, GL_UNSIGNED_BYTE, _pixels.data());
-        } else {
-            _rawMagnitudes.assign(_width * _height, 0.0f);
+        // PlotImage maps the texture in screen space; PlotHeatmap's linear cells misplace log-binned columns
+        _pixels.assign(_width * _height, 0U);
+        if (!_texture.upload(_width, _height, _pixels.data())) {
+            _pixels.clear(); // no GL context: nothing is drawn
         }
     }
 
     template<typename TColourRange>
-    [[nodiscard]] std::optional<FrequencySpan> pushNewSpectra(const std::vector<std::shared_ptr<SignalSink>>& sinks, std::size_t& lastPushedSampleCount, const std::optional<LogFreqRange>& logRange, std::size_t nHistory, bool preferGpu, ImPlotColormap colormap, TColourRange&& colourRange) {
+    [[nodiscard]] std::optional<FrequencySpan> pushNewSpectra(const std::vector<std::shared_ptr<SignalSink>>& sinks, std::size_t& lastPushedSampleCount, const std::optional<LogFreqRange>& logRange, std::size_t nHistory, ImPlotColormap colormap, TColourRange&& colourRange) {
         std::optional<FrequencySpan> pushed;
         auto                         pushSpectrum = [&](const SpectrumFrame& f) {
             const std::size_t width = logRange ? kLogSpectrumColumns : f.nBins;
             if (_width != width) {
-                init(width, nHistory, preferGpu);
+                init(width, nHistory);
             }
 
             updateAutoScale(f.yValues, f.nBins);
@@ -964,44 +632,23 @@ struct WaterfallBuffer {
         return pushed;
     }
 
-    void setPreferGpu(bool preferGpu) {
-        if (_preferGpu == preferGpu) {
-            return;
-        }
-        auto w = _width;
-        auto h = _height;
-        init(w, h, preferGpu);
-    }
-
     void pushRow(std::span<const float> magnitudes, std::size_t count, double scaleMin, double scaleMax, double timestampSec, ImPlotColormap colormap) {
-        if (_width == 0 || _height == 0) {
+        if (_width == 0 || _height == 0 || !_texture) {
             return;
         }
 
-        _effectiveScaleMin = scaleMin;
-        _effectiveScaleMax = scaleMax;
-
-        auto n = std::min(count, _width);
-
-        if (_texture) {
-            if (_activeColormap != colormap || (_colormapLut[0] == 0 && _colormapLut[1] == 0)) {
-                _colormapLut = buildColormapLut(colormap);
-            }
-
-            uint32_t* row = _pixels.data() + _writeRow * _width;
-            for (std::size_t i = 0; i < n; ++i) {
-                row[i] = colormapLookup(static_cast<double>(magnitudes[i]), scaleMin, scaleMax, _colormapLut);
-            }
-            std::fill_n(row + n, _width - n, uint32_t(0));
-
-            withTextureBound(_texture, [&] { glTexSubImage2D(GL_TEXTURE_2D, 0, 0, static_cast<GLint>(_writeRow), static_cast<GLsizei>(_width), 1, GL_RGBA, GL_UNSIGNED_BYTE, row); });
-        } else {
-            float* row = _rawMagnitudes.data() + _writeRow * _width;
-            for (std::size_t i = 0; i < n; ++i) {
-                row[i] = magnitudes[i];
-            }
-            std::fill_n(row + n, _width - n, 0.0f);
+        const auto n = std::min(count, _width);
+        if (_activeColormap != colormap || (_colormapLut[0] == 0 && _colormapLut[1] == 0)) {
+            _colormapLut = buildColormapLut(colormap);
         }
+
+        uint32_t* row = _pixels.data() + _writeRow * _width;
+        for (std::size_t i = 0; i < n; ++i) {
+            row[i] = colormapLookup(static_cast<double>(magnitudes[i]), scaleMin, scaleMax, _colormapLut);
+        }
+        std::fill_n(row + n, _width - n, uint32_t(0));
+
+        _texture.uploadRows(_writeRow, 1UZ, row);
 
         _activeColormap        = colormap;
         _timestamps[_writeRow] = timestampSec;
@@ -1013,11 +660,7 @@ struct WaterfallBuffer {
 
     // `horizontal` transposes the display: frequency on Y, time on X (default: frequency on X, time on Y).
     void render(double freqMin, double freqMax, double timeLo, double timeHi, bool newestLeading = true, bool horizontal = false) const {
-        if (_filledRows == 0) {
-            return;
-        }
-        if (!_texture) {
-            renderCpu(freqMin, freqMax, timeLo, timeHi, newestLeading, horizontal);
+        if (_filledRows == 0 || !_texture) {
             return;
         }
 
@@ -1038,46 +681,14 @@ struct WaterfallBuffer {
             const ImVec2 botRight = ImPlot::PlotToPixels(timeHi, freqMin);
             const ImVec2 botLeft  = ImPlot::PlotToPixels(timeLo, freqMin);
             ImPlot::PushPlotClipRect();
-            drawList->AddImageQuad(toTextureId(_texture), topLeft, topRight, botRight, botLeft, ImVec2(1.f, vLeft), ImVec2(1.f, vRight), ImVec2(0.f, vRight), ImVec2(0.f, vLeft));
+            drawList->AddImageQuad(_texture.id(), topLeft, topRight, botRight, botLeft, ImVec2(1.f, vLeft), ImVec2(1.f, vRight), ImVec2(0.f, vRight), ImVec2(0.f, vLeft));
             ImPlot::PopPlotClipRect();
         } else {
             // uv0 maps to (bmin.x, bmax.y) = screen top-left = plot timeHi; newest at top when newestLeading
             const float vTop    = newestLeading ? vNewest : vOldest;
             const float vBottom = newestLeading ? vOldest : vNewest;
-            ImPlot::PlotImage("##waterfall", toTextureId(_texture), ImPlotPoint(freqMin, timeLo), ImPlotPoint(freqMax, timeHi), ImVec2(0.0f, vTop), ImVec2(1.0f, vBottom));
+            ImPlot::PlotImage("##waterfall", _texture.id(), ImPlotPoint(freqMin, timeLo), ImPlotPoint(freqMax, timeHi), ImVec2(0.0f, vTop), ImVec2(1.0f, vBottom));
         }
-    }
-
-    void renderCpu(double freqMin, double freqMax, double timeLo, double timeHi, bool newestLeading, bool horizontal = false) const {
-        if (horizontal) {
-            renderCpuHorizontal(freqMin, freqMax, timeLo, timeHi, newestLeading);
-            return;
-        }
-        _linearized.resize(_filledRows * _width);
-        for (std::size_t i = 0; i < _filledRows; ++i) {
-            std::size_t srcRow = newestLeading ? (_writeRow + _height - 1 - i) % _height : (_writeRow + _height - _filledRows + i) % _height;
-            std::copy_n(_rawMagnitudes.data() + srcRow * _width, _width, _linearized.data() + i * _width);
-        }
-
-        ImPlot::PushColormap(_activeColormap);
-        ImPlot::PlotHeatmap("##waterfall", _linearized.data(), static_cast<int>(_filledRows), static_cast<int>(_width), _effectiveScaleMin, _effectiveScaleMax, nullptr, ImPlotPoint(freqMin, timeLo), ImPlotPoint(freqMax, timeHi));
-        ImPlot::PopColormap();
-    }
-
-    // transposed CPU fallback: rows = frequency (Y), cols = time (X)
-    void renderCpuHorizontal(double freqMin, double freqMax, double timeLo, double timeHi, bool newestLeading) const {
-        _linearized.resize(_width * _filledRows);
-        for (std::size_t r = 0; r < _width; ++r) {
-            const std::size_t freqCol = _width - 1 - r;
-            for (std::size_t c = 0; c < _filledRows; ++c) {
-                const std::size_t order          = newestLeading ? c : (_filledRows - 1 - c); // col 0 = left = oldest when newest trails right
-                const std::size_t srcRow         = (_writeRow + _height - _filledRows + order) % _height;
-                _linearized[r * _filledRows + c] = _rawMagnitudes[srcRow * _width + freqCol];
-            }
-        }
-        ImPlot::PushColormap(_activeColormap);
-        ImPlot::PlotHeatmap("##waterfall", _linearized.data(), static_cast<int>(_width), static_cast<int>(_filledRows), _effectiveScaleMin, _effectiveScaleMax, nullptr, ImPlotPoint(timeLo, freqMin), ImPlotPoint(timeHi, freqMax));
-        ImPlot::PopColormap();
     }
 
     void resizeHistory(std::size_t newHeight) {
@@ -1087,10 +698,8 @@ struct WaterfallBuffer {
 
         const std::size_t rowsToCopy = std::min(_filledRows, newHeight);
         if (_texture) {
-            _pixels = resizeRing(_pixels, _width, _height, _writeRow, rowsToCopy, newHeight);
-            withTextureBound(_texture, [&] { glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, static_cast<GLsizei>(_width), static_cast<GLsizei>(newHeight), 0, GL_RGBA, GL_UNSIGNED_BYTE, _pixels.data()); });
-        } else {
-            _rawMagnitudes = resizeRing(_rawMagnitudes, _width, _height, _writeRow, rowsToCopy, newHeight);
+            _pixels     = resizeRing(_pixels, _width, _height, _writeRow, rowsToCopy, newHeight);
+            std::ignore = _texture.upload(_width, newHeight, _pixels.data());
         }
         _timestamps = resizeRing(_timestamps, 1UZ, _height, _writeRow, rowsToCopy, newHeight);
         _height     = newHeight;
@@ -1099,20 +708,14 @@ struct WaterfallBuffer {
     }
 
     void clear() {
-        if (_texture) {
-            std::ranges::fill(_pixels, uint32_t(0));
-        } else {
-            std::ranges::fill(_rawMagnitudes, 0.0f);
-        }
+        std::ranges::fill(_pixels, uint32_t(0));
         std::ranges::fill(_timestamps, 0.0);
         _writeRow   = 0;
         _filledRows = 0;
         _scaleMin   = 0.0;
         _scaleMax   = 0.0;
 
-        if (_texture && _width > 0 && _height > 0) {
-            withTextureBound(_texture, [&] { glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, static_cast<GLsizei>(_width), static_cast<GLsizei>(_height), GL_RGBA, GL_UNSIGNED_BYTE, _pixels.data()); });
-        }
+        _texture.uploadRows(0UZ, _height, _pixels.data());
     }
 
     [[nodiscard]] std::pair<double, double> rawTimeBounds() const {
@@ -1127,32 +730,11 @@ struct WaterfallBuffer {
         return {tOldest, tNewest};
     }
 
-    void updateAutoScale(std::span<const float> yValues, std::size_t nBins) {
-        // non-finite bins ignored: a dB spectrum has -inf where the magnitude is ~0 (e.g. empty bands of a wideband FFT),
-        // which would drag scaleMin to -inf and collapse the whole colour mapping
-        double fMin = std::numeric_limits<double>::infinity();
-        double fMax = -std::numeric_limits<double>::infinity();
-        for (const float y : yValues | std::views::take(static_cast<std::ptrdiff_t>(nBins))) {
-            if (!std::isfinite(y)) {
-                continue;
-            }
-            fMin = std::min(fMin, static_cast<double>(y));
-            fMax = std::max(fMax, static_cast<double>(y));
-        }
-        if (fMax <= fMin) {
-            return; // no finite range this frame -> keep the previous colour scale
-        }
-        followColourScale(_scaleMin, _scaleMax, fMin, fMax, _filledRows == 0);
-    }
+    void updateAutoScale(std::span<const float> yValues, std::size_t nBins) { followColourScale(_scaleMin, _scaleMax, yValues.first(std::min(nBins, yValues.size())), _filledRows == 0); }
 
     void destroy() {
-        if (_texture) {
-            glDeleteTextures(1, &_texture);
-            _texture = 0;
-        }
+        _texture.reset();
         _pixels.clear();
-        _rawMagnitudes.clear();
-        _linearized.clear();
         _timestamps.clear();
         _width      = 0;
         _height     = 0;

@@ -2,10 +2,14 @@
 #include "TestSinks.hpp"
 #include "blocks/Arithmetic.hpp"
 #include "blocks/ImPlotSink.hpp"
+#include "blocks/RemoteSource.hpp"
+
 #include "blocks/TagSink.hpp"
+#include "blocks/ToUncertainValue.hpp"
 #include "charts/ImageChart.hpp"
 #include "charts/RDSView.hpp"
 #include "charts/SpectrumHelper.hpp"
+#include <gnuradio-4.0/test/GraphFixture.hpp>
 
 #include <boost/ut.hpp>
 #include <gnuradio-4.0/Graph.hpp>
@@ -31,6 +35,40 @@
 
 using namespace gr::od;
 
+struct FixedUncertainty : gr::Block<FixedUncertainty> {
+    gr::PortIn<float>                      in;
+    gr::PortOut<gr::UncertainValue<float>> out;
+    GR_MAKE_REFLECTABLE(FixedUncertainty, in, out);
+
+    [[nodiscard]] constexpr gr::UncertainValue<float> processOne(float value) const noexcept { return {value, 0.5f}; }
+};
+
+/// sends `_sets`, then is done
+template<typename T>
+struct DataSetSource : gr::Block<DataSetSource<T>> {
+    gr::PortOut<gr::DataSet<T>> out;
+    GR_MAKE_REFLECTABLE(DataSetSource, out);
+
+    std::vector<gr::DataSet<T>> _sets;
+    std::size_t                 _sent = 0UZ;
+
+    gr::work::Status processBulk(gr::OutputSpanLike auto& output) {
+        const std::size_t n = std::min(output.size(), _sets.size() - _sent);
+        std::copy_n(std::next(_sets.begin(), static_cast<std::ptrdiff_t>(_sent)), n, output.begin());
+        output.publish(n);
+        _sent += n;
+        return _sent == _sets.size() ? gr::work::Status::DONE : gr::work::Status::OK;
+    }
+};
+
+struct ToUncertainComplex : gr::Block<ToUncertainComplex> {
+    gr::PortIn<std::complex<float>>                      in;
+    gr::PortOut<gr::UncertainValue<std::complex<float>>> out;
+    GR_MAKE_REFLECTABLE(ToUncertainComplex, in, out);
+
+    [[nodiscard]] constexpr gr::UncertainValue<std::complex<float>> processOne(std::complex<float> z) const noexcept { return {z, {0.1f, 0.2f}}; }
+};
+
 int main() {
     using namespace boost::ut;
     using namespace charts;
@@ -46,34 +84,34 @@ int main() {
 
     "SpectrumPlot requests small default dataset capacity"_test = [] {
         ImPlotSink<gr::DataSet<float>> sink({});
-        auto                           adapter = std::make_shared<SinkAdapter<decltype(sink)>>(sink);
+        auto                           adapter = sink.signalSink();
         SpectrumPlot                   chart;
         chart.addSignalSink(adapter);
-        expect(eq(sink.bufferCapacity(), 8UZ));
+        expect(eq(sink.signalSink()->bufferCapacity(), 8UZ));
     };
 
     "XYChart requests dataset capacity from max_history_count"_test = [] {
         ImPlotSink<gr::DataSet<float>> sink({});
-        auto                           adapter = std::make_shared<SinkAdapter<decltype(sink)>>(sink);
+        auto                           adapter = sink.signalSink();
         XYChart                        chart;
         chart.n_history         = 30'000U; // should be ignored for DataSets
         chart.max_history_count = 16U;
         chart.addSignalSink(adapter);
-        expect(eq(sink.bufferCapacity(), 16UZ));
+        expect(eq(sink.signalSink()->bufferCapacity(), 16UZ));
     };
 
     // ground truth, arithmetic: two seconds are 96000 samples at 48 kHz and 192000 at 96 kHz, and the sink is asked to hold that many
     "XYChart holds a history stated in seconds at the rate its signal arrives at"_test = [] {
         for (const auto& [rate, samples] : {std::pair{48000.0f, 96'000UZ}, std::pair{96000.0f, 192'000UZ}}) {
-            ImPlotSink<float> sink({});
-            sink.sample_rate = rate; // as the stream's tags set it
-            auto    adapter  = std::make_shared<SinkAdapter<decltype(sink)>>(sink);
-            XYChart chart;
+            gr::Graph graph;
+            auto&     sink    = graph.emplaceBlock<ImPlotSink<float>>({{"sample_rate", rate}}); // as the stream's tags set it
+            auto      adapter = sink.signalSink();
+            XYChart   chart;
             chart.history_seconds = 2.0f;
             chart.addSignalSink(adapter);
             chart.followHistorySeconds();
             expect(eq(static_cast<std::size_t>(chart.n_history.value), samples)) << "at " << rate << " Hz";
-            expect(eq(sink.bufferCapacity(), samples)) << "the sink holds it";
+            expect(eq(sink.signalSink()->bufferCapacity(), samples)) << "the sink holds it";
         }
     };
 
@@ -100,7 +138,7 @@ int main() {
     "XYChart keeps n_history when no history in seconds is stated"_test = [] {
         ImPlotSink<float> sink({});
         sink.sample_rate = 48000.0f;
-        auto    adapter  = std::make_shared<SinkAdapter<decltype(sink)>>(sink);
+        auto    adapter  = sink.signalSink();
         XYChart chart;
         chart.n_history = 5000U;
         chart.addSignalSink(adapter);
@@ -119,18 +157,18 @@ int main() {
         ds.signal_units      = {"V/√Hz"};
         sink.updateAxisMetadataFromDataSet(ds);
 
-        expect(eq(sink.abscissaQuantity(), std::string_view{"Frequency"}));
-        expect(eq(sink.abscissaUnit(), std::string_view{"Hz"}));
-        expect(eq(sink.signalQuantity(), std::string_view{"amplitude"}));
-        expect(eq(sink.signalUnit(), std::string_view{"dB"}));
+        expect(eq(sink.signalSink()->abscissaQuantity(), std::string_view{"Frequency"}));
+        expect(eq(sink.signalSink()->abscissaUnit(), std::string_view{"Hz"}));
+        expect(eq(sink.signalSink()->signalQuantity(), std::string_view{"amplitude"}));
+        expect(eq(sink.signalSink()->signalUnit(), std::string_view{"dB"}));
 
         ds.axis_names = {"Time"};
         ds.axis_units = {"s"};
         sink.updateAxisMetadataFromDataSet(ds);
 
-        expect(eq(sink.abscissaQuantity(), std::string_view{"Time"}));
-        expect(eq(sink.abscissaUnit(), std::string_view{"s"}));
-        expect(eq(sink.signalUnit(), std::string_view{"dB"}));
+        expect(eq(sink.signalSink()->abscissaQuantity(), std::string_view{"Time"}));
+        expect(eq(sink.signalSink()->abscissaUnit(), std::string_view{"s"}));
+        expect(eq(sink.signalSink()->signalUnit(), std::string_view{"dB"}));
     };
 
     "DataSet supplies default axis labels"_test = [] {
@@ -144,53 +182,291 @@ int main() {
         ds.signal_units      = {"V"};
         sink.updateAxisMetadataFromDataSet(ds);
 
-        expect(eq(sink.abscissaQuantity(), std::string_view{"Frequency"}));
-        expect(eq(sink.abscissaUnit(), std::string_view{"Hz"}));
-        expect(eq(sink.signalQuantity(), std::string_view{"Amplitude"}));
-        expect(eq(sink.signalUnit(), std::string_view{"V"}));
+        expect(eq(sink.signalSink()->abscissaQuantity(), std::string_view{"Frequency"}));
+        expect(eq(sink.signalSink()->abscissaUnit(), std::string_view{"Hz"}));
+        expect(eq(sink.signalSink()->signalQuantity(), std::string_view{"Amplitude"}));
+        expect(eq(sink.signalSink()->signalUnit(), std::string_view{"V"}));
     };
 
     "trigger tags do not reset the DataSet count"_test = [] {
         constexpr gr::Size_t kFftSize = 64U;
         constexpr gr::Size_t kSpectra = 10U;
 
-        gr::Graph graph;
-        auto&     source = graph.emplaceBlock<gr::testing::TagSource<float>>({{"n_samples_max", kFftSize * kSpectra}, {"mark_tag", false}});
+        gr::testing::GraphFixture<> graph;
+        auto&                       source = graph.emplace<gr::testing::TagSource<float>>({{"n_samples_max", kFftSize * kSpectra}, {"mark_tag", false}});
         for (gr::Size_t i = 0U; i < kSpectra; ++i) {
             gr::property_map trigger;
             gr::tag::put(trigger, gr::tag::kTriggerName, std::string("CMD_DIAG_TRIGGER1"));
             gr::tag::put(trigger, gr::tag::kTriggerTime, std::uint64_t{1'000'000'000U} * (i + 1U));
             source._tags.push_back({i * kFftSize, std::move(trigger)});
         }
-        auto& fft  = graph.emplaceBlock<gr::blocks::fft::FFT<float, gr::DataSet<float>>>({{"fft_size", kFftSize}});
-        auto& sink = graph.emplaceBlock<ImPlotSink<gr::DataSet<float>>>();
+        auto& fft  = graph.emplace<gr::blocks::fft::FFT<float, gr::DataSet<float>>>({{"fft_size", kFftSize}});
+        auto& sink = graph.emplace<ImPlotSink<gr::DataSet<float>>>();
         expect(graph.connect<"out", "in">(source, fft).has_value());
         expect(graph.connect<"out", "in">(fft, sink).has_value());
 
-        gr::scheduler::Simple<> scheduler;
-        expect(scheduler.exchange(std::move(graph)).has_value());
-        expect(scheduler.runAndWait().has_value());
-        expect(eq(sink.totalSampleCount(), std::size_t{kSpectra}));
+        expect(graph.run().has_value());
+        expect(eq(sink.signalSink()->totalSampleCount(), std::size_t{kSpectra}));
     };
 
     "trigger tags do not reset the streaming count"_test = [] {
         constexpr gr::Size_t kSamples = 1000U;
 
-        gr::Graph graph;
-        auto&     source = graph.emplaceBlock<gr::testing::TagSource<float>>({{"n_samples_max", kSamples}, {"mark_tag", false}});
+        gr::testing::GraphFixture<> graph;
+        auto&                       source = graph.emplace<gr::testing::TagSource<float>>({{"n_samples_max", kSamples}, {"mark_tag", false}});
         for (gr::Size_t i = 0U; i < 5U; ++i) {
             gr::property_map trigger;
             gr::tag::put(trigger, gr::tag::kTriggerName, std::string("CMD_DIAG_TRIGGER1"));
             gr::tag::put(trigger, gr::tag::kTriggerTime, std::uint64_t{1'000'000'000U} * (i + 1U));
             source._tags.push_back({i * 200U, std::move(trigger)});
         }
-        auto& sink = graph.emplaceBlock<ImPlotSink<float>>();
+        auto& sink = graph.emplace<ImPlotSink<float>>();
         expect(graph.connect<"out", "in">(source, sink).has_value());
 
-        gr::scheduler::Simple<> scheduler;
-        expect(scheduler.exchange(std::move(graph)).has_value());
-        expect(scheduler.runAndWait().has_value());
-        expect(eq(sink.totalSampleCount(), std::size_t{kSamples}));
+        expect(graph.run().has_value());
+        expect(eq(sink.signalSink()->totalSampleCount(), std::size_t{kSamples}));
+    };
+
+    // ground truth by construction: the source counts 0, 1, 2, …; 5000 of them into a sink of 8192, then a chart asks 3000
+    "a chart's request shrinks the sink to its newest samples and leaves required_size alone"_test = [] {
+        gr::testing::GraphFixture<> graph;
+        auto&                       source = graph.emplace<gr::testing::TagSource<float>>({{"n_samples_max", gr::Size_t{5000U}}, {"mark_tag", false}});
+        auto&                       sink   = graph.emplace<ImPlotSink<float>>({{"required_size", gr::Size_t{8192U}}});
+        expect(graph.connect<"out", "in">(source, sink).has_value());
+        expect(graph.run().has_value());
+        expect(eq(sink.signalSink()->bufferCapacity(), 8192UZ));
+        expect(eq(sink.signalSink()->sampleCount(), 5000UZ) >> fatal);
+
+        const auto now = CapacityRequests::clock::now();
+        sink.signalSink()->requestCapacity("chart", 3000UZ, std::chrono::seconds{60}, now);
+        expect(eq(sink.signalSink()->bufferCapacity(), 3000UZ)) << "requests decide once a chart asks";
+        expect(eq(sink.signalSink()->sampleCount(), 3000UZ) >> fatal);
+        expect(eq(sink.signalSink()->samples().yAt(0UZ), 2000.0)) << "the oldest kept";
+        expect(eq(sink.signalSink()->samples().yAt(2999UZ), 4999.0)) << "the newest";
+        expect(eq(sink.required_size.value, gr::Size_t{8192U})) << "a saved dashboard keeps what its author set";
+
+        sink.signalSink()->expireCapacityRequests(now + std::chrono::seconds{61});
+        expect(eq(sink.signalSink()->bufferCapacity(), 8192UZ)) << "no chart asking: required_size again";
+        expect(eq(sink.signalSink()->sampleCount(), 3000UZ)) << "growing keeps what is held";
+    };
+
+    // ground truth, IEEE 754: float holds every 16-bit integer exactly and double every integer up to 2^53;
+    // 2^53 + 1 lies halfway between 2^53 and 2^53 + 2 and rounds to the even one, 2^53
+    "an integer stream is kept exactly, as float up to 16 bits and as double above"_test = [] {
+        const auto received = []<typename T>(std::vector<T> values) {
+            gr::testing::GraphFixture<> graph;
+            auto&                       source = graph.emplace<gr::testing::TagSource<T>>({{"n_samples_max", static_cast<gr::Size_t>(values.size())}, {"mark_tag", false}});
+            source.values                      = gr::Tensor<T>(gr::data_from, values);
+            auto& sink                         = graph.emplace<ImPlotSink<T>>();
+            expect(graph.connect<"out", "in">(source, sink).has_value());
+            expect(graph.run().has_value());
+            return sink.signalSink(); // the store outlives its block
+        };
+        const auto asFloat = [](const SampleWindow& window) { return std::holds_alternative<std::span<const float>>(window.y); };
+
+        const auto         int16Sink = received(std::vector<std::int16_t>{-32767, 32767}); // a window views the sink's storage
+        const SampleWindow int16     = int16Sink->samples();
+        expect(asFloat(int16)) << "16 bits: float";
+        expect(eq(int16.yAt(0UZ), -32767.0) && eq(int16.yAt(1UZ), 32767.0));
+
+        const auto         int32Sink = received(std::vector<std::int32_t>{std::numeric_limits<std::int32_t>::max()});
+        const SampleWindow int32     = int32Sink->samples();
+        expect(!asFloat(int32)) << "32 bits: double";
+        expect(eq(int32.yAt(0UZ), 2147483647.0));
+
+        const auto         int64Sink = received(std::vector<std::int64_t>{std::int64_t{1} << 53});
+        const SampleWindow int64     = int64Sink->samples();
+        expect(eq(int64.yAt(0UZ), 9007199254740992.0)) << "2^53 exactly";
+
+        const auto         uint64Sink = received(std::vector<std::uint64_t>{(std::uint64_t{1} << 53) + 1U});
+        const SampleWindow uint64     = uint64Sink->samples();
+        expect(eq(uint64.yAt(0UZ), 9007199254740992.0)) << "2^53 + 1 rounds to even, 2^53";
+    };
+
+    // ground truth by construction: means 1 and 2 with standard deviations 0.1 and 0.2, paired in order
+    "ToUncertainValue pairs each value with its standard deviation, which a sink keeps for the charts"_test = [] {
+        gr::testing::GraphFixture<> graph;
+        auto&                       means = graph.emplace<gr::testing::TagSource<float>>({{"n_samples_max", gr::Size_t{2U}}, {"mark_tag", false}});
+        means.values                      = gr::Tensor<float>(gr::data_from, std::vector{1.f, 2.f});
+        auto& deviations                  = graph.emplace<gr::testing::TagSource<float>>({{"n_samples_max", gr::Size_t{2U}}, {"mark_tag", false}});
+        deviations.values                 = gr::Tensor<float>(gr::data_from, std::vector{0.1f, 0.2f});
+        auto& pair                        = graph.emplace<ToUncertainValue<float>>();
+        auto& sink                        = graph.emplace<ImPlotSink<gr::UncertainValue<float>>>({{"name", "pairedSink"}});
+        expect(graph.connect<"out", "value">(means, pair).has_value());
+        expect(graph.connect<"out", "uncertainty">(deviations, pair).has_value());
+        expect(graph.connect<"out", "in">(pair, sink).has_value());
+        expect(graph.run().has_value());
+        const SampleWindow window = sink.signalSink()->samples();
+        expect(eq(window.size(), 2UZ) >> fatal);
+        expect(eq(window.yAt(1UZ), 2.0) && approx(window.yErrorAt(0UZ), 0.1, 1e-6) && approx(window.yErrorAt(1UZ), 0.2, 1e-6));
+    };
+
+    "a DataSet of UncertainValues keeps its values and their standard deviations, signal and axis"_test = [] {
+        gr::testing::GraphFixture<> graph;
+        auto&                       source  = graph.emplace<DataSetSource<gr::UncertainValue<float>>>();
+        auto&                       dataSet = source._sets.emplace_back();
+        dataSet.signal_names                = {"current"};
+        dataSet.axis_values                 = {{{0.f, 0.01f}, {1.f, 0.02f}}};
+        dataSet.extents                     = {2};
+        dataSet.signal_values               = {{1.f, 0.1f}, {2.f, 0.2f}};
+        auto& sink                          = graph.emplace<ImPlotSink<gr::DataSet<gr::UncertainValue<float>>>>();
+        expect(graph.connect<"out", "in">(source, sink).has_value());
+        expect(graph.run().has_value());
+
+        const auto& signal = *sink.signalSink();
+        expect(signal.hasErrors());
+        expect((eq(signal.dataSets().size(), 1UZ) && eq(signal.dataSetErrors().size(), 1UZ)) >> fatal);
+        const gr::DataSet<float>& values = signal.dataSets().back();
+        const DataSetErrors&      errors = signal.dataSetErrors().back();
+        expect(eq(values.signal_values[0], 1.f) && eq(values.signal_values[1], 2.f));
+        expect(eq(errors.signals.size(), 2UZ) >> fatal);
+        expect(eq(errors.signals[0], 0.1f) && eq(errors.signals[1], 0.2f));
+        expect(eq(values.axis_values[0][1], 1.f));
+        expect(eq(errors.axes.size(), 1UZ) >> fatal);
+        expect(eq(errors.axes[0][0], 0.01f) && eq(errors.axes[0][1], 0.02f)) << "the x errors";
+    };
+
+    // ground truth by construction: the same uint32 frame, 0xFF0000FF (opaque red) and 1000, read as colour and as values
+    "a uint32 tensor sink keeps packed colour, or integer values when packed_colour is false"_test = [] {
+        const auto received = [](bool packedColour) {
+            gr::testing::GraphFixture<> graph;
+            auto&                       source = graph.emplace<gr::testing::TensorSource<std::uint32_t>>();
+            source._frames.push_back({.extents = {1UZ, 2UZ}, .elements = {0xFF0000FFU, 1000U}});
+            auto& sink = graph.emplace<ImPlotSink<gr::Tensor<std::uint32_t>>>({{"packed_colour", packedColour}});
+            expect(graph.connect<"out", "in">(source, sink).has_value());
+            expect(graph.run().has_value());
+            return sink.signalSink();
+        };
+        const auto      colourSink = received(true);
+        const FrameView colour     = colourSink->frame();
+        const auto*     pixels     = std::get_if<std::span<const std::uint32_t>>(&colour.values);
+        expect(fatal(pixels != nullptr)) << "packed colour by default";
+        expect(eq((*pixels)[0], 0xFF0000FFU));
+        const auto      valueSink = received(false);
+        const FrameView values    = valueSink->frame();
+        expect(eq(values.row(0UZ).size(), 2UZ) >> fatal) << "float values";
+        expect(eq(values.row(0UZ)[1], 1000.f));
+    };
+
+    // ground truth by construction: 1 + 2i and 3 + 4i, σ 0.1 + 0.2i
+    "a complex stream is two signals, its real part under the block's name and its imaginary part beside it"_test = [] {
+        gr::testing::GraphFixture<> graph;
+        auto&                       source = graph.emplace<gr::testing::TagSource<std::complex<float>>>({{"n_samples_max", gr::Size_t{2U}}, {"mark_tag", false}});
+        source.values                      = gr::Tensor<std::complex<float>>(gr::data_from, std::vector<std::complex<float>>{{1.f, 2.f}, {3.f, 4.f}});
+        auto& convert                      = graph.emplace<ToUncertainComplex>();
+        auto& plain                        = graph.emplace<ImPlotSink<std::complex<float>>>({{"name", "iqSink"}, {"signal_name", "iq"}});
+        auto& uncertain                    = graph.emplace<ImPlotSink<gr::UncertainValue<std::complex<float>>>>({{"name", "uncertainIqSink"}}); // a sink registers with its first settings, as a dashboard's do
+        expect(graph.connect<"out", "in">(source, plain).has_value());
+        expect(graph.connect<"out", "in">(source, convert).has_value());
+        expect(graph.connect<"out", "in">(convert, uncertain).has_value());
+        expect(graph.run().has_value());
+
+        const auto real      = plain.signalSink();
+        const auto imaginary = SinkRegistry::instance().getSink(std::format("{}{}", plain.unique_name, kImaginaryPartSuffix));
+        expect(fatal(imaginary != nullptr)) << "the imaginary part registered beside the block";
+        expect(eq(real->signalName(), std::string_view("Re(iq)")) && eq(imaginary->signalName(), std::string_view("Im(iq)")));
+        expect(eq(imaginary->name(), std::string_view("iqSink.im")));
+        expect(real->color() != imaginary->color()) << "two traces, two colours";
+        const SampleWindow re = real->samples();
+        const SampleWindow im = imaginary->samples();
+        expect((eq(re.size(), 2UZ) && eq(im.size(), 2UZ)) >> fatal);
+        expect(eq(re.yAt(0UZ), 1.0) && eq(re.yAt(1UZ), 3.0) && eq(im.yAt(0UZ), 2.0) && eq(im.yAt(1UZ), 4.0));
+        expect(eq(re.x[1], im.x[1])) << "dated alike";
+
+        const auto uncertainImaginary = SinkRegistry::instance().getSink(std::format("{}{}", uncertain.unique_name, kImaginaryPartSuffix));
+        expect(fatal(uncertainImaginary != nullptr));
+        expect(approx(uncertain.signalSink()->samples().yErrorAt(0UZ), 0.1, 1e-6) && approx(uncertainImaginary->samples().yErrorAt(0UZ), 0.2, 1e-6)) << "σ per component";
+    };
+
+    "a complex DataSet arrives as two real rows per signal, Re and Im, selected by dataset_index"_test = [] {
+        gr::testing::GraphFixture<> graph;
+        auto&                       source = graph.emplace<DataSetSource<std::complex<float>>>();
+        auto&                       iq     = source._sets.emplace_back();
+        iq.signal_names                    = {"iq"};
+        iq.signal_quantities               = {"voltage"};
+        iq.signal_units                    = {"V"};
+        iq.axis_values                     = {{{0.f, 0.f}, {1.f, 0.f}}};
+        iq.extents                         = {2};
+        iq.signal_values                   = {{1.f, 2.f}, {3.f, 4.f}};
+        auto& sink                         = graph.emplace<ImPlotSink<gr::DataSet<std::complex<float>>>>({{"dataset_index", gr::Size_t{1U}}});
+        expect(graph.connect<"out", "in">(source, sink).has_value());
+        expect(graph.run().has_value());
+
+        const auto& signal = *sink.signalSink();
+        expect(eq(signal.dataSets().size(), 1UZ) >> fatal);
+        const gr::DataSet<float>& dataSet = signal.dataSets().back();
+        expect(eq(dataSet.signal_names.size(), 2UZ) >> fatal);
+        expect(eq(std::string_view(dataSet.signal_names[0]), std::string_view("Re(iq)")) && eq(std::string_view(dataSet.signal_names[1]), std::string_view("Im(iq)")));
+        expect(eq(std::string_view(dataSet.signal_units[1]), std::string_view("V"))) << "Re and Im keep the unit";
+        expect(dataSet.signal_values == std::pmr::vector<float>{1.f, 3.f, 2.f, 4.f});
+        expect(eq(dataSet.axis_values[0][1], 1.f));
+        const auto row = dataSet.signalValues(signal.datasetRow(dataSet));
+        expect(eq(row[0], 2.f) && eq(row[1], 4.f)) << "dataset_index 1: the Im row";
+    };
+
+    "an integer DataSet and an 8-bit image arrive as float"_test = [] {
+        gr::testing::GraphFixture<> graph;
+        auto&                       dataSetSource = graph.emplace<DataSetSource<std::int16_t>>();
+        auto&                       counts        = dataSetSource._sets.emplace_back();
+        counts.signal_names                       = {"counts"};
+        counts.axis_values                        = {{0, 1}};
+        counts.extents                            = {2};
+        counts.signal_values                      = {-32767, 32767};
+        auto& dataSetSink                         = graph.emplace<ImPlotSink<gr::DataSet<std::int16_t>>>();
+        auto& imageSource                         = graph.emplace<gr::testing::TensorSource<std::uint8_t>>();
+        imageSource._frames.push_back({.extents = {2UZ, 2UZ}, .elements = {0U, 1U, 254U, 255U}});
+        auto& imageSink = graph.emplace<ImPlotSink<gr::Tensor<std::uint8_t>>>();
+        expect(graph.connect<"out", "in">(dataSetSource, dataSetSink).has_value());
+        expect(graph.connect<"out", "in">(imageSource, imageSink).has_value());
+        expect(graph.run().has_value());
+
+        const auto dataSets = dataSetSink.signalSink()->dataSets();
+        expect(eq(dataSets.size(), 1UZ) >> fatal);
+        expect(eq(dataSets.back().signal_values[0], -32767.f) && eq(dataSets.back().signal_values[1], 32767.f));
+        expect(eq(std::string_view(dataSets.back().signal_names[0]), std::string_view("counts")));
+        const FrameView image = imageSink.signalSink()->frame();
+        expect((eq(image.rows, 2UZ) && eq(image.columns, 2UZ)) >> fatal);
+        expect(eq(image.row(1UZ)[1], 255.f)) << "an 8-bit pixel as its value";
+    };
+
+    "an UncertainValue sink keeps the values"_test = [] {
+        gr::testing::GraphFixture<> graph;
+        auto&                       source  = graph.emplace<gr::testing::TagSource<float>>({{"n_samples_max", gr::Size_t{100U}}, {"mark_tag", false}});
+        auto&                       convert = graph.emplace<FixedUncertainty>();
+        auto&                       sink    = graph.emplace<ImPlotSink<gr::UncertainValue<float>>>();
+        expect(graph.connect<"out", "in">(source, convert).has_value());
+        expect(graph.connect<"out", "in">(convert, sink).has_value());
+        expect(graph.run().has_value());
+
+        expect(sink.signalSink()->signalKind() == SignalKind::Streaming);
+        expect(sink.signalSink()->hasErrors());
+        expect(eq(sink.signalSink()->sampleCount(), 100UZ) >> fatal);
+        const SampleWindow window = sink.signalSink()->samples();
+        expect(eq(window.yAt(0UZ), 0.0));
+        expect(eq(window.yAt(99UZ), 99.0));
+        expect(window.x[99UZ] > window.x[0UZ]) << "dated like any streaming sample";
+        expect(window.hasErrors() >> fatal) << "and its uncertainty kept";
+        expect(eq(window.yErrorAt(0UZ), 0.5) && eq(window.yErrorAt(99UZ), 0.5));
+    };
+
+    "a DataSet<double> sink converts each DataSet once, metadata included"_test = [] {
+        constexpr gr::Size_t        kFftSize = 64U;
+        gr::testing::GraphFixture<> graph;
+        auto&                       source = graph.emplace<gr::testing::TagSource<double>>({{"n_samples_max", kFftSize * 3U}, {"mark_tag", false}});
+        auto&                       fft    = graph.emplace<gr::blocks::fft::FFT<double, gr::DataSet<double>>>({{"fft_size", kFftSize}});
+        auto&                       sink   = graph.emplace<ImPlotSink<gr::DataSet<double>>>();
+        expect(graph.connect<"out", "in">(source, fft).has_value());
+        expect(graph.connect<"out", "in">(fft, sink).has_value());
+        expect(graph.run().has_value());
+
+        const auto held = sink.signalSink()->dataSets();
+        expect(eq(held.size(), 3UZ) >> fatal);
+        expect(held.data() == sink.signalSink()->dataSets().data()) << "a read hands out the stored DataSets";
+        const gr::DataSet<float>& newest = held.back();
+        expect(!newest.signal_names.empty() >> fatal);
+        expect(eq(newest.signal_quantities.size(), newest.signal_names.size())) << "quantities survive the conversion";
+        expect(eq(newest.axis_values.size(), 1UZ) >> fatal);
+        expect(eq(newest.signal_values.size(), newest.signal_names.size() * newest.axis_values[0].size()));
     };
 
     "DataSet drag keeps signal"_test = [] {
@@ -224,7 +500,10 @@ int main() {
         expect(chart.signalSinks() == std::vector{linearSink, dbSink});
         expect(chart.data_sinks.value == std::vector<std::string>{"pendingSink", "linearSink", "dbSink"});
 
-        dbBlock.signal_name = "dB";
+        std::ignore = dbBlock.settings().set({{"signal_name", std::string("dB")}});
+        std::ignore = dbBlock.settings().activateContext();
+        std::ignore = dbBlock.settings().applyStagedParameters();
+        expect(eq(dbSink->signalName(), std::string_view("dB"))) << "the sink follows its block's settings";
         chart.data_sinks.value.push_back("dB");
         chart.onSinkRemovedFromDnd(dbSink->uniqueName());
         std::ignore = chart.settings().applyStagedParameters();
@@ -234,10 +513,10 @@ int main() {
     };
 
     "Legend keeps duplicate names separate"_test = [] {
-        auto first  = makeTestStreamingSink("first");
-        auto second = makeTestStreamingSink("second");
-        first->setSignalName("same signal");
-        second->setSignalName("same signal");
+        auto first                  = makeTestStreamingSink("first");
+        auto second                 = makeTestStreamingSink("second");
+        first->metadata.signalName  = "same signal";
+        second->metadata.signalName = "same signal";
 
         const auto firstLabel  = plotLabel(*first);
         const auto secondLabel = plotLabel(*second);
@@ -246,7 +525,7 @@ int main() {
         expect(eq(std::string_view(firstLabel.c_str(), ImGui::FindRenderedTextEnd(firstLabel.c_str())), std::string_view{"same signal"}));
         expect(eq(std::string_view(secondLabel.c_str(), ImGui::FindRenderedTextEnd(secondLabel.c_str())), std::string_view{"same signal"}));
 
-        first->setSignalName("renamed signal");
+        first->metadata.signalName = "renamed signal";
         expect(eq(ImHashStr(plotLabel(*first).c_str()), firstId));
     };
 
@@ -331,20 +610,6 @@ int main() {
             std::transform(lowerType.begin(), lowerType.end(), lowerType.begin(), [](unsigned char c) { return std::tolower(c); });
             expect(lowerType.find("chart") != std::string::npos) << "All returned types should contain 'chart'";
         }
-    };
-
-    "a density cell without hits is transparent, a cell with hits takes its colormap entry"_test = [] {
-        std::array<uint32_t, kColormapSize> lut{};
-        for (std::size_t i = 0UZ; i < lut.size(); ++i) {
-            lut[i] = 0xFF000000U | static_cast<uint32_t>(i + 1UZ);
-        }
-        constexpr float kPeak = 510.f; // 1/255 of the peak: 2
-        expect(eq(densityColour(0.f, kPeak, lut), 0U)) << "empty";
-        expect(eq(densityColour(1.9f, kPeak, lut), 0U)) << "below 1/255 of the peak: the colormap's lowest entry";
-        expect(eq(densityColour(2.5f, kPeak, lut), lut[1])) << "just above 1/255 of the peak: the second entry";
-        expect(eq(densityColour(255.f, kPeak, lut), lut[127])) << "half the peak: 0.5 * 255 = 127.5, truncated";
-        expect(eq(densityColour(kPeak, kPeak, lut), lut[255])) << "the peak: the highest entry";
-        expect(eq(densityColour(2.f * kPeak, kPeak, lut), lut[255])) << "above the peak: clamped";
     };
 
     "hold and average include every new spectrum"_test = [] {
@@ -453,7 +718,7 @@ int main() {
         expect(eq(sink->bufferCapacity(), 30UZ));
         chart2->addSignalSink(sink);
 
-        expect(eq(chart1->signalSinks()[0]->size(), chart2->signalSinks()[0]->size()));
+        expect(eq(chart1->signalSinks()[0]->sampleCount(), chart2->signalSinks()[0]->sampleCount()));
 
         expect(eq(sink->bufferCapacity(), 50UZ));
     };
@@ -482,8 +747,8 @@ int main() {
             sink2->pushSample(t, std::sin(5.0f * 3.14159f * static_cast<float>(t)));
         }
 
-        expect(eq(sink1->size(), 100UZ));
-        expect(eq(sink2->size(), 100UZ));
+        expect(eq(sink1->sampleCount(), 100UZ));
+        expect(eq(sink2->sampleCount(), 100UZ));
     };
 
     "YYChart mixin methods"_test = [] {
@@ -554,6 +819,27 @@ int main() {
         expect(!y2->plotTags);
         expect(!parseAxisConfig(constraints, AxisKind::X, 1UZ));
         expect(!parseAxisConfig(constraints, AxisKind::Y, 2UZ));
+    };
+
+    "Axis parsing reads the placement and the title: Outside and shown without them, a Canvas axis without labels is None"_test = [] {
+        gr::Tensor<gr::pmt::Value> axes(gr::extents_from, {4UZ});
+        axes[0] = gr::property_map{{"axis", "Y"}};
+        axes[1] = gr::property_map{{"axis", "Y"}, {"placement", "cAnVaS"}, {"show_title", false}};
+        axes[2] = gr::property_map{{"axis", "X"}, {"placement", "None"}};
+        axes[3] = gr::property_map{{"axis", "Y"}, {"placement", "Canvas"}, {"format", "None"}};
+        const gr::property_map constraints{{"axes", std::move(axes)}};
+        const auto             y1 = parseAxisConfig(constraints, AxisKind::Y);
+        const auto             y2 = parseAxisConfig(constraints, AxisKind::Y, 1UZ);
+        const auto             y3 = parseAxisConfig(constraints, AxisKind::Y, 2UZ);
+        const auto             x  = parseAxisConfig(constraints, AxisKind::X);
+
+        expect(y1 && y2 && y3 && x) << fatal;
+        expect(decorationOf(y1).placement == AxisPlacement::Outside && decorationOf(y1).showTitle);
+        expect(decorationOf(y2).placement == AxisPlacement::Canvas && !decorationOf(y2).showTitle);
+        expect(decorationOf(x).placement == AxisPlacement::None && decorationOf(x).showTitle);
+        expect(decorationOf(y3).placement == AxisPlacement::None) << "format None leaves nothing to draw on the canvas";
+        expect(decorationOf(std::nullopt).placement == AxisPlacement::Outside && decorationOf(std::nullopt).showTitle) << "no entry: the default";
+        expect(decorationOf(std::nullopt, {.placement = AxisPlacement::None}).placement == AxisPlacement::None) << "no entry: the fallback";
     };
 
     "Axis parsing reads the SymLog linear threshold"_test = [] {
@@ -632,23 +918,23 @@ int main() {
     "YYChart buildMultiYCategories groups sinks correctly"_test = [] {
         auto chart = makeYYChart("GroupTest");
 
-        auto sinkX = makeTestStreamingSink("x_signal");
-        sinkX->setSignalQuantity("time");
-        sinkX->setSignalUnit("s");
+        auto sinkX                     = makeTestStreamingSink("x_signal");
+        sinkX->metadata.signalQuantity = "time";
+        sinkX->metadata.signalUnit     = "s";
 
         // sink[1] and sink[2] share quantity+unit -> same Y-axis group
-        auto sinkY1 = makeTestStreamingSink("y_voltage1");
-        sinkY1->setSignalQuantity("voltage");
-        sinkY1->setSignalUnit("V");
+        auto sinkY1                     = makeTestStreamingSink("y_voltage1");
+        sinkY1->metadata.signalQuantity = "voltage";
+        sinkY1->metadata.signalUnit     = "V";
 
-        auto sinkY2 = makeTestStreamingSink("y_voltage2");
-        sinkY2->setSignalQuantity("voltage");
-        sinkY2->setSignalUnit("V");
+        auto sinkY2                     = makeTestStreamingSink("y_voltage2");
+        sinkY2->metadata.signalQuantity = "voltage";
+        sinkY2->metadata.signalUnit     = "V";
 
         // sink[3] has a different quantity -> separate Y-axis group
-        auto sinkY3 = makeTestStreamingSink("y_current");
-        sinkY3->setSignalQuantity("current");
-        sinkY3->setSignalUnit("A");
+        auto sinkY3                     = makeTestStreamingSink("y_current");
+        sinkY3->metadata.signalQuantity = "current";
+        sinkY3->metadata.signalUnit     = "A";
 
         chart->addSignalSink(sinkX);
         chart->addSignalSink(sinkY1);
@@ -656,10 +942,7 @@ int main() {
         chart->addSignalSink(sinkY3);
 
         for (auto& s : chart->signalSinks()) {
-            auto* ts = dynamic_cast<TestStreamingSink*>(s.get());
-            if (ts) {
-                ts->pushSample(0.0, 1.0f);
-            }
+            s->pushSample(0.0, 1.0f);
         }
 
         // buildMultiYCategories is private; axis::findOrCreateCategory is the same mechanism
@@ -692,9 +975,9 @@ int main() {
         // 4 Y sinks with 4 distinct quantity+unit pairs -> 4th overflows (max 3 axes)
         std::vector<std::pair<std::string, std::string>> units = {{"voltage", "V"}, {"current", "A"}, {"power", "W"}, {"temperature", "K"}};
         for (std::size_t i = 0; i < units.size(); ++i) {
-            auto sink = makeTestStreamingSink("y_" + std::to_string(i));
-            sink->setSignalQuantity(units[i].first);
-            sink->setSignalUnit(units[i].second);
+            auto sink                     = makeTestStreamingSink("y_" + std::to_string(i));
+            sink->metadata.signalQuantity = units[i].first;
+            sink->metadata.signalUnit     = units[i].second;
             chart->addSignalSink(sink);
         }
 
@@ -711,6 +994,132 @@ int main() {
 
         expect(eq(axis::activeAxisCount(yCategories), 3UZ)) << "should fill all 3 Y-axis slots";
         expect(eq(overflowSinkIndices.size(), 1UZ)) << "4th distinct group should overflow";
+    };
+
+    // ground truth, analytic: a cell hit by n spectra with decay τ holds Σ_{k<n} (1 − 1/τ)^k = τ (1 − (1 − 1/τ)^n);
+    // τ = 4, n = 6: 4 (1 − 0.75^6) = 3.2880859375.
+    // Rows of 1 unit from yMax = 10: value 5 is row 5
+    "a constant spectrum fills one cell per column to tau (1 - (1 - 1/tau)^n), and the peak with it"_test = [] {
+        DensityGrid grid;
+        grid.resize(4UZ, 10UZ);
+        const std::array spectrum{5.f, 5.f, 5.f, 5.f};
+        for (int n = 0; n < 6; ++n) {
+            grid.accumulate(spectrum, 0.0, 10.0, 4.0);
+        }
+        constexpr float kExpected = 3.2880859375f;
+        for (std::size_t column = 0UZ; column < 4UZ; ++column) {
+            expect(approx(grid.cells[5UZ * 4UZ + column], kExpected, 1e-5f)) << "column" << column;
+        }
+        expect(approx(std::accumulate(grid.cells.begin(), grid.cells.end(), 0.f), 4.f * kExpected, 1e-4f)) << "no other cell";
+        expect(approx(grid.peak, kExpected, 1e-5f));
+        expect(approx(grid.fullScale(DensityNormalisation::peak), grid.fullScale(DensityNormalisation::maximum), 1e-5f)) << "a steady signal: the same full scale";
+    };
+
+    // ground truth by construction: rows of 1 unit from yMax = 10 down to yMin = 0
+    "a value beyond the range lands in the edge row, NaN in none"_test = [] {
+        DensityGrid grid;
+        grid.resize(4UZ, 10UZ);
+        grid.accumulate(std::array{11.f, -1.f, std::numeric_limits<float>::quiet_NaN(), 10.f}, 0.0, 10.0, 0.0);
+        expect(eq(grid.cells[0UZ * 4UZ + 0UZ], 1.f)) << "above yMax: the top row";
+        expect(eq(grid.cells[9UZ * 4UZ + 1UZ], 1.f)) << "below yMin: the bottom row";
+        expect(eq(std::ranges::count(grid.cells | std::views::drop(2UZ) | std::views::stride(4UZ), 0.f), 10)) << "NaN: nowhere";
+        expect(eq(grid.cells[0UZ * 4UZ + 3UZ], 1.f)) << "yMax itself: the top row";
+    };
+
+    // ground truth by construction: without decay, values 5 then 6 in one column hit two cells once each, after two spectra
+    "peak normalisation counts the spectra, maximum the densest cell"_test = [] {
+        DensityGrid grid;
+        grid.resize(1UZ, 10UZ);
+        grid.accumulate(std::array{5.f}, 0.0, 10.0, 0.0);
+        grid.accumulate(std::array{6.f}, 0.0, 10.0, 0.0);
+        expect(eq(grid.cells[5UZ], 1.f) && eq(grid.cells[4UZ], 1.f));
+        expect(eq(grid.fullScale(DensityNormalisation::peak), 2.f)) << "τ = 0 accumulates: the peak counts every spectrum";
+        expect(eq(grid.fullScale(DensityNormalisation::maximum), 1.f));
+    };
+
+    // ground truth by construction: three points fit ten pixel columns, so the band is y ± σ at each point
+    "an error band follows each point while there are no more points than pixel columns"_test = [] {
+        const std::array      x{0.0, 1.0, 2.0};
+        const std::array      y{0.0, 1.0, 2.0};
+        const std::array      sigma{0.5, 1.0, 0.5};
+        const axis::ErrorBand band = axis::errorBand(x, y, sigma, 10UZ);
+        expect(band.perPoint);
+        expect(band.x == std::vector{0.0, 1.0, 2.0});
+        expect(band.lower == std::vector{-0.5, 0.0, 1.5});
+        expect(band.upper == std::vector{0.5, 2.0, 2.5});
+    };
+
+    // ground truth by hand: six points in two columns of three;
+    // column 0: y − σ = {-1, 4, -1}, y + σ = {1, 6, 3};
+    // column 1: y − σ = {2, 2, -1}, y + σ = {2, 2, 5}
+    "a decimated error band keeps each pixel column's lowest y - sigma and highest y + sigma"_test = [] {
+        const std::array      x{0.0, 1.0, 2.0, 3.0, 4.0, 5.0};
+        const std::array      y{0.0, 5.0, 1.0, 2.0, 2.0, 2.0};
+        const std::array      sigma{1.0, 1.0, 2.0, 0.0, 0.0, 3.0};
+        const axis::ErrorBand band = axis::errorBand(x, y, sigma, 2UZ);
+        expect(!band.perPoint) << "decimated: no bars";
+        expect(band.x == std::vector{0.0, 3.0}) << "at each column's first point";
+        expect(band.lower == std::vector{-1.0, -1.0});
+        expect(band.upper == std::vector{6.0, 5.0});
+    };
+
+    // ground truth, arithmetic: 101 points over 400 px are 4 px apart, closer than 5 px caps; 51 points are 8 px apart
+    "combo draws bars while their caps do not overlap, else the surface"_test = [] {
+        expect(axis::capsOverlap(0.0, 400.0, 101UZ, 5.0)) << "4 px apart: the surface";
+        expect(!axis::capsOverlap(0.0, 400.0, 51UZ, 5.0)) << "8 px apart: bars";
+        expect(axis::capsOverlap(400.0, 0.0, 101UZ, 5.0)) << "descending x alike";
+        expect(!axis::capsOverlap(0.0, 0.0, 1UZ, 5.0)) << "a single point: a bar";
+    };
+
+    // ground truth by construction: of {-inf, 3, NaN, -2, +inf} the finite values span -2 to 3
+    "a colour scale follows the finite values only"_test = [] {
+        constexpr float kInf  = std::numeric_limits<float>::infinity();
+        const auto      range = finiteRange(std::array{-kInf, 3.f, std::numeric_limits<float>::quiet_NaN(), -2.f, kInf});
+        expect(range.has_value() >> fatal);
+        expect(eq(range->first, -2.0) && eq(range->second, 3.0));
+        expect(!finiteRange(std::array{-kInf, kInf}).has_value()) << "none finite";
+
+        SurfaceBuffer surface; // a dB spectrum with an empty bin: the first frame sets the scale to its finite span
+        surface.init(3UZ, 2UZ);
+        surface.updateAutoScale(std::array{-kInf, -60.f, -40.f}, 3UZ);
+        expect(eq(surface._scaleMin, -60.0) && eq(surface._scaleMax, -40.0)) << "not -inf";
+    };
+
+    // ground truth by construction: two channels of three samples, with names, ranges and one trigger at sample 1
+    "a remote acquisition becomes one consistent DataSet, its trigger an event of every signal"_test = [] {
+        opendigitizer::acq::Acquisition acq;
+        acq.channelNames               = std::vector<std::string>{"a", "b"};
+        acq.channelQuantities          = std::vector<std::string>{"voltage", "current"};
+        acq.channelUnits               = std::vector<std::string>{"V", "A"};
+        acq.channelRangeMin            = std::vector<float>{-1.f, -2.f};
+        acq.channelRangeMax            = std::vector<float>{1.f, 2.f};
+        acq.channelTimeSinceRefTrigger = std::vector<float>{0.f, 1.f, 2.f};
+        acq.channelValues              = opencmw::MultiArray<float, 2>({1.f, 2.f, 3.f, 4.f, 5.f, 6.f}, std::array<uint32_t, 2>{2U, 3U});
+        acq.triggerIndices             = std::vector<int64_t>{1};
+        acq.triggerYamlPropertyMaps    = std::vector<std::string>{"trigger_name: CMD_X\n"};
+
+        const auto nowNs  = [] { return static_cast<std::int64_t>(gr::settings::convertTimePointToUint64Ns(std::chrono::system_clock::now())); };
+        const auto before = nowNs();
+        const auto ds     = RemoteDataSetSource<float>::toDataSet(acq, 7U);
+        const auto after  = nowNs();
+        expect(gr::dataset::checkConsistency(ds).has_value()) << "as GR4 checks a DataSet";
+        expect(ds.timestamp >= before && ds.timestamp <= after) << "an undated acquisition is dated on arrival";
+        acq.acqLocalTimeStamp = 1'700'000'000'000'000'000;
+        expect(eq(RemoteDataSetSource<float>::toDataSet(acq, 7U).timestamp, 1'700'000'000'000'000'000)) << "a dated one keeps its time";
+        expect(eq(ds.meta_information.size(), 2UZ) && eq(ds.timing_events.size(), 2UZ)) << "one entry per signal";
+        expect(eq(ds.timing_events[1].size(), 1UZ) && eq(ds.timing_events[1][0].first, 1)) << "the trigger at sample 1 of the second signal too";
+        expect(eq(ds.signalValues(1)[2], 6.f));
+
+        acq.channelNames   = std::vector<std::string>{"a"};
+        const auto unnamed = RemoteDataSetSource<float>::toDataSet(acq, 0U); // a DataSet without signal names has no signalValues(i): must not throw
+        expect(!gr::dataset::checkConsistency(unnamed).has_value()) << "a channel without a name is reported";
+        expect(eq(unnamed.signal_values.size(), 6UZ) && eq(unnamed.signal_values[5], 6.f)) << "the values arrive all the same";
+
+        const auto noErrors = RemoteDataSetSource<gr::UncertainValue<float>>::toDataSet(acq, 0U);
+        expect(eq(noErrors.signal_values[5].value, 6.f) && eq(noErrors.signal_values[5].uncertainty, 0.f)) << "no channel errors: σ = 0";
+        acq.channelErrors    = opencmw::MultiArray<float, 2>({.1f, .2f, .3f, .4f, .5f, .6f}, std::array<uint32_t, 2>{2U, 3U});
+        const auto withError = RemoteDataSetSource<gr::UncertainValue<float>>::toDataSet(acq, 0U);
+        expect(eq(withError.signal_values[5].value, 6.f) && eq(withError.signal_values[5].uncertainty, .6f)) << "each value with its channel error";
     };
 
     "capacity request expiry reduces capacity"_test = [] {
@@ -750,13 +1159,6 @@ int main() {
         expect(isCompatible(SignalKind::All, SignalKind::Streaming)) << "all vs streaming";
         expect(isCompatible(SignalKind::Image2D, SignalKind::Image2D)) << "image vs image";
         expect(!isCompatible(SignalKind::Image2D, SignalKind::All)) << "image vs 1D charts";
-    };
-
-    "TestDataSetSink and TestStreamingSink return correct signalKind"_test = [] {
-        auto streamingSink = makeTestStreamingSink("streaming_kind_test");
-        auto datasetSink   = makeTestDataSetSink("dataset_kind_test");
-        expect(streamingSink->signalKind() == SignalKind::Streaming);
-        expect(datasetSink->signalKind() == SignalKind::Dataset1D);
     };
 
     "displayedSignalKinds empty chart returns None"_test = [] {
@@ -842,22 +1244,21 @@ int main() {
             check(sink);
         };
         const std::vector<std::vector<std::size_t>> fiveFrames(5UZ, std::vector<std::size_t>{1UZ, 2UZ});
-        const auto                                  valueOf = [](const auto& frame) { return std::get<std::span<const float>>(frame.pixels).front(); };
+        const auto                                  valueOf = [](const auto& frame) { return std::get<std::span<const float>>(frame.values).front(); };
 
         framesThrough(2U, fiveFrames, [&](const auto& sink) {
-            expect(eq(sink.imageFrame().generation, 5U) && eq(valueOf(sink.imageFrame()), 5.f)) << "the newest";
-            expect(eq(sink.imageFrame(1U).generation, 3U) && eq(valueOf(sink.imageFrame(1U)), 3.f)) << "clamped to the oldest held";
-            expect(eq(valueOf(sink.imageFrame(4U)), 4.f) && eq(sink.imageFrame(9U).generation, 5U));
-            expect(eq(sink.totalSampleCount(), 5UZ)) << "every frame counted, also those not held";
+            expect(eq(sink.signalSink()->frame().generation, 5U) && eq(valueOf(sink.signalSink()->frame()), 5.f)) << "the newest";
+            expect(eq(sink.signalSink()->frame(1U).generation, 3U) && eq(valueOf(sink.signalSink()->frame(1U)), 3.f)) << "clamped to the oldest held";
+            expect(eq(valueOf(sink.signalSink()->frame(4U)), 4.f) && eq(sink.signalSink()->frame(9U).generation, 5U));
+            expect(eq(sink.signalSink()->totalSampleCount(), 5UZ)) << "every frame counted, also those not held";
         });
-        framesThrough(0U, fiveFrames, [](const auto& sink) { expect(eq(sink.imageFrame(1U).generation, 5U)) << "max_backlog 0 holds the newest only"; });
-        framesThrough(0U, {{3UZ}}, [](const auto& sink) { expect(eq(sink.imageFrame().generation, 0U)) << "a rank-1 tensor is no image"; });
+        framesThrough(0U, fiveFrames, [](const auto& sink) { expect(eq(sink.signalSink()->frame(1U).generation, 5U)) << "max_backlog 0 holds the newest only"; });
+        framesThrough(0U, {{3UZ}}, [](const auto& sink) { expect(eq(sink.signalSink()->frame().generation, 0U)) << "a rank-1 tensor is no image"; });
     };
 
-    "the image chart counts the frames between two shown ones and decimates its CPU fallback within budget"_test = [] {
+    "the image chart counts the frames between two shown ones"_test = [] {
         expect(eq(skippedBetween(0U, 7U), 0U)) << "none before the first frame";
         expect(eq(skippedBetween(3U, 4U), 0U) && eq(skippedBetween(3U, 9U), 5U) && eq(skippedBetween(9U, 9U), 0U));
-        expect(eq(cpuDecimationStep(48UZ, 64UZ, 4096UZ), 1UZ) && eq(cpuDecimationStep(1200UZ, 1920UZ, 4096UZ), 24UZ) && eq(cpuDecimationStep(10UZ, 10UZ, 0UZ), 10UZ));
     };
 
     "Arithmetic applies each operation and keeps the previous one for an unknown symbol"_test = [] {
@@ -889,6 +1290,9 @@ int main() {
             expect(registry.contains(name)) << name;
         }
         expect(registry.contains("opendigitizer::Arithmetic<float32>") && registry.contains("opendigitizer::Arithmetic<float64>"));
+        for (const std::string_view name : {"opendigitizer::ImPlotSink<int16>", "opendigitizer::ImPlotSink<gr::UncertainValue<uint64>>", "opendigitizer::ImPlotSink<gr::DataSet<int8>>", "opendigitizer::ImPlotSink<gr::Tensor<uint16>>", "opendigitizer::ImPlotSink<gr::DataSet<gr::UncertainValue<float32>>>", "opendigitizer::ImPlotSink<gr::DataSet<complex<float32>>>", "opendigitizer::ImPlotSink<complex<float32>>", "opendigitizer::ImPlotSink<gr::UncertainValue<complex<float64>>>"}) {
+            expect(registry.contains(name)) << name << "(every sample type in every form, spelt as GR4 spells it)";
+        }
         for (const std::string_view name : {"opendigitizer::ImPlotSink<gr::pmt::ValueMap>", "opendigitizer::localisation::DelayLocator", "opendigitizer::localisation::PointSourceArrivals", "opendigitizer::charts::LocalisationChart"}) {
             expect(registry.contains(name)) << name << "(the event sink's key spells gr::property_map as gr::pmt::ValueMap)";
         }
@@ -909,13 +1313,13 @@ int main() {
         expect(lt(std::abs(axisCoordinate(lag, 32UZ)), 1e-12)) << "lag 0 in the middle of 2 * 32 + 1 columns";
 
         charts::TensorRowsChart chart;
-        ImageFrame              untagged{.pixels = {}, .rows = 3UZ, .columns = 65UZ};
+        FrameView               untagged{.values = {}, .rows = 3UZ, .columns = 65UZ};
         expect(chart.columnAxis(untagged, 48000.f).name.empty()) << "off by default: the column index";
         chart.lag_columns = true;
         expect(chart.columnAxis(untagged, 48000.f).name == "lag" && eq(chart.columnAxis(untagged, 48000.f).step, 1.0 / 48000.0));
         expect(chart.columnAxis(untagged, 0.f).name.empty()) << "no sample rate: the column index";
-        ImageFrame tagged = untagged;
-        tagged.axes[1]    = {.origin = -0.5, .step = 0.25, .name = "delay", .unit = "ms"};
+        FrameView tagged = untagged;
+        tagged.axes[1]   = {.origin = -0.5, .step = 0.25, .name = "delay", .unit = "ms"};
         expect(chart.columnAxis(tagged, 48000.f).name == "delay" && eq(chart.columnAxis(tagged, 48000.f).step, 0.25)) << "a gr:axis_* tag wins over lag_columns";
     };
 
@@ -939,7 +1343,7 @@ int main() {
         gr::scheduler::Simple sched;
         expect(sched.exchange(std::move(graph)).has_value());
         expect(sched.runAndWait().has_value());
-        const auto      frame = sink.imageFrame();
+        const auto      frame = sink.signalSink()->frame();
         const ImageAxis ours  = charts::lagAxis(2UZ * kMaxLag + 1UZ, static_cast<double>(kRate));
         expect(eq(frame.columns, 2UZ * kMaxLag + 1UZ) && frame.axes[1].name == "lag" && frame.axes[1].unit == "s") << frame.axes[1].name;
         expect(lt(std::abs(frame.axes[1].origin - ours.origin), 1e-12) && lt(std::abs(frame.axes[1].step - ours.step), 1e-15)) << std::format("tag {} + {}, lagAxis {} + {}", frame.axes[1].origin, frame.axes[1].step, ours.origin, ours.step);
@@ -964,10 +1368,10 @@ int main() {
         gr::scheduler::Simple sched;
         expect(sched.exchange(std::move(graph)).has_value());
         expect(sched.runAndWait().has_value());
-        const auto frame = sink.imageFrame();
+        const auto frame = sink.signalSink()->frame();
         expect(eq(frame.axes[1].origin, -0.001) && eq(frame.axes[1].step, 1.0 / 48000.0) && frame.axes[1].name == "lag" && frame.axes[1].unit == "s");
         expect(frame.axes[0].name == "pair" && eq(frame.axes[0].step, 1.0));
-        expect(eq(sink.sampleRate(), 48000.f)) << "the lag step of a TensorRowsChart with lag_columns";
+        expect(eq(sink.signalSink()->sampleRate(), 48000.f)) << "the lag step of a TensorRowsChart with lag_columns";
     };
 
 #if defined(OD_TRIGGER_BLOCKS)
@@ -997,10 +1401,12 @@ int main() {
 
         charts::RDSView::Reception reception;
         std::size_t                kept = 0UZ;
-        sink.forEachTag([&](double utcSeconds, const gr::property_map& tagMap) {
+        for (const auto& [utcSeconds, tagMap] : sink.signalSink()->events()) {
             reception.add(utcSeconds, tagMap);
             ++kept;
-        });
+        }
+        expect(sink.signalSink()->signalKind() == SignalKind::Events) << "an RDSView or a LocalisationChart takes it";
+        expect(eq(sink.signalSink()->totalSampleCount(), 100UZ)) << "the stream's samples, for the bit rate";
         expect(eq(kept, 3UZ));
         expect(eq(reception.station.programmeServiceName, std::string("GR4 RDS")));
         expect(eq(reception.station.radioText, std::string("second")));

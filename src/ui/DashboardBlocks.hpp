@@ -15,6 +15,8 @@ void registerDashboardBlocks(gr::BlockRegistry& registry);
 void registerVideoBlocks(gr::BlockRegistry& registry);        // DashboardBlocksVideo.cpp: a translation unit of its own, for compile memory
 void registerLocalisationBlocks(gr::BlockRegistry& registry); // DashboardBlocksLocalisation.cpp, likewise
 void registerSignalBlocks(gr::BlockRegistry& registry);       // DashboardBlocksSignal.cpp, likewise
+void registerSinkBlocks(gr::BlockRegistry& registry);         // DashboardBlocksSinks.cpp, likewise
+void registerFrameSinkBlocks(gr::BlockRegistry& registry);    // DashboardBlocksSinkFrames.cpp: the DataSet and tensor forms, for compile memory
 
 void applyStyle(LookAndFeel::Style style);
 void applyTheme(LookAndFeel::Theme theme);

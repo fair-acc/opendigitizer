@@ -61,8 +61,8 @@ struct MenuButton {
                     return std::make_optional<ButtonStyle>(overlayTransparentOverOpaque(ImGui::GetStyleColorVec4(ImGuiCol_Button), windowBg), overlayTransparentOverOpaque(ImGui::GetStyleColorVec4(ImGuiCol_ButtonHovered), windowBg), overlayTransparentOverOpaque(ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive), windowBg));
                 }
                 ImVec4 buttonColorNormal = *buttonColor;
-                ImVec4 buttonColorHover  = lightenColorByReducingSaturation(buttonColorNormal, LookAndFeel::instance().popupMenuButtonHoverLighten);
-                ImVec4 buttonColorActive = darkenColorByReducingValue(buttonColorNormal, LookAndFeel::instance().popupMenuButtonActiveDarken);
+                ImVec4 buttonColorHover  = scaledHsv(buttonColorNormal, LookAndFeel::instance().popupMenuButtonHoverLighten, 1.0f);
+                ImVec4 buttonColorActive = scaledHsv(buttonColorNormal, 1.0f, LookAndFeel::instance().popupMenuButtonActiveDarken);
                 buttonColorNormal.w      = LookAndFeel::instance().popupMenuButtonAlpha;
                 buttonColorHover.w       = LookAndFeel::instance().popupMenuButtonAlpha;
                 buttonColorActive.w      = LookAndFeel::instance().popupMenuButtonAlpha;

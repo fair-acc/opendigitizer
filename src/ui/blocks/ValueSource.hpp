@@ -28,7 +28,7 @@ struct ValueSource : gr::Block<ValueSource<T>> {
             outSpan.publish(0UZ);
             return gr::work::Status::INSUFFICIENT_INPUT_ITEMS; // nothing set: lets the scheduler idle, as ClockSource does
         }
-        const auto nowNs = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count());
+        const auto nowNs = gr::settings::convertTimePointToUint64Ns(std::chrono::system_clock::now());
         outSpan[0UZ]     = *_pending;
         outSpan.publishTag(gr::property_map{{std::string(gr::tag::kTriggerName.key()), std::string(this->name.value)}, {std::string(gr::tag::kTriggerTime.key()), nowNs}, {std::string(gr::tag::kTriggerOffset.key()), 0.f}}, 0UZ);
         outSpan.publish(1UZ);

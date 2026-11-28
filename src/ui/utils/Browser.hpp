@@ -44,11 +44,7 @@ inline bool browserTestHooks() {
 }
 
 [[nodiscard]] inline std::string jsonArray(std::ranges::input_range auto&& strings) {
-    std::string json = "[";
-    for (const std::string_view entry : strings) {
-        json += std::format("{}{}", json.size() > 1UZ ? "," : "", jsonString(entry));
-    }
-    return json + ']';
+    return std::format("[{}]", strings | std::views::transform([](std::string_view entry) { return jsonString(entry); }) | std::views::join_with(',') | std::ranges::to<std::string>());
 }
 
 /// browser tests read `json` (finite numbers only) as globalThis[table][key]; callers check browserTestHooks() before building it

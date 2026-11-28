@@ -109,7 +109,7 @@ void UiGraphBlock::emplaceChild(const gr::property_map& blockData) {
     auto* thisGraphInfo = std::get_if<GraphBlockInfo>(&blockCategoryInfo);
     assert(thisGraphInfo);
 
-    const auto newBlockUniqueName = getProperty<std::string>(blockData, gr::serialization_fields::BLOCK_UNIQUE_NAME);
+    const auto newBlockUniqueName = gr::getProperty<std::string>(blockData, gr::serialization_fields::BLOCK_UNIQUE_NAME).value_or(std::string{});
     const auto [it, found]        = findBlockIteratorBy({SearchProperty::UniqueName}, newBlockUniqueName);
     if (found) {
         UiGraphBlock& block = *it->get();
@@ -151,7 +151,7 @@ void UiGraphBlock::emplaceEdge(const gr::property_map& data) {
 
 void UiGraphBlock::setSchedulerGraph(const gr::property_map& data) {
     assert(blockCategory == "ScheduledBlockGroup");
-    const auto& children = getProperty<gr::property_map>(data, "children"s);
+    const auto& children = gr::getProperty<gr::property_map>(data, "children"s).value_or(gr::property_map{});
     assert(children.size() == 1 && "Schedulers contain only a single child -- the graph");
 
     for (const auto& [graphUniqueName, graphValue] : children) {
@@ -177,7 +177,7 @@ void UiGraphBlock::setGraphChildren(const gr::property_map& data) {
     std::set<std::string> childrenUniqueNames;
 
     if (data.contains("children"s)) {
-        const auto& children = getProperty<gr::property_map>(data, "children"s);
+        const auto& children = gr::getProperty<gr::property_map>(data, "children"s).value_or(gr::property_map{});
         for (const auto& [childUniqueName, blockValue] : children) {
             childrenUniqueNames.insert(std::string(childUniqueName));
             const auto [blockIt, found] = findBlockIteratorBy({SearchProperty::UniqueName}, childUniqueName);
@@ -192,14 +192,14 @@ void UiGraphBlock::setGraphChildren(const gr::property_map& data) {
             }
         }
     } else {
-        const auto& children = getProperty<gr::Tensor<gr::pmt::Value>>(data, "graph"s, "blocks"s);
+        const auto& children = gr::getProperty<gr::Tensor<gr::pmt::Value>>(data, "graph"s, "blocks"s).value_or(gr::Tensor<gr::pmt::Value>{});
         for (const auto& blockData : children) {
             const auto mapOpt = blockData.get_if<gr::property_map>();
             if (!mapOpt) {
                 continue;
             }
             const auto& map        = *mapOpt;
-            const auto& uniqueName = getProperty<std::string>(map, "unique_name"s);
+            const auto& uniqueName = gr::getProperty<std::string>(map, "unique_name"s).value_or(std::string{});
             childrenUniqueNames.insert(uniqueName);
             const auto [blockIt, found] = findBlockIteratorBy({SearchProperty::UniqueName}, uniqueName);
             if (found) {
@@ -222,7 +222,7 @@ void UiGraphBlock::setGraphChildren(const gr::property_map& data) {
 
     childEdges.clear();
     if (data.contains("edges"s)) {
-        const auto& edges = getProperty<gr::property_map>(data, "edges"s);
+        const auto& edges = gr::getProperty<gr::property_map>(data, "edges"s).value_or(gr::property_map{});
         for (const auto& [index, edgeValue] : edges) {
             const auto edgeData = edgeValue.get_if<gr::property_map>();
             if (!edgeData) {
@@ -237,7 +237,7 @@ void UiGraphBlock::setGraphChildren(const gr::property_map& data) {
             }
         }
     } else {
-        const auto& edges = getProperty<gr::Tensor<gr::pmt::Value>>(data, "graph"s, "connections"s);
+        const auto& edges = gr::getProperty<gr::Tensor<gr::pmt::Value>>(data, "graph"s, "connections"s).value_or(gr::Tensor<gr::pmt::Value>{});
         for (const auto& edgeData : edges) {
             const auto edgeProperties = edgeData.value_or(gr::Tensor<gr::pmt::Value>{});
             if (edgeProperties.size() < 4) {
@@ -327,7 +327,7 @@ void UiGraphBlock::setBasicBlockData(const gr::property_map& blockData) {
     };
 
     // parameters may sit under the "scheduler" key instead of the block description root
-    const auto scheduler = getOptionalProperty<gr::property_map>(blockData, "scheduler");
+    const auto scheduler = gr::getProperty<gr::property_map>(blockData, "scheduler");
     if (scheduler) {
         tryGetParameters(*scheduler);
     }
@@ -347,7 +347,7 @@ void UiGraphBlock::setBasicBlockData(const gr::property_map& blockData) {
     }
 
     // the meta information holds the exported ports
-    if (auto metaInformation = getOptionalProperty<gr::property_map>(blockData, gr::serialization_fields::BLOCK_META_INFORMATION); metaInformation.has_value()) {
+    if (auto metaInformation = gr::getProperty<gr::property_map>(blockData, gr::serialization_fields::BLOCK_META_INFORMATION); metaInformation.has_value()) {
 
         blockMetaInformation   = *metaInformation;
         auto readExportedPorts = [this](auto& destination, const std::string& key) {
@@ -389,8 +389,8 @@ void UiGraphBlock::setBasicBlockData(const gr::property_map& blockData) {
     updateFieldFrom(blockCategory, blockData, blockCategory, "block_category"s);
 
     if (!storedXY) {
-        const auto x = getOptionalProperty<float, true>(blockSettings, "ui_constraints", "x");
-        const auto y = getOptionalProperty<float, true>(blockSettings, "ui_constraints", "y");
+        const auto x = gr::getProperty<float>(blockSettings, "ui_constraints", "x");
+        const auto y = gr::getProperty<float>(blockSettings, "ui_constraints", "y");
         if (x && y && std::isfinite(*x) && std::isfinite(*y)) {
             storedXY = StoredXY{*x, *y};
         }
@@ -402,7 +402,7 @@ bool UiGraphBlock::updatePorts(const gr::property_map& blockData) {
         portsCollection.clear();
 
         const auto appendDeclaredPorts = [&] {
-            const auto declaredPorts = getProperty<gr::property_map>(blockData, portsField);
+            const auto declaredPorts = gr::getProperty<gr::property_map>(blockData, portsField).value_or(gr::property_map{});
             for (const auto& [portName, portValue] : declaredPorts) {
                 const auto portData = portValue.get_if<gr::property_map>();
                 if (!portData) {
@@ -410,7 +410,7 @@ bool UiGraphBlock::updatePorts(const gr::property_map& blockData) {
                 }
                 auto& port         = portsCollection.emplace_back(/*owner*/ this);
                 port.portName      = portName;
-                port.portType      = getProperty<std::string>(*portData, "type"s);
+                port.portType      = gr::getProperty<std::string>(*portData, "type"s).value_or(std::string{});
                 port.portDirection = direction;
             }
         };
@@ -479,7 +479,7 @@ std::optional<UiGraphEdge> UiGraphBlock::parseEdgeData(const gr::property_map& e
         }
 
         // gr::serializeEdge writes port collections in this format
-        return gr::PortDefinition(getProperty<std::size_t>(edgeData, key + ".top_level"), getProperty<std::size_t>(edgeData, key + ".sub_index"));
+        return gr::PortDefinition(gr::getProperty<gr::Size_t>(edgeData, key + ".top_level").value_or(0U), gr::getProperty<gr::Size_t>(edgeData, key + ".sub_index").value_or(0U));
     };
 
     edge.edgeSourcePortDefinition      = portDefinitionFor(std::string(gr::serialization_fields::EDGE_SOURCE_PORT));
@@ -819,7 +819,7 @@ std::vector<UiGraphBlock*> UiGraphModel::recursiveGatherPlotSinks() {
 namespace {
 void updateKnownTypeMap(auto& map, const auto& data) {
     map.clear();
-    const auto& knownList = getProperty<gr::Tensor<gr::pmt::Value>>(data, "types"s);
+    const auto& knownList = gr::getProperty<gr::Tensor<gr::pmt::Value>>(data, "types"s).value_or(gr::Tensor<gr::pmt::Value>{});
     for (const auto& typeValue : knownList) {
         if (!typeValue.is_string()) {
             continue;
@@ -1000,12 +1000,12 @@ bool UiGraphModel::apply(const gr::Message& message) {
     // no message processing before the initial graph contents
     if (rootBlock.blockUniqueName.empty()) {
         if (message.endpoint == scheduler::kSchedulerInspected) {
-            assert(getProperty<std::string>(data, "block_category") == "ScheduledBlockGroup");
+            assert(gr::getProperty<std::string>(data, "block_category").value_or(std::string{}) == "ScheduledBlockGroup");
 
             // SchedulerInspected is special: knowing nothing of the flowgraph yet, its root scheduler is the top-level one
             rootBlock.blockCategoryInfo = UiGraphBlock::SchedulerBlockInfo{};
             rootBlock.blockUniqueName   = message.serviceName;
-            const auto& children        = getProperty<gr::property_map>(data, "children");
+            const auto& children        = gr::getProperty<gr::property_map>(data, "children").value_or(gr::property_map{});
             assert(children.size() == 1);
 
         } else {
@@ -1058,6 +1058,9 @@ bool UiGraphModel::apply(const gr::Message& message) {
 
     } else if (message.endpoint == block::kSetting || message.endpoint == block::kStagedSetting) {
         withBlock(message.serviceName, "requested an unknown block to be changed settings", [&data](UiGraphBlock& block) { block.applySettings(data); });
+
+    } else if (message.endpoint == block::kComputeDomainFallback) { // once per run, at start or at a refused kernel
+        withBlock(message.serviceName, "reported a compute-domain fallback of an unknown block", [&data](UiGraphBlock& block) { block.computeDomainFallbackReason = data.value_or<std::string>("reason", std::string("ran on the host")); });
 
     } else if (message.endpoint == scheduler::kEdgeEmplaced) {
         targetBlock.block->emplaceEdge(data);
@@ -1192,6 +1195,9 @@ void UiGraphModel::requestAvailableBlocksTypesUpdate() {
 }
 
 void UiGraphBlock::applySettings(const gr::property_map& data) {
+    if (data.contains("compute_domain")) {
+        computeDomainFallbackReason.clear(); // the next run reports again
+    }
     bool keysChanged = false;
     for (const auto& [key, value] : data) {
         if (std::string_view(key) != gr::serialization_fields::BLOCK_UNIQUE_NAME) {

@@ -157,11 +157,7 @@ void main() {
 }
 )glsl";
 
-        const GLuint vertexShader   = shader::compileShader(GL_VERTEX_SHADER, shader::kGlslPrefix, kVertexShader);
-        const GLuint fragmentShader = shader::compileShader(GL_FRAGMENT_SHADER, shader::kGlslPrefix, kFragmentShader);
-        handles.program             = shader::linkProgram(vertexShader, fragmentShader);
-        glDeleteShader(vertexShader);
-        glDeleteShader(fragmentShader);
+        handles.program = shader::buildProgram(kVertexShader, kFragmentShader);
         if (handles.program == 0) {
             return;
         }
@@ -268,12 +264,11 @@ struct GpuLineRenderer {
 
     // caller holds sink.dataGuard()
     void refresh(const SignalSink& sink, std::size_t nHistory, AxisScale xAxisScale) {
-        const std::size_t size      = sink.size();
-        const std::size_t sinkBegin = oldestSample(sink);
-        const std::size_t total     = sinkBegin + size;
-        const std::size_t begin     = total - std::min(size, nHistory);
-        const auto        xAt       = [&](std::size_t sample) { return sink.xAt(sample - sinkBegin); };
-        const auto        yAt       = [&](std::size_t sample) { return static_cast<double>(sink.yAt(sample - sinkBegin)); };
+        const SampleWindow window = sink.samples();
+        const std::size_t  total  = window.first + window.size();
+        const std::size_t  begin  = total - std::min(window.size(), nHistory);
+        const auto         xAt    = [&window](std::size_t sample) { return window.x[sample - window.first]; };
+        const auto         yAt    = [&window](std::size_t sample) { return window.yAt(sample - window.first); };
 
         if (_capacity != nHistory) {
             allocate(nHistory);
@@ -290,7 +285,7 @@ struct GpuLineRenderer {
             _origin      = newest + span;
             std::ranges::fill(_blocks, Extents{});
         }
-        upload(sink, sinkBegin, total);
+        upload(window, total);
 
         _windowBegin                      = begin;
         _windowExtents                    = {};
@@ -350,15 +345,15 @@ struct GpuLineRenderer {
         _blocks.resize(capacity / kBlockSize + 2UZ);
     }
 
-    void upload(const SignalSink& sink, std::size_t sinkBegin, std::size_t end) {
+    void upload(const SampleWindow& window, std::size_t end) {
         glBindBuffer(GL_ARRAY_BUFFER, _vbo);
         while (_uploadedEnd < end) {
             const std::size_t slot  = _uploadedEnd % _capacity;
             const std::size_t count = std::min({end - _uploadedEnd, _capacity - slot, kUploadChunk});
             _staging.clear();
             for (std::size_t sample = _uploadedEnd; sample < _uploadedEnd + count; ++sample) {
-                const double x     = sink.xAt(sample - sinkBegin);
-                const auto   y     = static_cast<double>(sink.yAt(sample - sinkBegin));
+                const double x     = window.x[sample - window.first];
+                const double y     = window.yAt(sample - window.first);
                 Extents&     block = blockOf(sample);
                 if (sample % kBlockSize == 0UZ) {
                     block = {};
@@ -387,8 +382,6 @@ struct GpuLineRenderer {
 
     [[nodiscard]] auto blockOf(this auto& self, std::size_t sample) noexcept -> decltype(self._blocks[0UZ]) { return self._blocks[sample / kBlockSize % self._blocks.size()]; }
 
-    [[nodiscard]] static std::size_t oldestSample(const SignalSink& sink) noexcept { return std::max(sink.totalSampleCount(), sink.size()) - sink.size(); }
-
     [[nodiscard]] static bool identical(double a, double b) noexcept { return std::bit_cast<std::uint64_t>(a) == std::bit_cast<std::uint64_t>(b); }
 
     void fit(const SignalSink& sink, ImPlotAxis& xAxis, ImPlotAxis& yAxis) const {
@@ -403,8 +396,8 @@ struct GpuLineRenderer {
         if (!xRangeFit && !yRangeFit) {
             return;
         }
-        const std::size_t sinkBegin = oldestSample(sink);
-        const std::size_t sinkEnd   = sinkBegin + sink.size();
+        const SampleWindow window  = sink.samples();
+        const std::size_t  sinkEnd = window.first + window.size();
         for (std::size_t blockBegin = _windowBegin - _windowBegin % kBlockSize; blockBegin < _uploadedEnd; blockBegin += kBlockSize) {
             const Extents& block     = blockOf(blockBegin);
             const bool     xFitsNone = !xRangeFit || block.yMax < yAxis.Range.Min || block.yMin > yAxis.Range.Max;
@@ -418,7 +411,7 @@ struct GpuLineRenderer {
                 rangeFitBlock(xAxis, yAxis, block);
                 continue;
             }
-            rangeFitSamples(sink, sinkBegin, std::max({blockBegin, _windowBegin, sinkBegin}), std::min({blockBegin + kBlockSize, _uploadedEnd, sinkEnd}), xAxis, yAxis);
+            rangeFitSamples(window, std::max({blockBegin, _windowBegin, window.first}), std::min({blockBegin + kBlockSize, _uploadedEnd, sinkEnd}), xAxis, yAxis);
         }
     }
 
@@ -432,12 +425,12 @@ struct GpuLineRenderer {
         }
     }
 
-    void rangeFitSamples(const SignalSink& sink, std::size_t sinkBegin, std::size_t first, std::size_t end, ImPlotAxis& xAxis, ImPlotAxis& yAxis) const {
+    void rangeFitSamples(const SampleWindow& window, std::size_t first, std::size_t end, ImPlotAxis& xAxis, ImPlotAxis& yAxis) const {
         const bool xRangeFit = ImHasFlag(xAxis.Flags, ImPlotAxisFlags_RangeFit);
         const bool yRangeFit = ImHasFlag(yAxis.Flags, ImPlotAxisFlags_RangeFit);
         for (std::size_t sample = first; sample < end; ++sample) {
-            const double x = sink.xAt(sample - sinkBegin) - _shift;
-            const auto   y = static_cast<double>(sink.yAt(sample - sinkBegin));
+            const double x = window.x[sample - window.first] - _shift;
+            const double y = window.yAt(sample - window.first);
             if (xRangeFit) {
                 xAxis.ExtendFitWith(yAxis, x, y);
             }

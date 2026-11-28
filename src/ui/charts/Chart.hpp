@@ -50,6 +50,9 @@ enum class XAxisMode : std::uint8_t { UtcTime, RelativeTime, SampleIndex };
 
 enum class RangeStyle : std::uint8_t { hidden, lines, shaded, both };
 enum class MarkerStyle : std::uint8_t { hidden, solid, dashed };
+enum class ErrorStyle : std::uint8_t { none, bars, surface, combo }; // as ChartFX names them
+
+using ErrorStyleSetting = gr::Annotated<ErrorStyle, "error style", gr::Visible, gr::Doc<"a signal's uncertainty: combo (bars while their caps do not overlap, else the surface y ± σ), bars, surface, or none (the line only); a signal without uncertainties is a line">>;
 
 using RangeStyleSetting      = gr::Annotated<RangeStyle, "range style", gr::Visible, gr::Doc<"frequency range: hidden, lines, shaded or both">>;
 using RangeMinSetting        = gr::Annotated<double, "range min", gr::Unit<"Hz">, gr::Doc<"input: the range's lower edge; NaN: the visible span, inset">>;
@@ -86,10 +89,16 @@ enum class LabelFormat {
     Default
 };
 
+/// where an axis draws its ticks, tick labels and title: outside the plot (ImPlot's default), on the plot area at its edge
+/// without the title (Canvas), or not at all (None), its range, zoom and grid kept
+enum class AxisPlacement { Outside = 0, Canvas, None };
+
 enum class HistoryUnit : int {
     seconds = 0, // time-based history depth (resolved via sample rate)
     samples = 1
 };
+
+[[nodiscard]] constexpr bool isXAxis(ImAxis axis) noexcept { return axis >= ImAxis_X1 && axis <= ImAxis_X3; }
 
 enum class AxisKind { X = 0, Y, Z };
 
@@ -118,6 +127,8 @@ struct AxisConfig {
     float                    max  = std::numeric_limits<float>::quiet_NaN();
     std::optional<AxisScale> scale;
     LabelFormat              format          = LabelFormat::Auto;
+    AxisPlacement            placement       = AxisPlacement::Outside;
+    bool                     showTitle       = true;
     float                    width           = std::numeric_limits<float>::quiet_NaN();
     float                    linearThreshold = std::numeric_limits<float>::quiet_NaN(); // SymLog: half-width of the linear band around zero, in axis units
     bool                     plotTags        = true;
@@ -142,7 +153,7 @@ inline constexpr float kDefaultAxisLabelWidth = std::numeric_limits<float>::max(
 
 [[nodiscard]] inline float defaultAxisLabelWidthFor(ImAxis axisId, const ImVec2& plotSize) noexcept {
     constexpr float kLabelBudgetFraction = 0.9f;
-    const bool      isX                  = axisId == ImAxis_X1 || axisId == ImAxis_X2 || axisId == ImAxis_X3;
+    const bool      isX                  = isXAxis(axisId);
     const float     axisExtent           = isX ? plotSize.x : plotSize.y;
     return std::isfinite(axisExtent) && axisExtent > 0.f ? axisExtent * kLabelBudgetFraction : kDefaultAxisLabelWidth;
 }
@@ -201,6 +212,9 @@ struct LogFreqRange {
         if (const auto format = axisMap->get_if<std::string_view>("format")) {
             cfg.format = magic_enum::enum_cast<LabelFormat>(*format, magic_enum::case_insensitive).value_or(LabelFormat::Auto);
         }
+        if (const auto placement = axisMap->get_if<std::string_view>("placement")) {
+            cfg.placement = magic_enum::enum_cast<AxisPlacement>(*placement, magic_enum::case_insensitive).value_or(AxisPlacement::Outside);
+        }
         if (auto it = axisMap->find("width"); it != axisMap->end()) {
             if (auto v = gr::pmt::convert_safely<float>(it->second); v) {
                 cfg.width = *v;
@@ -211,13 +225,27 @@ struct LogFreqRange {
                 cfg.linearThreshold = *v;
             }
         }
-        cfg.plotTags = axisMap->value_or<bool>("plot_tags", true);
+        cfg.plotTags  = axisMap->value_or<bool>("plot_tags", true);
+        cfg.showTitle = axisMap->value_or<bool>("show_title", true);
         return cfg;
     }
     return std::nullopt;
 }
 
 [[nodiscard]] inline std::optional<AxisConfig> parseAxisConfig(const gr::property_map& constraints, bool isX, std::size_t index = 0) { return parseAxisConfig(constraints, isX ? AxisKind::X : AxisKind::Y, index); }
+
+struct AxisDecoration {
+    AxisPlacement placement = AxisPlacement::Outside;
+    bool          showTitle = true;
+};
+
+/// `cfg`'s decoration, `fallback` without an entry; an axis without labels (format None) has none on the canvas either
+[[nodiscard]] inline AxisDecoration decorationOf(const std::optional<AxisConfig>& cfg, AxisDecoration fallback = {}) noexcept {
+    if (!cfg) {
+        return fallback;
+    }
+    return {.placement = cfg->placement == AxisPlacement::Canvas && cfg->format == LabelFormat::None ? AxisPlacement::None : cfg->placement, .showTitle = cfg->showTitle};
+}
 
 enum class ConstrainedWhen : std::uint8_t { autoScaled, always };
 
@@ -236,18 +264,8 @@ enum class ConstrainedWhen : std::uint8_t { autoScaled, always };
 }
 
 [[nodiscard]] inline std::pair<double, double> effectiveColourRange(const gr::property_map& uiConstraints, double autoScaleMin, double autoScaleMax) {
-    auto zCfg = parseAxisConfig(uiConstraints, AxisKind::Z);
-    if (zCfg) {
-        bool autoMin = !std::isfinite(zCfg->min);
-        bool autoMax = !std::isfinite(zCfg->max);
-        if (!autoMin && !autoMax) {
-            return {static_cast<double>(zCfg->min), static_cast<double>(zCfg->max)};
-        }
-        double cMin = autoMin ? autoScaleMin : static_cast<double>(zCfg->min);
-        double cMax = autoMax ? autoScaleMax : static_cast<double>(zCfg->max);
-        return {cMin, cMax};
-    }
-    return {autoScaleMin, autoScaleMax};
+    const auto z = parseAxisConfig(uiConstraints, AxisKind::Z);
+    return {z && std::isfinite(z->min) ? static_cast<double>(z->min) : autoScaleMin, z && std::isfinite(z->max) ? static_cast<double>(z->max) : autoScaleMax};
 }
 
 [[nodiscard]] inline std::string labelWithUnit(std::string_view name, std::string_view unit) { return unit.empty() ? std::string(name) : std::format("{} [{}]", name, unit); }
@@ -421,6 +439,86 @@ inline void reduceToColumns(std::vector<double>& x, std::vector<double>& y, std:
     y.resize(kept);
 }
 
+/// the band y ± σ a chart draws: one entry per point while there are no more points than pixel `columns`,
+/// else one per column, its lowest y − σ and highest y + σ at its first point's x, so no excursion disappears
+struct ErrorBand {
+    std::vector<double> x;
+    std::vector<double> lower;
+    std::vector<double> upper;
+    bool                perPoint = true; // false: one entry per pixel column
+};
+
+[[nodiscard]] inline ErrorBand errorBand(std::span<const double> x, std::span<const double> y, std::span<const double> sigma, std::size_t columns) {
+    const std::size_t n        = std::min({x.size(), y.size(), sigma.size()});
+    const bool        perPoint = columns == 0UZ || n <= columns;
+    const std::size_t step     = perPoint ? 1UZ : (n + columns - 1UZ) / columns;
+    ErrorBand         band{.x = {}, .lower = {}, .upper = {}, .perPoint = perPoint};
+    for (std::size_t from = 0UZ; from < n; from += step) {
+        double lower = std::numeric_limits<double>::infinity();
+        double upper = -std::numeric_limits<double>::infinity();
+        for (std::size_t i = from; i < std::min(from + step, n); ++i) {
+            lower = std::min(lower, y[i] - sigma[i]);
+            upper = std::max(upper, y[i] + sigma[i]);
+        }
+        band.x.push_back(x[from]);
+        band.lower.push_back(lower);
+        band.upper.push_back(upper);
+    }
+    return band;
+}
+
+[[nodiscard]] constexpr bool capsOverlap(double firstPixel, double lastPixel, std::size_t n, double capWidthPixels) noexcept { //
+    return n >= 2UZ && std::abs(lastPixel - firstPixel) / static_cast<double>(n - 1UZ) < capWidthPixels;
+}
+
+struct ErrorDrawing {
+    bool surface = false;
+    bool bars    = false;
+};
+
+/// needs a current ImPlot plot: combo compares the caps with the points' pixel spacing
+[[nodiscard]] inline ErrorDrawing errorDrawing(const ErrorBand& band, ErrorStyle style) {
+    switch (style) {
+    case ErrorStyle::none: return {.surface = false, .bars = false};
+    case ErrorStyle::bars: return {.surface = false, .bars = true};
+    case ErrorStyle::surface: return {.surface = true, .bars = false};
+    case ErrorStyle::combo: break;
+    }
+    const bool overlap = !band.x.empty() && capsOverlap(static_cast<double>(ImPlot::PlotToPixels(band.x.front(), 0.0).x), static_cast<double>(ImPlot::PlotToPixels(band.x.back(), 0.0).x), band.x.size(), static_cast<double>(ImPlot::GetStyle().ErrorBarSize));
+    return {.surface = overlap, .bars = !overlap};
+}
+
+/// the current plot's width in pixel columns
+[[nodiscard]] inline std::size_t plotColumns() { return static_cast<std::size_t>(std::max(ImPlot::GetPlotSize().x, 0.f)); }
+
+/// `colour` fades by the look's errorBarAlpha
+inline void plotErrorBars(const char* label, std::span<const double> x, std::span<const double> y, std::span<const double> error, ImVec4 colour, float lineWidth, ImPlotErrorBarsFlags flags = 0) {
+    colour.w *= LookAndFeel::instance().chartStyle.errorBarAlpha;
+    ImPlot::SetNextErrorBarStyle(colour, IMPLOT_AUTO, lineWidth);
+    ImPlot::PlotErrorBars(label, x.data(), y.data(), error.data(), static_cast<int>(std::min({x.size(), y.size(), error.size()})), flags);
+}
+
+/// bars of a decimated band span their pixel column
+inline void drawErrorBand(const ErrorBand& band, ErrorStyle style, ImVec4 colour, float lineWidth, std::string_view uniqueName) {
+    const auto&        look    = LookAndFeel::instance().chartStyle;
+    const int          count   = static_cast<int>(band.x.size());
+    const ErrorDrawing drawing = errorDrawing(band, style);
+    if (count == 0) {
+        return;
+    }
+    if (drawing.surface) {
+        ImPlot::SetNextFillStyle(colour, look.errorSurfaceAlpha);
+        ImPlot::PlotShaded(std::format("##{}_error_surface", uniqueName).c_str(), band.x.data(), band.lower.data(), band.upper.data(), count);
+    }
+    if (drawing.bars) {
+        std::vector<double> centre(band.x.size());
+        std::vector<double> halfWidth(band.x.size());
+        std::ranges::transform(band.lower, band.upper, centre.begin(), [](double lower, double upper) { return 0.5 * (lower + upper); });
+        std::ranges::transform(band.lower, band.upper, halfWidth.begin(), [](double lower, double upper) { return 0.5 * (upper - lower); });
+        plotErrorBars(std::format("##{}_error_bars", uniqueName).c_str(), band.x, centre, halfWidth, colour, lineWidth);
+    }
+}
+
 // 0 and ±c, ±10c, ±100c ... up to `maxMagnitude`: ImPlot's locator for a custom scale places linear ticks
 [[nodiscard]] inline std::vector<double> symLogDecadeTicks(double linearThreshold, double maxMagnitude) {
     std::vector<double> ticks{0.0};
@@ -433,12 +531,12 @@ inline void reduceToColumns(std::vector<double>& x, std::vector<double>& y, std:
     return ticks;
 }
 
-inline void setupAxis(ImAxis axisId, const std::optional<AxisCategory>& category, LabelFormat format, float axisWidth, double minLimit, double maxLimit, std::size_t nTotalAxes, AxisScale scaleOverride, std::array<std::string, 6UZ>& unitStringStorage, bool showGrid = true, bool foreground = false, ImPlotCond limitsCond = ImPlotCond_Always, const double* symLogLinearThreshold = nullptr) {
+inline void setupAxis(ImAxis axisId, const std::optional<AxisCategory>& category, LabelFormat format, float axisWidth, double minLimit, double maxLimit, std::size_t nTotalAxes, AxisScale scaleOverride, std::array<std::string, 6UZ>& unitStringStorage, bool showGrid = true, bool foreground = false, ImPlotCond limitsCond = ImPlotCond_Always, const double* symLogLinearThreshold = nullptr, AxisDecoration decoration = {}) {
     if (!category.has_value()) {
         return;
     }
 
-    const bool      isX       = axisId == ImAxis_X1 || axisId == ImAxis_X2 || axisId == ImAxis_X3;
+    const bool      isX       = isXAxis(axisId);
     const bool      finiteMin = std::isfinite(minLimit);
     const bool      finiteMax = std::isfinite(maxLimit);
     const AxisScale scale     = scaleOverride;
@@ -471,11 +569,15 @@ inline void setupAxis(ImAxis axisId, const std::optional<AxisCategory>& category
         pushedColor = true;
     }
 
+    const bool outside = decoration.placement == AxisPlacement::Outside;
     if (format == LabelFormat::None) {
         flags |= ImPlotAxisFlags_NoTickLabels;
     }
+    if (!outside) { // Canvas: drawCanvasAxes draws them on the plot area
+        flags |= ImPlotAxisFlags_NoTickLabels | ImPlotAxisFlags_NoTickMarks;
+    }
 
-    const std::string label = (scale == AxisScale::Time) || (format == LabelFormat::MetricInline) || (format == LabelFormat::None) ? "" : truncateLabel(category->buildLabel(), axisWidth);
+    const std::string label = (scale == AxisScale::Time) || (format == LabelFormat::MetricInline) || (format == LabelFormat::None) || !outside || !decoration.showTitle ? "" : truncateLabel(category->buildLabel(), axisWidth);
     ImPlot::SetupAxis(axisId, label.c_str(), flags);
 
     if (scale != AxisScale::Time) {
@@ -555,6 +657,58 @@ inline void setupAxis(ImAxis axisId, const std::optional<AxisCategory>& category
     if (pushedColor) {
         ImPlot::PopStyleColor(2);
     }
+}
+
+/// the ticks and tick labels of the axes placed on the Canvas, drawn on the plot area as ImPlot would draw them outside (its
+/// ticks, which it labels, its colours); the first such axis on a side sits at the plot's edge, each further one a column
+/// or row inward. Call while the plot is open, after the signals, so the labels lie on top of them.
+inline void drawCanvasAxes(const std::array<AxisPlacement, ImAxis_COUNT>& placements) {
+    ImPlotPlot&            plot     = *ImPlot::GetCurrentPlot();
+    const ImRect&          area     = plot.PlotRect;
+    ImDrawList&            drawList = *ImPlot::GetPlotDrawList();
+    const ImPlotStyle&     style    = ImPlot::GetStyle();
+    const ChartStyle&      chart    = LookAndFeel::instance().chartStyle;
+    std::array<float, 4UZ> insets{}; // per edge: bottom, top, left, right
+    ImPlot::PushPlotClipRect();
+    for (int id = 0; id < ImAxis_COUNT; ++id) {
+        const ImPlotAxis& axis = plot.Axes[id];
+        if (placements[static_cast<std::size_t>(id)] != AxisPlacement::Canvas || !axis.Enabled) {
+            continue;
+        }
+        const bool        isX      = isXAxis(id);
+        const bool        opposite = ImHasFlag(axis.Flags, ImPlotAxisFlags_Opposite);
+        const std::size_t along    = isX ? 0UZ : 1UZ; // the ticks' coordinate; ImPlot's tick style for this axis
+        const std::size_t across   = 1UZ - along;
+        const float       inward   = isX == opposite ? 1.f : -1.f; // from the edge into the plot: down from the top, right from the left
+        float&            inset    = insets[(isX ? 0UZ : 2UZ) + (opposite ? 1UZ : 0UZ)];
+        const float       edge     = (isX == opposite ? area.Min : area.Max)[across] + inward * inset;
+        const float       majorLen = style.MajorTickLen[along];
+        const float       offset   = majorLen + chart.canvasAxisLabelPadding;
+        float             extent   = 0.f; // the widest label across the edge
+        const auto&       ticker   = axis.Ticker;
+        for (int t = 0; t < ticker.TickCount(); ++t) {
+            const ImPlotTick& tick = ticker.Ticks[t];
+            ImVec2            at;
+            at[along]  = axis.PlotToPixels(tick.PlotPos);
+            at[across] = edge;
+            if (at[along] < area.Min[along] - 1.f || at[along] > area.Max[along] + 1.f) {
+                continue;
+            }
+            ImVec2 tip = at;
+            tip[across] += inward * (tick.Major ? majorLen : style.MinorTickLen[along]);
+            drawList.AddLine(at, tip, axis.ColorTick, tick.Major ? style.MajorTickSize[along] : style.MinorTickSize[along]);
+            if (!tick.ShowLabel) {
+                continue;
+            }
+            ImVec2 corner;
+            corner[along]  = at[along] - .5f * tick.LabelSize[along];
+            corner[across] = edge + inward * offset - (inward < 0.f ? tick.LabelSize[across] : 0.f);
+            drawList.AddText(corner, axis.ColorTxt, ticker.GetText(t));
+            extent = std::max(extent, tick.LabelSize[across]);
+        }
+        inset += offset + extent + chart.canvasAxisColumnGap;
+    }
+    ImPlot::PopPlotClipRect();
 }
 
 inline std::optional<std::size_t> findOrCreateCategory(std::array<std::optional<AxisCategory>, 3>& categories, std::string_view quantity, std::string_view unit, std::uint32_t color) {
@@ -821,11 +975,8 @@ inline void showPlotMouseTooltip(double onDelay = LookAndFeel::instance().plotTo
         const auto [tooltipFace, tooltipSize] = chartTextFont(lnf.fontSmall());
         imw::FontWithSize font(tooltipFace, tooltipSize);
         imw::ToolTip      tip;
-        for (int i = 0; i < 3; ++i) {
-            drawAxisTooltip(plot, ImAxis_X1 + i);
-        }
-        for (int i = 0; i < 3; ++i) {
-            drawAxisTooltip(plot, ImAxis_Y1 + i);
+        for (ImAxis axis = ImAxis_X1; axis <= ImAxis_Y3; ++axis) {
+            drawAxisTooltip(plot, axis);
         }
     }
 }
@@ -975,36 +1126,31 @@ inline constexpr const char* kCheckOff   = "\uf0c8"; // square
 inline constexpr const char* kHistory    = "\uf1da"; // clock-rotate-left
 inline constexpr const char* kArrow      = "\uf061"; // arrow-right
 inline constexpr const char* kFormat     = "\uf031"; // font
+inline constexpr const char* kPlacement  = "\uf337"; // left-right
+inline constexpr const char* kTitle      = "\uf1dc"; // heading
 
-inline void iconText(const char* icon, const char* text) {
+/// leaves the cursor on the same line, beside the glyph
+inline void icon(const char* glyph) {
     {
         imw::Font iconFont(LookAndFeel::instance().fontIconsSolid);
-        ImGui::TextUnformatted(icon);
+        ImGui::TextUnformatted(glyph);
     }
     ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
+}
+
+inline void iconText(const char* glyph, const char* text) {
+    icon(glyph);
     ImGui::TextUnformatted(text);
 }
 
-inline bool menuItemWithIcon(const char* icon, const char* label, bool selected = false, bool enabled = true) {
-    bool clicked = false;
-    {
-        imw::Font iconFont(LookAndFeel::instance().fontIconsSolid);
-        ImGui::TextUnformatted(icon);
-    }
-    ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
-    if (ImGui::MenuItem(label, nullptr, selected, enabled)) {
-        clicked = true;
-    }
-    return clicked;
+inline bool menuItemWithIcon(const char* glyph, const char* label, bool selected = false, bool enabled = true) {
+    icon(glyph);
+    return ImGui::MenuItem(label, nullptr, selected, enabled);
 }
 
 /// true when the menu is open: the caller then calls ImGui::EndMenu()
-inline bool beginMenuWithIcon(const char* icon, const char* label, bool enabled = true) {
-    {
-        imw::Font iconFont(LookAndFeel::instance().fontIconsSolid);
-        ImGui::TextUnformatted(icon);
-    }
-    ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
+inline bool beginMenuWithIcon(const char* glyph, const char* label, bool enabled = true) {
+    icon(glyph);
     return ImGui::BeginMenu(label, enabled);
 }
 
@@ -1149,6 +1295,17 @@ inline constexpr bool isExcludedFromAutoSettings(std::string_view name) {
     return std::ranges::contains(kExcluded, name);
 }
 
+/// the enum value after `current` for a wheel turned up, before it for one turned down; none past either end
+template<typename E>
+[[nodiscard]] std::optional<E> enumStepped(E current, float wheel) {
+    const auto values = gr::meta::enumValues<E>();
+    const auto it     = std::ranges::find(values, current);
+    if (it == values.end() || wheel == 0.0f || (wheel > 0.0f ? std::next(it) == values.end() : it == values.begin())) {
+        return std::nullopt;
+    }
+    return wheel > 0.0f ? *std::next(it) : *std::prev(it);
+}
+
 inline void onScrollWheel(auto&& apply) {
     if (ImGui::IsItemHovered()) {
         if (float wheel = ImGui::GetIO().MouseWheel; wheel != 0.0f) {
@@ -1165,23 +1322,13 @@ void registerChart(gr::BlockRegistry& registry) {
 }
 
 /// sorted, those the global registry knows
-inline std::vector<std::string> registeredChartTypes() {
-    std::vector<std::string> names;
-    for (const auto& name : chartTypes() | std::views::keys) {
-        if (gr::globalBlockRegistry().contains(name)) {
-            names.push_back(name);
-        }
-    }
-    return names;
+inline std::vector<std::string> registeredChartTypes() { //
+    return chartTypes() | std::views::keys | std::views::filter([](const auto& name) { return gr::globalBlockRegistry().contains(name); }) | std::ranges::to<std::vector<std::string>>();
 }
 
 template<typename TOnToggled, typename TOnFitOnce>
 void drawAutoFitControls(bool& autoFit, TOnToggled&& onToggled, TOnFitOnce&& onFitOnce) {
-    {
-        imw::Font iconFont(LookAndFeel::instance().fontIconsSolid);
-        ImGui::TextUnformatted(menu_icons::kAutoFit);
-    }
-    ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
+    menu_icons::icon(menu_icons::kAutoFit);
     if (checkbox("##auto", &autoFit)) {
         onToggled();
     }
@@ -1199,13 +1346,11 @@ void drawAutoFitControls(bool& autoFit, TOnToggled&& onToggled, TOnFitOnce&& onF
 
 template<typename TSetMin, typename TSetMax>
 void drawLimitSpinners(bool disabled, double minVal, double maxVal, TSetMin&& setMin, TSetMax&& setMax) {
-    if (disabled) {
-        ImGui::BeginDisabled();
-    }
-    const auto&  chartStyle = LookAndFeel::instance().chartStyle;
-    const double range      = std::abs(maxVal - minVal);
-    const double increment  = (range > 0.0 && range < 1e10) ? range * 0.01 : 0.1;
-    const float  dragSpeed  = static_cast<float>(increment * 0.1);
+    imw::Disabled disabledGuard(disabled);
+    const auto&   chartStyle = LookAndFeel::instance().chartStyle;
+    const double  range      = std::abs(maxVal - minVal);
+    const double  increment  = (range > 0.0 && range < 1e10) ? range * 0.01 : 0.1;
+    const float   dragSpeed  = static_cast<float>(increment * 0.1);
 
     auto drawSpinner = [&](const char* id, double& val, auto&& assign) {
         const std::string decId  = std::format("\uf146##{}_dec", id);
@@ -1242,9 +1387,6 @@ void drawLimitSpinners(bool disabled, double minVal, double maxVal, TSetMin&& se
     menu_icons::iconText(menu_icons::kArrow, "");
     ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
     drawSpinner("max", maxVal, setMax);
-    if (disabled) {
-        ImGui::EndDisabled();
-    }
 }
 
 /// signal sink storage, drag and drop, axes and menus shared by the chart blocks;
@@ -1269,19 +1411,22 @@ struct Chart {
     components::AutoHide                     _legendAutoHide;
     FrequencyMarkers                         _markers;
 
-    double                  _lastCapacityRefreshTime = 0.0;
-    double                  _pendingResizeTime       = 0.0;             // 0 = no pending resize
-    std::atomic<bool>       _renderResetPending{false};                 // GR4 runs reset() on a scheduler thread; GL and draw state belong to the render thread
-    HistoryUnit             _historyDisplayUnit = HistoryUnit::seconds; // UI-only, not persisted
-    std::optional<ImAxis>   _hoveredAxisForMenu;
-    std::array<int, 3UZ>    _fitOnceX            = {}; // per-axis: 0=idle, 2=auto-fit pending, 1=capture next frame
-    std::array<int, 3UZ>    _fitOnceY            = {};
-    std::array<double, 3UZ> _prevXMin            = {std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()};
-    std::array<double, 3UZ> _prevXMax            = {std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()};
-    std::array<double, 3UZ> _prevYMin            = {std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()};
-    std::array<double, 3UZ> _prevYMax            = {std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()};
-    std::array<bool, 3UZ>   _limitsForceAppliedX = {};
-    std::array<bool, 3UZ>   _limitsForceAppliedY = {};
+    double                                  _lastCapacityRefreshTime = 0.0;
+    double                                  _pendingResizeTime       = 0.0;             // 0 = no pending resize
+    std::atomic<bool>                       _renderResetPending{false};                 // GR4 runs reset() on a scheduler thread; GL and draw state belong to the render thread
+    HistoryUnit                             _historyDisplayUnit = HistoryUnit::seconds; // UI-only, not persisted
+    std::optional<ImAxis>                   _hoveredAxisForMenu;
+    std::array<AxisPlacement, ImAxis_COUNT> _axisPlacements{};         // of the plot being drawn, by its axes' setup; updateInteractions draws the Canvas ones
+    std::size_t                             _xDecorationEntryOffset{}; // SpectrumView's top pane reads its X axes' decoration from the next X entry
+    AxisDecoration                          _x1DecorationFallback{};   // X1's decoration without an entry
+    std::array<int, 3UZ>                    _fitOnceX            = {}; // per-axis: 0=idle, 2=auto-fit pending, 1=capture next frame
+    std::array<int, 3UZ>                    _fitOnceY            = {};
+    std::array<double, 3UZ>                 _prevXMin            = {std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()};
+    std::array<double, 3UZ>                 _prevXMax            = {std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()};
+    std::array<double, 3UZ>                 _prevYMin            = {std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()};
+    std::array<double, 3UZ>                 _prevYMax            = {std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()};
+    std::array<bool, 3UZ>                   _limitsForceAppliedX = {};
+    std::array<bool, 3UZ>                   _limitsForceAppliedY = {};
 
     template<typename Field>
     static bool readAutoScale(const Field& field, std::size_t idx) {
@@ -1292,7 +1437,7 @@ struct Chart {
         }
     }
     template<typename Field>
-    static void writeAutoScale(Field& field, std::size_t idx, bool val) {
+    static void writeAxisField(Field& field, std::size_t idx, auto val) {
         if constexpr (requires { field.value[0]; }) {
             field.value[idx] = val;
         } else if (idx == 0) {
@@ -1307,21 +1452,13 @@ struct Chart {
             return idx == 0 ? static_cast<double>(field.value) : std::numeric_limits<double>::quiet_NaN();
         }
     }
-    template<typename Field>
-    static void writeLimit(Field& field, std::size_t idx, double val) {
-        if constexpr (requires { field.value[0]; }) {
-            field.value[idx] = val;
-        } else if (idx == 0) {
-            field = val;
-        }
-    }
 
     template<typename Self>
     void enableAxisAutoFit(this Self& self, AxisKind axis, std::size_t axisIndex = 0UZ) {
         if (axis == AxisKind::X) {
-            writeAutoScale(self.x_auto_scale, axisIndex, true);
+            writeAxisField(self.x_auto_scale, axisIndex, true);
         } else {
-            writeAutoScale(self.y_auto_scale, axisIndex, true);
+            writeAxisField(self.y_auto_scale, axisIndex, true);
         }
 
         if (axis == AxisKind::X && logFreqRange(parseAxisConfig(self.ui_constraints.value, axis, axisIndex))) {
@@ -1350,9 +1487,7 @@ struct Chart {
             axisMap.erase("max");
             axisValue = gr::pmt::Value(std::move(axisMap));
             self.ui_constraints.value.insert_or_assign("axes", std::move(updatedAxes));
-            const gr::property_map parameters{{"ui_constraints", self.ui_constraints.value}};
-            std::ignore = self.settings().set(parameters);
-            std::ignore = self.settings().setStaged(parameters);
+            self.setAndStage({{"ui_constraints", self.ui_constraints.value}});
             return;
         }
     }
@@ -1615,7 +1750,7 @@ struct Chart {
         auto [quantity, unit] = self.sinkAxisInfo(isX);
         AxisCategory cat{.quantity = quantity, .unit = unit};
         auto         cond = condOverride.value_or(self.trackLimitsCond(isX, minLimit, maxLimit));
-        axis::setupAxis(axisId, cat, format, axisLabelWidthOrDefault(dashCfg, defaultAxisLabelWidthFor(axisId, plotSize)), minLimit, maxLimit, 1UZ, scale, self._unitStore, showGrid, foreground, cond);
+        axis::setupAxis(axisId, cat, format, axisLabelWidthOrDefault(dashCfg, defaultAxisLabelWidthFor(axisId, plotSize)), minLimit, maxLimit, 1UZ, scale, self._unitStore, showGrid, foreground, cond, nullptr, self.decorated(axisId, isX ? AxisKind::X : AxisKind::Y));
     }
 
     ImPlotCond trackLimitsCond(bool isX, double newMin, double newMax, std::size_t axisIdx = 0UZ) {
@@ -1647,8 +1782,7 @@ struct Chart {
             return kDefaultHistorySize;
         };
         sink->requestCapacity(std::string(self.unique_name), requestedSinkCapacity());
-        auto it = std::find(self._signalSinks.begin(), self._signalSinks.end(), sink);
-        if (it == self._signalSinks.end()) {
+        if (!std::ranges::contains(self._signalSinks, sink)) {
             self._signalSinks.push_back(std::move(sink));
         }
     }
@@ -1716,15 +1850,9 @@ struct Chart {
     }
 
     void syncSinksIfNeeded(const std::vector<std::string>& dataSinks) {
-        if (_signalSinks.size() != dataSinks.size()) {
+        const auto bound = [](const auto& sink, const std::string& name) { return sink && (sink->name() == name || sink->signalName() == name); };
+        if (!std::ranges::equal(_signalSinks, dataSinks, bound)) {
             syncSinksFromNames(dataSinks);
-            return;
-        }
-        for (std::size_t i = 0; i < dataSinks.size(); ++i) {
-            if (!_signalSinks[i] || (_signalSinks[i]->name() != dataSinks[i] && _signalSinks[i]->signalName() != dataSinks[i])) {
-                syncSinksFromNames(dataSinks);
-                return;
-            }
         }
     }
 
@@ -1744,20 +1872,29 @@ struct Chart {
                     components::Notification::warning("Cannot remove this signal: give the other signals in the chart distinct block names first.");
                     return;
                 }
-                if (std::ranges::find(remainingNames, reference) == remainingNames.end()) {
+                if (!std::ranges::contains(remainingNames, reference)) {
                     remainingNames.push_back(reference);
                 }
             }
         }
         self.data_sinks.value = std::move(remainingNames);
         self._signalSinks.erase(sink);
+        self.persistDataSinks();
+    }
+
+    template<typename Self>
+    void setAndStage(this Self& self, const gr::property_map& parameters) {
+        std::ignore = self.settings().set(parameters);
+        std::ignore = self.settings().setStaged(parameters);
+    }
+
+    template<typename Self>
+    void persistDataSinks(this Self& self) {
         gr::Tensor<gr::pmt::Value> sinks(gr::extents_from, {self.data_sinks.value.size()});
         for (std::size_t i = 0; i < self.data_sinks.value.size(); ++i) {
             sinks[i] = self.data_sinks.value[i];
         }
-        const gr::property_map parameters{{std::pmr::string("data_sinks"), std::move(sinks)}};
-        std::ignore = self.settings().set(parameters);
-        std::ignore = self.settings().setStaged(parameters);
+        self.setAndStage({{std::pmr::string("data_sinks"), std::move(sinks)}});
     }
 
     template<typename Self>
@@ -1770,15 +1907,9 @@ struct Chart {
         if (sinkName.empty()) {
             return false;
         }
-        if (std::find(self.data_sinks.value.begin(), self.data_sinks.value.end(), sinkName) == self.data_sinks.value.end()) {
+        if (!std::ranges::contains(self.data_sinks.value, sinkName)) {
             self.data_sinks.value.push_back(sinkName);
-            gr::Tensor<gr::pmt::Value> sinks(gr::extents_from, {self.data_sinks.value.size()});
-            for (std::size_t i = 0; i < self.data_sinks.value.size(); ++i) {
-                sinks[i] = self.data_sinks.value[i];
-            }
-            const gr::property_map parameters{{std::pmr::string("data_sinks"), std::move(sinks)}};
-            std::ignore = self.settings().set(parameters);
-            std::ignore = self.settings().setStaged(parameters);
+            self.persistDataSinks();
         }
         self.addSignalSink(std::move(sink));
         const auto fitAutoAxes = [&](AxisKind axis, const auto& autoScaleField) {
@@ -1920,15 +2051,8 @@ struct Chart {
                 ImGui::EndCombo();
             }
             detail::onScrollWheel([&](float wheel) {
-                auto values = gr::meta::enumValues<E>();
-                auto it     = std::ranges::find(values, current);
-                if (it == values.end()) {
-                    return;
-                }
-                if (wheel > 0.0f && std::next(it) != values.end()) {
-                    setter(*std::next(it));
-                } else if (wheel < 0.0f && it != values.begin()) {
-                    setter(*std::prev(it));
+                if (const auto next = detail::enumStepped(current, wheel)) {
+                    setter(*next);
                 }
             });
         };
@@ -1950,6 +2074,14 @@ struct Chart {
                       }) {
             drawEnumCombo(menu_icons::kFormat, "format:", "##format", self.getAxisFormat(axis, axisIndex), [&](LabelFormat f) { self.setAxisFormat(axis, f, axisIndex); });
         }
+        {
+            const AxisDecoration decoration = self.axisDecoration(axis, axisIndex);
+            drawEnumCombo(menu_icons::kPlacement, "placement:", "##placement", decoration.placement, [&](AxisPlacement p) { self.setAxisPlacement(axis, p, axisIndex); });
+            menu_icons::icon(menu_icons::kTitle);
+            if (bool showTitle = decoration.showTitle; checkbox("show title", &showTitle)) {
+                self.setAxisShowTitle(axis, showTitle, axisIndex);
+            }
+        }
 
         if constexpr (requires {
                           self.x_min;
@@ -1968,13 +2100,13 @@ struct Chart {
                         if (autoFit) {
                             self.enableAxisAutoFit(axis, axisIndex);
                         } else {
-                            writeAutoScale(autoScaleField, axisIndex, false);
-                            writeLimit(minField, axisIndex, plotMin);
-                            writeLimit(maxField, axisIndex, plotMax);
+                            writeAxisField(autoScaleField, axisIndex, false);
+                            writeAxisField(minField, axisIndex, plotMin);
+                            writeAxisField(maxField, axisIndex, plotMax);
                         }
                     },
                     [&] { self.requestAxisFit(axis, axisIndex); });
-                drawLimitSpinners(autoFit, autoFit ? plotMin : readLimit(minField, axisIndex), autoFit ? plotMax : readLimit(maxField, axisIndex), [&](double v) { writeLimit(minField, axisIndex, v); }, [&](double v) { writeLimit(maxField, axisIndex, v); });
+                drawLimitSpinners(autoFit, autoFit ? plotMin : readLimit(minField, axisIndex), autoFit ? plotMax : readLimit(maxField, axisIndex), [&](double v) { writeAxisField(minField, axisIndex, v); }, [&](double v) { writeAxisField(maxField, axisIndex, v); });
             };
 
             if (isX) {
@@ -2024,11 +2156,7 @@ struct Chart {
         const auto   step            = [&] { return std::max(inSeconds() ? 0.1 : 100.0, displayValue * 0.1); };
         const double minDisplayValue = inSeconds() ? 0.001 : static_cast<double>(kMinSamples);
 
-        {
-            imw::Font iconFont(LookAndFeel::instance().fontIconsSolid);
-            ImGui::TextUnformatted(menu_icons::kHistory);
-        }
-        ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
+        menu_icons::icon(menu_icons::kHistory);
         {
             imw::Font iconFont(LookAndFeel::instance().fontIconsSolid);
             if (button("\u{f146}##depthDec")) { // minus-square
@@ -2065,48 +2193,28 @@ struct Chart {
         auto currentUnitName = gr::meta::enumName(self._historyDisplayUnit).value_or("");
         if (beginCombo("##historyUnit", currentUnitName.data())) {
             for (auto unit : gr::meta::enumValues<HistoryUnit>()) {
-                bool enabled  = (unit != HistoryUnit::seconds) || rateKnown;
-                bool selected = (unit == self._historyDisplayUnit);
-
-                if (!enabled) {
-                    ImGui::BeginDisabled();
-                }
+                const bool    selected = (unit == self._historyDisplayUnit);
+                imw::Disabled disabledGuard(unit == HistoryUnit::seconds && !rateKnown);
                 if (selectable(gr::meta::enumName(unit).value_or("").data(), selected)) {
                     self._historyDisplayUnit = unit;
                 }
                 if (selected) {
                     ImGui::SetItemDefaultFocus();
                 }
-                if (!enabled) {
-                    ImGui::EndDisabled();
-                }
             }
             ImGui::EndCombo();
         }
         detail::onScrollWheel([&](float wheel) {
-            auto values = gr::meta::enumValues<HistoryUnit>();
-            auto it     = std::ranges::find(values, self._historyDisplayUnit);
-            if (it != values.end()) {
-                if (wheel > 0.0f && std::next(it) != values.end()) {
-                    self._historyDisplayUnit = *std::next(it);
-                } else if (wheel < 0.0f && it != values.begin()) {
-                    self._historyDisplayUnit = *std::prev(it);
-                }
+            if (const auto next = detail::enumStepped(self._historyDisplayUnit, wheel)) {
+                self._historyDisplayUnit = *next;
             }
         });
 
         const auto drawStopSlider = [&](const auto& stops, double current, auto&& formatStop, auto&& samplesAt) {
             const float sliderMin = 0.0f;
             const float sliderMax = static_cast<float>(stops.size() - 1);
-            float       bestIdx   = 0.0f;
-            double      bestDist  = std::abs(std::log(current) - std::log(static_cast<double>(stops[0])));
-            for (std::size_t i = 1; i < stops.size(); ++i) {
-                double dist = std::abs(std::log(current) - std::log(static_cast<double>(stops[i])));
-                if (dist < bestDist) {
-                    bestDist = dist;
-                    bestIdx  = static_cast<float>(i);
-                }
-            }
+            const auto  nearest   = std::ranges::min_element(stops, {}, [current](auto stop) { return std::abs(std::log(current) - std::log(static_cast<double>(stop))); });
+            float       bestIdx   = static_cast<float>(std::distance(std::ranges::begin(stops), nearest));
             if (sliderScalar("##historySlider", {.dataType = ImGuiDataType_Float, .data = &bestIdx, .min = &sliderMin, .max = &sliderMax, .format = formatStop(stops[static_cast<std::size_t>(std::round(bestIdx))]).c_str(), .flags = ImGuiSliderFlags_NoInput}) != SliderAction::NotEdited) {
                 self.n_history = samplesAt(stops[static_cast<std::size_t>(std::clamp(std::round(bestIdx), sliderMin, sliderMax))]);
                 scheduleResize();
@@ -2304,9 +2412,16 @@ struct Chart {
             axesVec = existing->owned();
         }
 
-        const std::string targetAxis   = kAxisNames[static_cast<std::size_t>(axis)];
-        bool              found        = false;
-        std::size_t       matchingAxes = 0UZ;
+        const std::string targetAxis = kAxisNames[static_cast<std::size_t>(axis)];
+        const auto        stored     = [&value] { // an enum by its name, as the .grc spells it
+            if constexpr (std::is_enum_v<E>) {
+                return gr::pmt::Value(std::pmr::string(gr::meta::enumName(value).value_or("")));
+            } else {
+                return gr::pmt::Value(value);
+            }
+        };
+        bool        found        = false;
+        std::size_t matchingAxes = 0UZ;
         for (auto& axisPmt : axesVec) {
             const auto axisMapView = axisPmt.get_if<gr::property_map>();
             if (!axisMapView) {
@@ -2318,7 +2433,7 @@ struct Chart {
                     continue;
                 }
                 gr::property_map axisMap = axisMapView->owned();
-                axisMap.insert_or_assign(key, std::pmr::string(gr::meta::enumName(value).value_or("")));
+                axisMap.insert_or_assign(key, stored());
                 axisPmt = gr::pmt::Value(std::move(axisMap));
                 found   = true;
                 break;
@@ -2333,14 +2448,12 @@ struct Chart {
 
             gr::property_map newAxis;
             newAxis.insert_or_assign("axis", targetAxis);
-            newAxis.insert_or_assign(key, std::pmr::string(gr::meta::enumName(value).value_or("")));
+            newAxis.insert_or_assign(key, stored());
             axesVec.push_back(std::move(newAxis));
         }
         constraints.insert_or_assign("axes", std::move(axesVec));
         self.ui_constraints.value = std::move(constraints);
-        const gr::property_map parameters{{"ui_constraints", self.ui_constraints.value}};
-        std::ignore = self.settings().set(parameters);
-        std::ignore = self.settings().setStaged(parameters);
+        self.setAndStage({{"ui_constraints", self.ui_constraints.value}});
     }
 
     template<typename Self>
@@ -2353,8 +2466,40 @@ struct Chart {
         self.setAxisConstraintField(axis, axisIndex, "format", format);
     }
 
+    /// the `axes:` entry holding an axis' placement and title
+    template<typename Self>
+    [[nodiscard]] std::size_t decorationEntry(this const Self& self, AxisKind axis, std::size_t axisIndex) noexcept {
+        return axis == AxisKind::X ? axisIndex + self._xDecorationEntryOffset : axisIndex;
+    }
+
+    template<typename Self>
+    [[nodiscard]] AxisDecoration axisDecoration(this const Self& self, AxisKind axis, std::size_t axisIndex = 0UZ) noexcept {
+        const AxisDecoration fallback = axis == AxisKind::X && axisIndex == 0UZ ? self._x1DecorationFallback : AxisDecoration{};
+        return decorationOf(parseAxisConfig(self.ui_constraints.value, axis, self.decorationEntry(axis, axisIndex)), fallback);
+    }
+
+    /// `axisId`'s decoration for setupAxis, kept for updateInteractions, which draws the Canvas axes
+    template<typename Self>
+    AxisDecoration decorated(this Self& self, ImAxis axisId, AxisKind axis, std::size_t axisIndex = 0UZ) {
+        const AxisDecoration decoration                        = self.axisDecoration(axis, axisIndex);
+        self._axisPlacements[static_cast<std::size_t>(axisId)] = decoration.placement;
+        return decoration;
+    }
+
+    template<typename Self>
+    void setAxisPlacement(this Self& self, AxisKind axis, AxisPlacement placement, std::size_t axisIndex = 0UZ) {
+        self.setAxisConstraintField(axis, self.decorationEntry(axis, axisIndex), "placement", placement);
+    }
+
+    template<typename Self>
+    void setAxisShowTitle(this Self& self, AxisKind axis, bool showTitle, std::size_t axisIndex = 0UZ) {
+        self.setAxisConstraintField(axis, self.decorationEntry(axis, axisIndex), "show_title", showTitle);
+    }
+
     template<typename Self>
     void updateInteractions(this Self& self, ChartMode mode) {
+        axis::drawCanvasAxes(self._axisPlacements);
+        self._axisPlacements = {};
         if (mode == ChartMode::Layout) {
             return;
         }
@@ -2374,32 +2519,27 @@ struct Chart {
                 const double range = std::abs(prevMax - prevMin);
                 const double tol   = std::max(range * 1e-3, 1e-10);
                 if (std::abs(plotMin - prevMin) > tol || std::abs(plotMax - prevMax) > tol) {
-                    writeAutoScale(autoScaleField, idx, false);
-                    writeLimit(minField, idx, plotMin);
-                    writeLimit(maxField, idx, plotMax);
+                    writeAxisField(autoScaleField, idx, false);
+                    writeAxisField(minField, idx, plotMin);
+                    writeAxisField(maxField, idx, plotMax);
                 }
             };
 
+            const auto captureFitOnce = [](auto& fitOnce, auto& autoScale, auto& min, auto& max, std::size_t i, const ImPlotRange& range) { // auto-fit needs one full frame to resolve, then its limits are kept
+                if (fitOnce == 1) {
+                    fitOnce = 0;
+                    writeAxisField(autoScale, i, false);
+                    writeAxisField(min, i, range.Min);
+                    writeAxisField(max, i, range.Max);
+                } else if (fitOnce > 1) {
+                    --fitOnce;
+                }
+            };
             for (std::size_t i = 0UZ; i < 3UZ; ++i) {
                 auto limits = ImPlot::GetPlotLimits(ImAxis_X1 + static_cast<int>(i), ImAxis_Y1 + static_cast<int>(i));
 
-                // fit-once: auto-fit needs one full frame to resolve, then capture limits
-                if (self._fitOnceX[i] == 1) {
-                    self._fitOnceX[i] = 0;
-                    writeAutoScale(self.x_auto_scale, i, false);
-                    writeLimit(self.x_min, i, limits.X.Min);
-                    writeLimit(self.x_max, i, limits.X.Max);
-                } else if (self._fitOnceX[i] > 1) {
-                    --self._fitOnceX[i];
-                }
-                if (self._fitOnceY[i] == 1) {
-                    self._fitOnceY[i] = 0;
-                    writeAutoScale(self.y_auto_scale, i, false);
-                    writeLimit(self.y_min, i, limits.Y.Min);
-                    writeLimit(self.y_max, i, limits.Y.Max);
-                } else if (self._fitOnceY[i] > 1) {
-                    --self._fitOnceY[i];
-                }
+                captureFitOnce(self._fitOnceX[i], self.x_auto_scale, self.x_min, self.x_max, i, limits.X);
+                captureFitOnce(self._fitOnceY[i], self.y_auto_scale, self.y_min, self.y_max, i, limits.Y);
 
                 detectUserZoom(readAutoScale(self.x_auto_scale, i), self.x_auto_scale, self.x_min, self.x_max, i, limits.X.Min, limits.X.Max, self._prevXMin[i], self._prevXMax[i], self._limitsForceAppliedX[i]);
                 detectUserZoom(readAutoScale(self.y_auto_scale, i), self.y_auto_scale, self.y_min, self.y_max, i, limits.Y.Min, limits.Y.Max, self._prevYMin[i], self._prevYMax[i], self._limitsForceAppliedY[i]);
@@ -2625,6 +2765,19 @@ struct Chart {
         }
         ImGui::Separator();
 
+        for (int id = 0; id < ImAxis_COUNT; ++id) { // also reaches an axis whose placement leaves nothing outside to right-click
+            if (!ImPlot::GetCurrentPlot()->Axes[id].Enabled) {
+                continue;
+            }
+            const bool        isX   = isXAxis(id);
+            const std::size_t index = static_cast<std::size_t>(isX ? id - ImAxis_X1 : id - ImAxis_Y1);
+            const std::string name  = index == 0UZ ? std::format("{} axis", isX ? 'X' : 'Y') : std::format("{} axis {}", isX ? 'X' : 'Y', index + 1UZ);
+            if (menu_icons::beginMenuWithIcon(isX ? menu_icons::kXAxis : menu_icons::kYAxis, name.c_str())) {
+                self.drawAxisSubmenuContent(isX ? AxisKind::X : AxisKind::Y, index);
+                ImGui::EndMenu();
+            }
+        }
+
         self.drawSettingsSubmenu();
         self.drawAutoGeneratedSettings(/*visibleOnly=*/true);
 
@@ -2682,7 +2835,7 @@ struct Chart {
         if (ImGui::BeginPopup("AxisContextMenu")) {
             if (self._hoveredAxisForMenu) {
                 const ImAxis      axis      = *self._hoveredAxisForMenu;
-                const bool        isX       = (axis == ImAxis_X1 || axis == ImAxis_X2 || axis == ImAxis_X3);
+                const bool        isX       = isXAxis(axis);
                 const std::size_t axisIndex = static_cast<std::size_t>(isX ? (axis - ImAxis_X1) : (axis - ImAxis_Y1));
                 self.drawAxisSubmenuContent(isX ? AxisKind::X : AxisKind::Y, axisIndex);
             }

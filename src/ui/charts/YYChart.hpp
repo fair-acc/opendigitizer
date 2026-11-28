@@ -51,8 +51,9 @@ struct YYChart : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui
     A<std::array<double, 3UZ>, "Y-axis max">                                          y_max         = std::array{std::numeric_limits<double>::max(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()};
     A<gr::Size_t, "history depth", gr::Unit<"samples">>                               n_history     = kDefaultHistorySize;
     A<bool, "scatter", gr::Doc<"markers instead of a line, the newest point larger">> scatter       = false;
+    ErrorStyleSetting                                                                 error_style   = ErrorStyle::combo;
 
-    GR_MAKE_REFLECTABLE(YYChart, chart_name, chart_title, data_sinks, show_legend, show_grid, anti_aliasing, x_axis_scale, y_axis_scale, x_auto_scale, y_auto_scale, x_min, x_max, y_min, y_max, n_history, scatter);
+    GR_MAKE_REFLECTABLE(YYChart, chart_name, chart_title, data_sinks, show_legend, show_grid, anti_aliasing, x_axis_scale, y_axis_scale, x_auto_scale, y_auto_scale, x_min, x_max, y_min, y_max, n_history, scatter, error_style);
 
     mutable std::array<std::string, 6UZ> _unitStringStorage{};
     std::size_t                          _drawnMarkers = 0UZ; // in the last draw
@@ -100,6 +101,45 @@ struct YYChart : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui
         }
     }
 
+    struct Correlation { // two signals paired from the newest end: the sinks may hold different counts
+        SampleWindow x;
+        SampleWindow y;
+
+        static ImPlotPoint point(int idx, void* data) {
+            const auto* c = static_cast<const Correlation*>(data);
+            return {c->x.yAt(static_cast<std::size_t>(idx)), c->y.yAt(static_cast<std::size_t>(idx))};
+        }
+    };
+
+    [[nodiscard]] static AxisCategory signalCategory(const SignalSink& sink) { //
+        return {.quantity = sink.signalQuantity().empty() ? std::string(sink.signalName()) : std::string(sink.signalQuantity()), .unit = std::string(sink.signalUnit()), .color = sink.color()};
+    }
+
+    void setupSignalAxis(bool isX, std::size_t index, const std::optional<AxisCategory>& category, std::size_t nAxes, const ImVec2& size, bool showGrid) {
+        const auto axisId               = (isX ? ImAxis_X1 : ImAxis_Y1) + static_cast<int>(index);
+        const auto dashCfg              = parseAxisConfig(this->ui_constraints.value, isX, index);
+        const auto [minLimit, maxLimit] = isX ? axisLimits(x_auto_scale.value[index], x_min.value[index], x_max.value[index], std::nullopt) : axisLimits(y_auto_scale.value[index], y_min.value[index], y_max.value[index], std::nullopt);
+        const auto cond                 = trackLimitsCond(isX, minLimit, maxLimit, index);
+
+        axis::setupAxis(axisId, category, LabelFormat::Auto, axisLabelWidthOrDefault(dashCfg, defaultAxisLabelWidthFor(axisId, size)), minLimit, maxLimit, nAxes, static_cast<AxisScale>(isX ? x_axis_scale.value : y_axis_scale.value), _unitStringStorage, showGrid, /*foreground=*/false, cond, nullptr, this->decorated(axisId, isX ? AxisKind::X : AxisKind::Y, index));
+    }
+
+    /// bars for every style but none: a surface needs x ordered, which a correlation's is not
+    void drawCorrelationErrors(const SampleWindow& x, const SampleWindow& y, ImVec4 colour, float lineWidth, std::string_view uniqueName) const {
+        const std::size_t n = std::min(x.size(), y.size());
+        if (error_style.value == ErrorStyle::none || n == 0UZ || (!x.hasErrors() && !y.hasErrors())) {
+            return;
+        }
+        const auto xs = SampleWindow::doubles(x.y, n);
+        const auto ys = SampleWindow::doubles(y.y, n);
+        if (x.hasErrors()) {
+            axis::plotErrorBars(std::format("##{}_x_error_bars", uniqueName).c_str(), xs, ys, SampleWindow::doubles(x.yError, n), colour, lineWidth, ImPlotErrorBarsFlags_Horizontal);
+        }
+        if (y.hasErrors()) {
+            axis::plotErrorBars(std::format("##{}_y_error_bars", uniqueName).c_str(), xs, ys, SampleWindow::doubles(y.yError, n), colour, lineWidth);
+        }
+    }
+
     /// a line, or with `scatter` one marker per point and the newest point larger, under the same legend entry
     void plotSeries(const char* label, ImPlotGetter getter, void* data, std::size_t count, const ImVec4& colour, float lineWidth) {
         if (count == 0UZ) {
@@ -132,7 +172,7 @@ struct YYChart : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui
         }
 
         DataGuard dataLock = sinkPtr->dataGuard();
-        if (sinkPtr->size() == 0) {
+        if (sinkPtr->sampleCount() == 0) {
             drawEmptyPlot("No data", plotFlags, size, chartMode);
             return;
         }
@@ -141,23 +181,11 @@ struct YYChart : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui
             return;
         }
 
-        {
-            const auto xDashCfg               = parseAxisConfig(this->ui_constraints.value, true);
-            AxisScale  xScale                 = static_cast<AxisScale>(x_axis_scale.value);
-            const auto [xMinLimit, xMaxLimit] = axisLimits(x_auto_scale.value[0], x_min.value[0], x_max.value[0], std::nullopt);
-            auto xCond                        = trackLimitsCond(true, xMinLimit, xMaxLimit);
-            axis::setupAxis(ImAxis_X1, AxisCategory{.quantity = "Time", .unit = "s"}, LabelFormat::Auto, axisLabelWidthOrDefault(xDashCfg, defaultAxisLabelWidthFor(ImAxis_X1, size)), xMinLimit, xMaxLimit, 1UZ, xScale, _unitStringStorage, showGrid, /*foreground=*/false, xCond);
-
-            const auto yDashCfg               = parseAxisConfig(this->ui_constraints.value, false);
-            AxisScale  yScale                 = static_cast<AxisScale>(y_axis_scale.value);
-            const auto [yMinLimit, yMaxLimit] = axisLimits(y_auto_scale.value[0], y_min.value[0], y_max.value[0], std::nullopt);
-            auto         yCond                = trackLimitsCond(false, yMinLimit, yMaxLimit);
-            AxisCategory yCat{.quantity = std::string(sinkPtr->signalQuantity()), .unit = std::string(sinkPtr->signalUnit()), .color = sinkPtr->color()};
-            axis::setupAxis(ImAxis_Y1, yCat, LabelFormat::Auto, axisLabelWidthOrDefault(yDashCfg, defaultAxisLabelWidthFor(ImAxis_Y1, size)), yMinLimit, yMaxLimit, 1UZ, yScale, _unitStringStorage, showGrid, /*foreground=*/false, yCond);
-        }
+        setupSignalAxis(true, 0UZ, AxisCategory{.quantity = "Time", .unit = "s"}, 1UZ, size, showGrid);
+        setupSignalAxis(false, 0UZ, AxisCategory{.quantity = std::string(sinkPtr->signalQuantity()), .unit = std::string(sinkPtr->signalUnit()), .color = sinkPtr->color()}, 1UZ, size, showGrid);
         setupFinish();
 
-        std::size_t totalCount = sinkPtr->size();
+        std::size_t totalCount = sinkPtr->sampleCount();
         std::size_t dataCount  = totalCount;
         std::size_t offset     = 0;
         if (dataCount > static_cast<std::size_t>(n_history.value)) {
@@ -166,20 +194,23 @@ struct YYChart : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui
         }
 
         struct XYContext {
-            const SignalSink* sink;
-            std::size_t       offset;
+            SampleWindow window;
+            std::size_t  offset;
         };
-        XYContext   ctx{sinkPtr.get(), offset};
+        XYContext   ctx{sinkPtr->samples(), offset};
         std::string signalLabel = plotLabel(*sinkPtr);
+        if (error_style.value != ErrorStyle::none && ctx.window.hasErrors()) { // a time plot of one signal: as XYChart draws it
+            const SampleWindow shown = ctx.window.newest(dataCount);
+            const auto         band  = axis::errorBand(shown.x, SampleWindow::doubles(shown.y, shown.size()), SampleWindow::doubles(shown.yError, shown.size()), axis::plotColumns());
+            axis::drawErrorBand(band, error_style.value, sinkColor(sinkPtr->color()), seriesLineWidth(*sinkPtr), sinkPtr->uniqueName());
+        }
 
         plotSeries(
             signalLabel.c_str(),
             [](int idx, void* user_data) -> ImPlotPoint {
                 auto*       c         = static_cast<XYContext*>(user_data);
                 std::size_t actualIdx = c->offset + static_cast<std::size_t>(idx);
-                double      x         = c->sink->xAt(actualIdx);
-                double      y         = static_cast<double>(c->sink->yAt(actualIdx));
-                return ImPlotPoint(x, y);
+                return ImPlotPoint(c->window.x[actualIdx], c->window.yAt(actualIdx));
             },
             &ctx, dataCount, sinkColor(sinkPtr->color()), seriesLineWidth(*sinkPtr));
 
@@ -204,64 +235,36 @@ struct YYChart : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui
 
         const std::vector<DataGuard> guards = lockAll(std::array{sinkXPtr.get(), sinkYPtr.get()});
 
-        std::size_t totalCount = std::min(sinkXPtr->size(), sinkYPtr->size());
+        std::size_t totalCount = std::min(sinkXPtr->sampleCount(), sinkYPtr->sampleCount());
         if (totalCount == 0) {
             drawEmptyPlot("No data", plotFlags, size, chartMode);
             return;
         }
 
-        std::size_t count  = std::min(totalCount, static_cast<std::size_t>(n_history.value));
-        std::size_t offset = totalCount - count;
+        std::size_t count = std::min(totalCount, static_cast<std::size_t>(n_history.value));
 
         if (!TouchHandler<>::beginZoomablePlot(chart_name.value, size, plotFlags)) {
             return;
         }
 
-        {
-            const auto xDashCfg               = parseAxisConfig(this->ui_constraints.value, true);
-            AxisScale  xScale                 = static_cast<AxisScale>(x_axis_scale.value);
-            const auto [xMinLimit, xMaxLimit] = axisLimits(x_auto_scale.value[0], x_min.value[0], x_max.value[0], std::nullopt);
-            auto         xCond                = trackLimitsCond(true, xMinLimit, xMaxLimit);
-            AxisCategory xCat{.quantity = sinkXPtr->signalQuantity().empty() ? std::string(sinkXPtr->signalName()) : std::string(sinkXPtr->signalQuantity()), .unit = std::string(sinkXPtr->signalUnit()), .color = sinkXPtr->color()};
-            axis::setupAxis(ImAxis_X1, xCat, LabelFormat::Auto, axisLabelWidthOrDefault(xDashCfg, defaultAxisLabelWidthFor(ImAxis_X1, size)), xMinLimit, xMaxLimit, 1UZ, xScale, _unitStringStorage, showGrid, /*foreground=*/false, xCond);
-
-            const auto yDashCfg               = parseAxisConfig(this->ui_constraints.value, false);
-            AxisScale  yScale                 = static_cast<AxisScale>(y_axis_scale.value);
-            const auto [yMinLimit, yMaxLimit] = axisLimits(y_auto_scale.value[0], y_min.value[0], y_max.value[0], std::nullopt);
-            auto         yCond                = trackLimitsCond(false, yMinLimit, yMaxLimit);
-            AxisCategory yCat{.quantity = sinkYPtr->signalQuantity().empty() ? std::string(sinkYPtr->signalName()) : std::string(sinkYPtr->signalQuantity()), .unit = std::string(sinkYPtr->signalUnit()), .color = sinkYPtr->color()};
-            axis::setupAxis(ImAxis_Y1, yCat, LabelFormat::Auto, axisLabelWidthOrDefault(yDashCfg, defaultAxisLabelWidthFor(ImAxis_Y1, size)), yMinLimit, yMaxLimit, 1UZ, yScale, _unitStringStorage, showGrid, /*foreground=*/false, yCond);
-        }
+        setupSignalAxis(true, 0UZ, signalCategory(*sinkXPtr), 1UZ, size, showGrid);
+        setupSignalAxis(false, 0UZ, signalCategory(*sinkYPtr), 1UZ, size, showGrid);
         setupFinish();
 
         // the X signal's legend entry, for drag and drop
         {
             ImVec4 xColor = sinkColor(sinkXPtr->color());
             ImPlot::SetNextLineStyle(xColor);
-            double      dummyX       = static_cast<double>(sinkXPtr->yAt(offset));
-            double      dummyY       = static_cast<double>(sinkYPtr->yAt(offset));
+            double      dummyX       = sinkXPtr->samples().newest(count).yAt(0UZ);
+            double      dummyY       = sinkYPtr->samples().newest(count).yAt(0UZ);
             std::string xLegendLabel = plotLabel(*sinkXPtr);
             ImPlot::PlotLine(xLegendLabel.c_str(), &dummyX, &dummyY, 1, ImPlotLineFlags_NoClip);
         }
 
-        struct CorrelationContext {
-            const SignalSink* sinkX;
-            const SignalSink* sinkY;
-            std::size_t       offset;
-        };
-        CorrelationContext ctx{sinkXPtr.get(), sinkYPtr.get(), offset};
-        std::string        yLegendLabel = plotLabel(*sinkYPtr);
-
-        plotSeries(
-            yLegendLabel.c_str(),
-            [](int idx, void* user_data) -> ImPlotPoint {
-                auto*       c         = static_cast<CorrelationContext*>(user_data);
-                std::size_t actualIdx = c->offset + static_cast<std::size_t>(idx);
-                double      x         = static_cast<double>(c->sinkX->yAt(actualIdx));
-                double      y         = static_cast<double>(c->sinkY->yAt(actualIdx));
-                return ImPlotPoint(x, y);
-            },
-            &ctx, count, sinkColor(sinkYPtr->color()), seriesLineWidth(*sinkYPtr));
+        Correlation ctx{sinkXPtr->samples().newest(count), sinkYPtr->samples().newest(count)};
+        std::string yLegendLabel = plotLabel(*sinkYPtr);
+        drawCorrelationErrors(ctx.x, ctx.y, sinkColor(sinkYPtr->color()), seriesLineWidth(*sinkYPtr), sinkYPtr->uniqueName());
+        plotSeries(yLegendLabel.c_str(), &Correlation::point, &ctx, count, sinkColor(sinkYPtr->color()), seriesLineWidth(*sinkYPtr));
 
         tooltip::showPlotMouseTooltip();
         updateInteractions(chartMode);
@@ -298,7 +301,7 @@ struct YYChart : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui
 
         {
             DataGuard lockX = sinkXPtr->dataGuard();
-            if (sinkXPtr->size() == 0) {
+            if (sinkXPtr->sampleCount() == 0) {
                 drawEmptyPlot("No X data", plotFlags, size, chartMode);
                 return;
             }
@@ -312,25 +315,11 @@ struct YYChart : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui
         }
 
         // metadata accessors need no data lock
-        {
-            std::optional<AxisCategory> xCategory = AxisCategory{.quantity = sinkXPtr->signalQuantity().empty() ? std::string(sinkXPtr->signalName()) : std::string(sinkXPtr->signalQuantity()), .unit = std::string(sinkXPtr->signalUnit()), .color = sinkXPtr->color()};
-            const auto                  xDashCfg  = parseAxisConfig(this->ui_constraints.value, true);
-            AxisScale                   xScale    = static_cast<AxisScale>(x_axis_scale.value);
-            const auto [xMinLimit, xMaxLimit]     = axisLimits(x_auto_scale.value[0], x_min.value[0], x_max.value[0], std::nullopt);
-            auto xCond                            = trackLimitsCond(true, xMinLimit, xMaxLimit);
-            axis::setupAxis(ImAxis_X1, xCategory, LabelFormat::Auto, axisLabelWidthOrDefault(xDashCfg, defaultAxisLabelWidthFor(ImAxis_X1, size)), xMinLimit, xMaxLimit, 1UZ, xScale, _unitStringStorage, showGrid, /*foreground=*/false, xCond);
-        }
-
-        AxisScale yScale = static_cast<AxisScale>(y_axis_scale.value);
+        setupSignalAxis(true, 0UZ, signalCategory(*sinkXPtr), 1UZ, size, showGrid);
         for (std::size_t i = 0; i < yCategories.size(); ++i) {
-            if (!yCategories[i].has_value()) {
-                continue;
+            if (yCategories[i].has_value()) {
+                setupSignalAxis(false, i, yCategories[i], nYAxes, size, showGrid);
             }
-            const auto [yMinLimit, yMaxLimit] = axisLimits(y_auto_scale.value[i], y_min.value[i], y_max.value[i], std::nullopt);
-            auto       yCond                  = trackLimitsCond(false, yMinLimit, yMaxLimit, i);
-            auto       yDashCfg               = parseAxisConfig(this->ui_constraints.value, false, i);
-            const auto axisId                 = ImAxis_Y1 + static_cast<int>(i);
-            axis::setupAxis(axisId, yCategories[i], LabelFormat::Auto, axisLabelWidthOrDefault(yDashCfg, defaultAxisLabelWidthFor(axisId, size)), yMinLimit, yMaxLimit, nYAxes, yScale, _unitStringStorage, showGrid, /*foreground=*/false, yCond);
         }
 
         setupFinish();
@@ -346,17 +335,11 @@ struct YYChart : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui
             auto   lockX  = sinkXPtr->dataGuard();
             ImVec4 xColor = sinkColor(sinkXPtr->color());
             ImPlot::SetNextLineStyle(xColor);
-            double      dummyX       = static_cast<double>(sinkXPtr->yAt(0));
-            double      dummyY       = static_cast<double>(sinkXPtr->yAt(0));
+            double      dummyX       = sinkXPtr->samples().yAt(0UZ);
+            double      dummyY       = dummyX;
             std::string xLegendLabel = plotLabel(*sinkXPtr);
             ImPlot::PlotLine(xLegendLabel.c_str(), &dummyX, &dummyY, 1, ImPlotLineFlags_NoClip);
         }
-
-        struct PlotContext {
-            const SignalSink* sinkX;
-            const SignalSink* sinkY;
-            std::size_t       offset;
-        };
 
         for (std::size_t i = 1; i < _signalSinks.size(); ++i) {
             if (std::ranges::contains(overflowSinkIndices, i)) {
@@ -370,29 +353,20 @@ struct YYChart : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui
 
             const std::vector<DataGuard> guards = lockAll(std::array{sinkXPtr.get(), sinkYPtr.get()});
 
-            std::size_t totalCount = std::min(sinkXPtr->size(), sinkYPtr->size());
+            std::size_t totalCount = std::min(sinkXPtr->sampleCount(), sinkYPtr->sampleCount());
             if (totalCount == 0) {
                 continue;
             }
 
-            std::size_t count  = std::min(totalCount, static_cast<std::size_t>(n_history.value));
-            std::size_t offset = totalCount - count;
+            std::size_t count = std::min(totalCount, static_cast<std::size_t>(n_history.value));
 
             std::size_t yAxisIdx = axis::findAxisForSink(sinkYPtr->uniqueName(), false, std::array<std::vector<std::string>, 3>{}, yAxisGroups);
             ImPlot::SetAxes(ImAxis_X1, static_cast<ImAxis>(ImAxis_Y1 + yAxisIdx));
 
-            PlotContext ctx{sinkXPtr.get(), sinkYPtr.get(), offset};
+            Correlation ctx{sinkXPtr->samples().newest(count), sinkYPtr->samples().newest(count)};
             std::string yLabel = plotLabel(*sinkYPtr);
-            plotSeries(
-                yLabel.c_str(),
-                [](int idx, void* user_data) -> ImPlotPoint {
-                    auto*       c         = static_cast<PlotContext*>(user_data);
-                    std::size_t actualIdx = c->offset + static_cast<std::size_t>(idx);
-                    double      x         = static_cast<double>(c->sinkX->yAt(actualIdx));
-                    double      y         = static_cast<double>(c->sinkY->yAt(actualIdx));
-                    return ImPlotPoint(x, y);
-                },
-                &ctx, count, sinkColor(sinkYPtr->color()), seriesLineWidth(*sinkYPtr));
+            drawCorrelationErrors(ctx.x, ctx.y, sinkColor(sinkYPtr->color()), seriesLineWidth(*sinkYPtr), sinkYPtr->uniqueName());
+            plotSeries(yLabel.c_str(), &Correlation::point, &ctx, count, sinkColor(sinkYPtr->color()), seriesLineWidth(*sinkYPtr));
         }
 
         tooltip::showPlotMouseTooltip();

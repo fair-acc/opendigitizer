@@ -34,7 +34,7 @@ The x axis and the trace names are the frame's gr:axis_* coordinates, else the x
     using A = gr::Annotated<T, description, Arguments...>;
 
     static constexpr std::string_view kChartTypeName    = "TensorRowsChart";
-    static constexpr SignalKind       kSupportedSignals = SignalKind::Image2D;
+    static constexpr SignalKind       kSupportedSignals = SignalKind::Image2D | SignalKind::Dataset1D; // a DataSet's signals are its rows
 
     A<std::string, "chart name", gr::Visible>                                                                        chart_name;
     A<std::string, "chart title">                                                                                    chart_title;
@@ -53,7 +53,7 @@ The x axis and the trace names are the frame's gr:axis_* coordinates, else the x
 
     void reset() { requestRenderReset(); }
 
-    [[nodiscard]] ImageAxis columnAxis(const ImageFrame& frame, float sampleRate) const {
+    [[nodiscard]] ImageAxis columnAxis(const FrameView& frame, float sampleRate) const {
         const bool tagged = !frame.axes[1].name.empty();
         return !tagged && lag_columns && sampleRate > 0.f ? lagAxis(frame.columns, static_cast<double>(sampleRate)) : frame.axes[1];
     }
@@ -72,10 +72,10 @@ The x axis and the trace names are the frame's gr:axis_* coordinates, else the x
             return gr::work::Status::OK;
         }
         const std::vector<DataGuard> guards = lockAll(_signalSinks); // the frames' pixels are the sinks' storage
-        std::vector<ImageFrame>      frames;
+        std::vector<FrameView>       frames;
         frames.reserve(_signalSinks.size());
         for (const auto& sink : _signalSinks) {
-            frames.push_back(sink->imageFrame());
+            frames.push_back(sink->frame());
             frames.back().axes[1] = columnAxis(frames.back(), sink->sampleRate());
         }
         const ImageAxis&      columns   = frames.front().axes[1];
@@ -86,13 +86,7 @@ The x axis and the trace names are the frame's gr:axis_* coordinates, else the x
 
         _drawnTraces = 0UZ;
         for (std::size_t i = 0UZ; i < frames.size(); ++i) {
-            std::visit(
-                [&]<typename TPixels>(const TPixels& pixels) {
-                    if constexpr (std::is_same_v<TPixels, std::span<const float>> || std::is_same_v<TPixels, std::span<const double>>) {
-                        drawRows(frames[i], pixels, plotLabel(*_signalSinks[i]));
-                    }
-                },
-                frames[i].pixels);
+            drawRows(frames[i], plotLabel(*_signalSinks[i]));
         }
 
         tooltip::showPlotMouseTooltip();
@@ -103,20 +97,24 @@ The x axis and the trace names are the frame's gr:axis_* coordinates, else the x
 
     void resetRenderState() { _drawnTraces = 0UZ; }
 
-    template<typename T>
-    void drawRows(const ImageFrame& frame, std::span<const T> pixels, const std::string& sinkLabel) {
+    void drawRows(const FrameView& frame, const std::string& sinkLabel) {
         struct Row {
-            std::span<const T> values;
-            const ImageAxis*   columns;
+            std::span<const float> values;
+            const ImageAxis*       columns;
+            std::span<const float> coordinates; // a DataSet's axis values, else the axis
         };
         const auto pointAt = [](int column, void* data) -> ImPlotPoint {
             const auto* row = static_cast<const Row*>(data);
             const auto  c   = static_cast<std::size_t>(column);
-            return {axisCoordinate(*row->columns, c), static_cast<double>(row->values[c])};
+            return {c < row->coordinates.size() ? static_cast<double>(row->coordinates[c]) : axisCoordinate(*row->columns, c), static_cast<double>(row->values[c])};
         };
+        if (!std::holds_alternative<std::span<const float>>(frame.values)) {
+            return; // packed colour pixels are no traces
+        }
         for (std::size_t r = 0UZ; r < frame.rows; ++r) {
-            Row               row{pixels.subspan(r * frame.columns, frame.columns), &frame.axes[1]};
-            const std::string label = std::format("{}##{}", rowLabel(frame.axes[0], r), sinkLabel);
+            Row               row{frame.row(r), &frame.axes[1], frame.columnCoordinates};
+            const bool        named = frame.dataSet != nullptr && r < frame.dataSet->signal_names.size() && frame.dataSet->extents.size() < 2UZ;
+            const std::string label = std::format("{}##{}", named ? std::string(frame.dataSet->signal_names[r]) : rowLabel(frame.axes[0], r), sinkLabel);
             ImPlot::PlotLineG(label.c_str(), pointAt, &row, static_cast<int>(frame.columns));
             ++_drawnTraces;
         }

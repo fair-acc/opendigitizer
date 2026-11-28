@@ -9,10 +9,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstddef>
-#include <deque>
-#include <functional>
 #include <memory>
-#include <mutex>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -27,11 +24,6 @@ struct TagSink : gr::Block<TagSink<T>> {
 A tag is kept when it contains at least one of the `tag_keys`; an empty list keeps every tag.
 Only the newest `n_tag_history` tags are kept.)"">;
 
-    struct ReceivedTag {
-        double           utcSeconds;
-        gr::property_map map;
-    };
-
     template<typename U, gr::meta::fixed_string description = "", typename... Arguments>
     using A = gr::Annotated<U, description, Arguments...>;
 
@@ -43,16 +35,13 @@ Only the newest `n_tag_history` tags are kept.)"">;
 
     GR_MAKE_REFLECTABLE(TagSink, in, signal_name, tag_keys, n_tag_history);
 
-    std::shared_ptr<std::mutex> _dataMutex = std::make_shared<std::mutex>();
-    std::deque<ReceivedTag>     _tags;
-    std::size_t                 _sampleCount = 0UZ;
-    std::shared_ptr<SignalSink> _sinkAdapter;
+    std::shared_ptr<SignalSink> _sink       = std::make_shared<SignalSink>(SignalSink::Config{.kind = SignalKind::Events, .uniqueName = std::string(this->unique_name), .name = std::string(this->name.value), .capacity = static_cast<std::size_t>(n_tag_history.value), .capacityFloor = 0UZ, .doubleSamples = false, .withErrors = false});
+    bool                        _registered = false;
 
     explicit TagSink(gr::property_map initParameters = {}) : gr::Block<TagSink<T>>(std::move(initParameters)) {}
 
     ~TagSink() {
-        if (_sinkAdapter) {
-            static_cast<SinkAdapter<TagSink>*>(_sinkAdapter.get())->invalidate();
+        if (_registered) {
             try {
                 charts::SinkRegistry::instance().unregisterSink(this->unique_name);
             } catch (...) {
@@ -60,52 +49,39 @@ Only the newest `n_tag_history` tags are kept.)"">;
         }
     }
 
+    [[nodiscard]] const std::shared_ptr<SignalSink>& signalSink() const noexcept { return _sink; }
+
     gr::work::Status processBulk(gr::InputSpanLike auto& input) noexcept {
         const double utcSeconds = std::chrono::duration<double>(std::chrono::system_clock::now().time_since_epoch()).count();
         {
-            std::lock_guard lock(*_dataMutex);
+            const DataGuard guard = _sink->dataGuard();
             for (const auto& [relIndex, tagMap] : input.tags(input.size())) {
                 if (isKept(tagMap.get())) {
-                    _tags.push_back({utcSeconds, tagMap.get()});
+                    _sink->pushEvent(utcSeconds, tagMap.get());
                 }
             }
-            dropOldTags();
-            _sampleCount += input.size();
+            _sink->keepNewestEvents(static_cast<std::size_t>(n_tag_history.value)); // exactly, though a chart asks for more
+            _sink->countSamples(input.size());
         }
         input.consumeTags(input.size());
         return gr::work::Status::OK;
     }
 
-    void settingsChanged(const gr::property_map& /*oldSettings*/, const gr::property_map& newSettings) {
-        if (newSettings.contains("n_tag_history")) {
-            std::lock_guard lock(*_dataMutex);
-            dropOldTags();
+    void settingsChanged(const gr::property_map& /*oldSettings*/, const gr::property_map& /*newSettings*/) {
+        {
+            const DataGuard guard      = _sink->dataGuard();
+            _sink->metadata.signalName = std::string(signal_name.value);
+            _sink->setConfiguredCapacity(static_cast<std::size_t>(n_tag_history.value));
+            _sink->keepNewestEvents(static_cast<std::size_t>(n_tag_history.value));
         }
-        if (!_sinkAdapter) {
-            _sinkAdapter = std::make_shared<SinkAdapter<TagSink>>(*this);
-            charts::SinkRegistry::instance().registerSink(_sinkAdapter);
+        if (!_registered) {
+            _sink->_name = this->name.value;
+            _registered  = charts::SinkRegistry::instance().registerSink(_sink);
         }
     }
 
     [[nodiscard]] bool isKept(const gr::property_map& tag) const {
         return tag_keys.value.empty() || std::ranges::any_of(tag_keys.value, [&tag](const std::string& key) { return tag.contains(key); });
-    }
-
-    void dropOldTags() {
-        while (_tags.size() > static_cast<std::size_t>(n_tag_history.value)) {
-            _tags.pop_front();
-        }
-    }
-
-    [[nodiscard]] std::string_view            signalName() const noexcept { return signal_name.value.empty() ? std::string_view(this->name.value) : std::string_view(signal_name.value); }
-    [[nodiscard]] SignalKind                  signalKind() const noexcept { return SignalKind::Streaming; }
-    [[nodiscard]] std::shared_ptr<std::mutex> sharedDataMutex() const { return _dataMutex; }
-    [[nodiscard]] std::size_t                 totalSampleCount() const noexcept { return _sampleCount; }
-
-    void forEachTag(std::function<void(double, const gr::property_map&)> callback) const {
-        for (const ReceivedTag& tag : _tags) {
-            callback(tag.utcSeconds, tag.map);
-        }
     }
 };
 

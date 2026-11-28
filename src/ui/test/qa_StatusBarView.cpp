@@ -78,7 +78,7 @@ std::string barLabel(ImGuiTestContext* ctx) { return ctx->ItemInfo("**/###status
 
 std::string testClipboard;
 
-std::uint64_t nowNanos() { return static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count()); }
+std::uint64_t nowNanos() { return gr::settings::convertTimePointToUint64Ns(std::chrono::system_clock::now()); }
 
 std::uint64_t countOf(gr::log::Level level) { return logHistory().counts()[static_cast<std::size_t>(level)]; }
 

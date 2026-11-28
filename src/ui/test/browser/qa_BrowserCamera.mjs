@@ -2,7 +2,7 @@
 // ImageChart, and Chrome's fake camera (a test-card Y4M clip) through getUserMedia into another. Frames are identified
 // by the test card's barcode, read from screenshots at the chart's on-screen frame position (globalThis.odImageCharts).
 
-import { launchBrowser, openPage, startServer, until } from "./harness.mjs";
+import { decodePng, kTestHooks, launchBrowser, openPage, startServer } from "./gr4Harness.mjs";
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -55,11 +55,11 @@ const sampleBarcodes = async (page, name, count, timeoutMs = 60_000) => {
   while (samples.length < count) {
     if (Date.now() > expiry) {
       const file = path.join(process.env.OD_BROWSER_ARTIFACTS ?? mkdtempSync(path.join(tmpdir(), "qa_BrowserCamera-")), `${name.replace(/\W/g, "_")}.png`);
-      await page.savePng(file);
+      await page.screenshot(file);
       console.error(`screenshot: ${file}, chart: ${JSON.stringify(await page.evaluate(`globalThis.odImageCharts[${JSON.stringify(name)}]`))}`);
       throw new Error(`read only ${samples.length} of ${count} barcodes from '${name}': ${samples.map((s) => s.value).join(" ")}`);
     }
-    const shot = await page.screenshot();
+    const shot = decodePng(Buffer.from((await page.command("Page.captureScreenshot", { format: "png" })).result.data, "base64"));
     const chart = await page.evaluate(`globalThis.odImageCharts[${JSON.stringify(name)}]`);
     const value = readBarcode(shot, chart);
     if (value !== null && (samples.length === 0 || samples.at(-1).value !== value)) {
@@ -82,14 +82,14 @@ process.on("exit", () => rmSync(scratch, { recursive: true, force: true }));
 const clip = path.join(scratch, "test_card.y4m");
 execFileSync(y4mTool, [clip, "640", "480", "25", "100"]);
 
-const server = await startServer(path.resolve(webDirectory));
+const server = await startServer([path.resolve(webDirectory)]);
 const browser = await launchBrowser(["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream", `--use-file-for-fake-video-capture=${clip}`, "--autoplay-policy=no-user-gesture-required"]);
 try {
-  const page = (globalThis.lastPage = await openPage(browser, `${server.origin}/index.html#dashboard=XtraCameraDemo`, kMockedControls));
+  const page = (globalThis.lastPage = await openPage(browser, `${server.origin}/index.html#dashboard=XtraCameraDemo`, { initScript: `${kTestHooks}\n${kMockedControls}` }));
   await page.command("Emulation.setDeviceMetricsOverride", { width: 1280, height: 800, deviceScaleFactor: 1, mobile: false });
   console.log(`opened ${server.origin}/index.html#dashboard=XtraCameraDemo`);
   for (const name of ["Test card", "Camera"]) {
-    await page.waitFor(`(globalThis.odImageCharts?.[${JSON.stringify(name)}]?.shown ?? 0) > 0`, `a frame in '${name}'`, 120_000);
+    await page.waitFor(`(globalThis.odImageCharts?.[${JSON.stringify(name)}]?.shown ?? 0) > 0`, { what: `a frame in '${name}'`, timeoutMs: 120_000 });
     console.log(`'${name}' shows frames`);
   }
 
@@ -112,11 +112,11 @@ try {
   expect(cameraSamples.every((s) => s.value < 100), `clip frame numbers read from the screen: ${cameraSamples.map((s) => s.value).join(" ")}`);
 
   console.log("browser camera controls reach the toolbar control");
-  const controls = await page.waitFor(`globalThis.odCameraControls?.cameraControl?.length > 0 && globalThis.odCameraControls.cameraControl`, "the camera's controls in the toolbar control", 30_000);
+  const controls = await page.waitFor(`globalThis.odCameraControls?.cameraControl?.length > 0 && globalThis.odCameraControls.cameraControl`, { what: "the camera's controls in the toolbar control", timeoutMs: 30_000 });
   expect(controls.includes("brightness") && controls.includes("zoom"), `mocked brightness and zoom offered (got ${controls.join(", ")})`);
-  const devices = await page.waitFor(`!(globalThis.odCameraDevices?.cameraControl ?? ["Browser camera"]).some((d) => d.startsWith("Browser camera")) && globalThis.odCameraDevices.cameraControl`, "the browser's own camera names", 30_000);
+  const devices = await page.waitFor(`!(globalThis.odCameraDevices?.cameraControl ?? ["Browser camera"]).some((d) => d.startsWith("Browser camera")) && globalThis.odCameraDevices.cameraControl`, { what: "the browser's own camera names", timeoutMs: 30_000 });
   expect(devices.some((d) => d.includes("[browser:")), `the browser's cameras listed by name (got ${devices.join(", ")})`);
-  page.close();
+  await page.close();
 } catch (error) {
   failures.push(String(error));
   console.error(error);

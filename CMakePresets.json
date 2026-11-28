@@ -115,6 +115,22 @@
         "CMAKE_PREFIX_PATH": "/opt/gnuradio4-emscripten-static",
         "OD_WASM_STATIC_BLOCKLIBS": "ON"
       }
+    },
+    {
+      "name": "wasm-webgpu",
+      "inherits": "base",
+      "displayName": "WASM Release, WebGPU (GR4 fetched)",
+      "description": "Static blocklibs with GR_ENABLE_WEBGPU: GR4 built at GIT_SHA_GNURADIO4 by FetchContent (no installed GR4 has WebGPU), configured before src/ui so its plugin mode is set here; Tint on PATH or GR_TINT_EXECUTABLE",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_TOOLCHAIN_FILE": "$env{EMSDK}/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake",
+        "DISABLE_WASM_BUILD": "ON",
+        "OPENDIGITIZER_ENABLE_TESTING": "OFF",
+        "OD_WASM_STATIC_BLOCKLIBS": "ON",
+        "GR_ENABLE_WEBGPU": "ON",
+        "INTERNAL_ENABLE_BLOCK_PLUGINS": "OFF",
+        "GNURADIO_PARSE_REGISTRATIONS_TOOL_CXX_COMPILER": "g++-15"
+      }
     }
   ],
   "buildPresets": [
@@ -125,6 +141,7 @@
     { "name": "ci-gcc-debug", "configurePreset": "ci-gcc-debug" },
     { "name": "ci-gcc-release", "configurePreset": "ci-gcc-release" },
     { "name": "wasm-release", "configurePreset": "wasm-release", "jobs": 6 },
-    { "name": "wasm-static-blocklibs", "configurePreset": "wasm-static-blocklibs", "jobs": 6 }
+    { "name": "wasm-static-blocklibs", "configurePreset": "wasm-static-blocklibs", "jobs": 6 },
+    { "name": "wasm-webgpu", "configurePreset": "wasm-webgpu", "jobs": 6 }
   ]
 }

@@ -2,6 +2,7 @@
 #define APP_H
 
 #include <atomic>
+#include <cmath>
 #include <format>
 #include <memory>
 #include <optional>
@@ -25,8 +26,10 @@
 #include "StatusBarView.hpp"
 #include "ToolbarView.hpp"
 
+#include "charts/SinkRegistry.hpp"
 #include "settings.hpp"
 #include "utils/Browser.hpp"
+#include "utils/WebGpuRuntime.hpp"
 
 #include <IoSerialiserYaS.hpp>
 #include <LoadTest.hpp>
@@ -40,6 +43,30 @@
 #include "common/ViewMode.hpp"
 
 namespace gr::od {
+
+/// for browser tests, when they asked for the hooks: `globalThis.odSinks[signal name]` = {value, count},
+/// the newest value and the total sample count of every streaming sink, at most once a second
+inline void publishSinksForBrowserTests() {
+    if (!browserTestHooks()) {
+        return;
+    }
+    static double lastPublished = -1.0;
+    if (const double now = ImGui::GetTime(); now - lastPublished >= 1.0) {
+        lastPublished = now;
+    } else {
+        return;
+    }
+    const auto sinks = charts::SinkRegistry::instance().findSinks([](const SignalSink& sink) { return sink.signalKind() == SignalKind::Streaming; });
+    for (const auto& sink : sinks) {
+        const auto         guard  = sink->dataGuard();
+        const SampleWindow window = sink->samples();
+        if (window.size() == 0UZ) {
+            continue;
+        }
+        const double value = window.yAt(window.size() - 1UZ);
+        publishForBrowserTests("odSinks", sink->signalName(), std::format(R"({{"value":{},"count":{}}})", std::isfinite(value) ? std::format("{}", value) : std::string("null"), sink->totalSampleCount()));
+    }
+}
 
 void registerAppBlocks(gr::BlockRegistry& registry);
 
@@ -290,7 +317,7 @@ struct App {
             return;
         }
 
-        if (deferredDashboardUrl) {
+        if (deferredDashboardUrl && webGpuRuntimeSettled()) { // its graph resolves 'gpu' when it starts
             const std::string url = std::move(*deferredDashboardUrl);
             deferredDashboardUrl.reset();
             loadDashboard(url);
@@ -300,6 +327,8 @@ struct App {
             loadDashboard(dashboardToLoad);
             dashboardToLoad = nullptr;
         }
+        publishWebGpuStateForBrowserTests();
+        publishSinksForBrowserTests();
 
         if (dashboard != nullptr) {
             dashboard->session.receiveMessages();

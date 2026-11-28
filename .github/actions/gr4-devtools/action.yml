@@ -10,6 +10,9 @@ inputs:
   tools:
     description: "also build naming-check and code-metrics, which need libclang"
     default: "false"
+  harness-only:
+    description: "only check out devtools/browser, the headless-browser harness of the browser tests; build nothing"
+    default: "false"
 runs:
   using: composite
   steps:
@@ -32,13 +35,14 @@ runs:
           .github/actions/report
 
     - name: Build qualitybot
+      if: inputs.harness-only != 'true'
       shell: bash
       run: |
         g++-15 -std=c++23 -O2 -o "$RUNNER_TEMP/qualitybot" "$PWD/.gr4-devtools/devtools/qualitybot.cpp"
         git fetch --no-tags --depth=1 origin +ci-metrics:refs/remotes/origin/ci-metrics || echo "no history yet"
 
     - name: Build naming-check and code-metrics
-      if: inputs.tools == 'true'
+      if: inputs.tools == 'true' && inputs.harness-only != 'true'
       shell: bash
       run: |
         cmake -S .gr4-devtools/devtools -B "$RUNNER_TEMP/gr4-devtools" -G Ninja -DCMAKE_CXX_COMPILER=g++-15 -DCMAKE_BUILD_TYPE=Release

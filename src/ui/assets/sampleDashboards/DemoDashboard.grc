@@ -5,10 +5,17 @@ blocks:
       ui_constraints:
         x: 30
         y: 40
+  - id: opendigitizer::StridedWindow<float32>
+    parameters:
+      name: fftWindow
+      input_chunk_size: 4096 # the FFT's size
+      output_chunk_size: 4096
+      stride: 1024 # a spectrum about every second at 1 kHz, the windows overlapping by three quarters
   - id: gr::blocks::fft::FFT<float32, gr::DataSet<float32>>
     parameters:
       name: FFT
-      fft_size: 1024
+      compute_domain: gpu # the browser's GPU in a WebGPU build; the CPU elsewhere
+      fft_size: 4096
       sample_rate: 1000
       window: Hann
       signal_unit: V
@@ -35,21 +42,21 @@ blocks:
   - id: opendigitizer::ImPlotSink<float32>
     parameters:
       name: sinesSink
-      signal_name: sine2Hz+5Hz
+      signal_name: 2 Hz + 5 Hz
       signal_quantity: sum voltage
       signal_unit: V
   - id: opendigitizer::ImPlotSink<float32>
     parameters:
       name: sineSink1
       color: 0x00C800
-      signal_name: sine2Hz
+      signal_name: 2 Hz
       signal_quantity: long long sine voltage 1
       signal_unit: V
   - id: opendigitizer::ImPlotSink<float32>
     parameters:
       name: sineSink2
       color: 0xC800C8
-      signal_name: sine5Hz
+      signal_name: 5 Hz
       signal_quantity: sine voltage 2
       signal_unit: V
   - id: opendigitizer::ImPlotSink<gr::DataSet<float32>>
@@ -205,11 +212,11 @@ blocks:
       sample_rate: 25
       chunk_size: 1
       n_samples_max: 0
-  - id: opendigitizer::TestSpectrumGenerator<float32>
+  - id: gr::testing::TestSpectrumGenerator<float32>
     parameters:
       name: SpectrumGenerator
       spectrum_size: 4096
-      center_freq: 100e6
+      centre_freq: 100e6
       signal_bandwidth: 1e6
       clock_rate: 25
       seed: 42
@@ -226,12 +233,53 @@ blocks:
       abscissa_unit: Hz
       signal_quantity: magnitude
       signal_unit: dB
+  # the 2 Hz + 5 Hz sum with Gaussian noise (σ = 1), each sample paired with that σ, low-pass filtered at 20 Hz: GR4's
+  # BasicFilter propagates the uncertainty (≈ 1 · √(2 · 20 Hz / 1 kHz) ≈ 0.2), which the chart draws as error bars and surface
+  - id: gr::basic::SignalGenerator<float32>
+    parameters:
+      name: noiseSource
+      signal_type: GaussianNoise
+      amplitude: 1
+      sample_rate: 1000
+      chunk_size: 40
+  - id: gr::basic::SignalGenerator<float32>
+    parameters:
+      name: noiseSigma
+      signal_type: Const
+      amplitude: 1
+      sample_rate: 1000
+      chunk_size: 40
+  - id: opendigitizer::Arithmetic<float32>
+    parameters:
+      name: noisySines
+  - id: opendigitizer::ToUncertainValue<float32>
+    parameters:
+      name: noisySinesWithSigma
+      compute_domain: gpu
+  - id: gr::filter::BasicFilterProto<gr::UncertainValue<float32>, gr::Resampling<1, 1, false>>
+    parameters:
+      name: lowPass
+      filter_type: IIR
+      filter_response: LOWPASS
+      filter_order: 4
+      f_low: 20
+      sample_rate: 1000
+      decimation: 1 # the sines' rate: a chart's history spans the same time for both
+  - id: opendigitizer::ImPlotSink<gr::UncertainValue<float32>>
+    parameters:
+      name: filteredSink
+      color: 0x0080FF
+      signal_name: LP(2 Hz + 5 Hz)
+      signal_quantity: sum voltage # the sum's axis: the chart has its three Y axes already
+      signal_unit: V
+      sample_rate: 1000
 connections:
   - [ sineSource1, 0, sineSum, 0 ]
   - [ sineSource2, 0, sineSum, 1 ]
   - [ sineSource1, 0, sineSink1, 0 ]
   - [ sineSource2, 0, sineSink2, 0 ]
-  - [ sineSum, 0, FFT, 0 ]
+  - [ sineSum, 0, fftWindow, 0 ]
+  - [ fftWindow, 0, FFT, 0 ]
   - [ sineSum, 0, sinesSink, 0 ]
   - [ FFT, 0, fftSink, 0 ]
   - [ ClockSource, 0, DipoleCurrentGenerator, 0 ]
@@ -240,6 +288,12 @@ connections:
   - [ IntensityGenerator, 0, IntensitySink, 0 ]
   - [ SpectrumClock, 0, SpectrumGenerator, 0 ]
   - [ SpectrumGenerator, 0, spectrumSink, 0 ]
+  - [ sineSum, 0, noisySines, 0 ]
+  - [ noiseSource, 0, noisySines, 1 ]
+  - [ noisySines, 0, noisySinesWithSigma, 0 ]
+  - [ noiseSigma, 0, noisySinesWithSigma, 1 ]
+  - [ noisySinesWithSigma, 0, lowPass, 0 ]
+  - [ lowPass, 0, filteredSink, 0 ]
 dashboard:
   layout: Free
   windowLayout:
@@ -274,6 +328,8 @@ dashboard:
       block: sineSink2
     - name: spectrumSink
       block: spectrumSink
+    - name: filteredSink
+      block: filteredSink
   plots:
     - name: Raw Signal
       parameters:
@@ -287,10 +343,13 @@ dashboard:
           min: NaN # enables auto-range for first axis
           max: NaN # enables auto-range for first axis
           format: Default # options: Auto, Metric, MetricInline, Scientific, None, Default
+        - axis: Y # the second Y axis, the first on the right
+          placement: Canvas # options: Outside, Canvas (ticks and labels on the plot, no title), None
       sources:
         - sinesSink
         - sineSink1
         - sineSink2
+        - filteredSink
     - name: FFT Amplitude
       parameters:
         show_legend: true

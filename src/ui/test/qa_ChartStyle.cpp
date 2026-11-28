@@ -20,7 +20,6 @@ using namespace boost;
 using namespace boost::ut;
 
 namespace {
-using test::TestStreamingSink;
 
 constexpr ImVec2 kChartPos{50.f, 50.f};
 constexpr ImVec2 kChartSize{640.f, 400.f};
@@ -28,23 +27,23 @@ constexpr ImVec2 kChartSize{640.f, 400.f};
 using Mode = charts::ChartMode;
 
 struct TestState {
-    std::shared_ptr<TestStreamingSink> voltage;
-    std::shared_ptr<TestStreamingSink> current;
-    std::unique_ptr<charts::XYChart>   singleAxis;
-    std::unique_ptr<charts::XYChart>   twoAxes;
-    charts::XYChart*                   drawn = nullptr;
-    Mode                               mode  = Mode::View;
-    std::optional<ImVec4>              hostBackground;
-    std::optional<ChartStyle>          fontProbeStyle;
-    ImFont*                            probedFont     = nullptr;
-    float                              probedFontSize = 0.f;
+    std::shared_ptr<SignalSink>      voltage;
+    std::shared_ptr<SignalSink>      current;
+    std::unique_ptr<charts::XYChart> singleAxis;
+    std::unique_ptr<charts::XYChart> twoAxes;
+    charts::XYChart*                 drawn = nullptr;
+    Mode                             mode  = Mode::View;
+    std::optional<ImVec4>            hostBackground;
+    std::optional<ChartStyle>        fontProbeStyle;
+    ImFont*                          probedFont     = nullptr;
+    float                            probedFontSize = 0.f;
 };
 
-std::shared_ptr<TestStreamingSink> makeSink(std::string name, std::uint32_t color, std::string quantity, std::string unit, double amplitude, double phase) {
-    auto sink = std::make_shared<TestStreamingSink>(std::move(name), 512);
-    sink->setColor(color);
-    sink->setSignalQuantity(std::move(quantity));
-    sink->setSignalUnit(std::move(unit));
+std::shared_ptr<SignalSink> makeSink(std::string name, std::uint32_t color, std::string quantity, std::string unit, double amplitude, double phase) {
+    auto sink                     = test::makeTestStreamingSink(std::move(name), 512);
+    sink->metadata.color          = color;
+    sink->metadata.signalQuantity = std::move(quantity);
+    sink->metadata.signalUnit     = std::move(unit);
     for (std::size_t i = 0UZ; i < 400UZ; ++i) {
         const double t = static_cast<double>(i) / 100.0;
         sink->pushSample(t, static_cast<float>(amplitude * std::sin(2.0 * std::numbers::pi * t + phase)));
@@ -65,11 +64,7 @@ TestState* gState = nullptr;
 
 constexpr ImVec4 kMagenta{1.f, 0.f, 1.f, 1.f};
 
-struct Rgb {
-    int r;
-    int g;
-    int b;
-};
+using Rgb = test::ImGuiTestApp::CapturedPixels::Rgb;
 
 struct Region {
     float x0;
@@ -86,21 +81,18 @@ constexpr Region kTopLeft{.14f, .03f, .40f, .18f};
 constexpr Region kTopRight{.55f, .03f, .85f, .18f};
 constexpr Region kLegendInside{.16f, .06f, .34f, .15f};
 
-bool isMagenta(Rgb c) { return c.r > 240 && c.g < 15 && c.b > 240; }
-bool isVoltageGreen(Rgb c) { return c.g > 100 && c.r < 80 && c.b < 80; }               // 0x00C000, also blended into the dark background
-bool isCurrentOrange(Rgb c) { return c.r > 150 && c.g > 20 && c.g < 110 && c.b < 50; } // 0xE04000
-bool isWhite(Rgb c) { return c.r > 200 && c.g > 200 && c.b > 200; }
-bool isGrey(Rgb c) { return std::abs(c.r - c.g) <= 2 && std::abs(c.g - c.b) <= 2; }
+bool isMagenta(Rgb c) { return c.red > 240 && c.green < 15 && c.blue > 240; }
+bool isVoltageGreen(Rgb c) { return c.green > 100 && c.red < 80 && c.blue < 80; }                   // 0x00C000, also blended into the dark background
+bool isCurrentOrange(Rgb c) { return c.red > 150 && c.green > 20 && c.green < 110 && c.blue < 50; } // 0xE04000
+bool isWhite(Rgb c) { return c.red > 200 && c.green > 200 && c.blue > 200; }
+bool isGrey(Rgb c) { return std::abs(c.red - c.green) <= 2 && std::abs(c.green - c.blue) <= 2; }
 
 struct Pixels {
     test::ImGuiTestApp::CapturedPixels _image;
 
     explicit Pixels(ImGuiTestContext* ctx) : _image(test::ImGuiTestApp::captureSettledPixels(*ctx, ImRect(kChartPos, kChartPos + kChartSize))) {}
 
-    [[nodiscard]] Rgb at(int x, int y) const {
-        const unsigned int pixel = _image.rgba[static_cast<std::size_t>(y * _image.width + x)];
-        return {static_cast<int>(pixel & 0xFFU), static_cast<int>((pixel >> 8U) & 0xFFU), static_cast<int>((pixel >> 16U) & 0xFFU)};
-    }
+    [[nodiscard]] Rgb at(int x, int y) const { return test::ImGuiTestApp::CapturedPixels::rgb(_image.rgba[static_cast<std::size_t>(y * _image.width + x)]); }
 
     [[nodiscard]] std::size_t count(Region region, auto predicate) const {
         std::size_t n = 0UZ;
@@ -122,19 +114,19 @@ struct Pixels {
         const std::vector<Rgb> pixels = greyLinePixels(region);
         double                 sum    = 0.0;
         for (const Rgb& c : pixels) {
-            sum += static_cast<double>(c.g);
+            sum += static_cast<double>(c.green);
         }
         return pixels.empty() ? 0.0 : sum / static_cast<double>(pixels.size());
     }
 
     [[nodiscard]] std::vector<Rgb> greyLinePixels(Region region) const {
         std::map<int, std::size_t> histogram;
-        std::ignore                 = count(region, [&](Rgb c) { return ++histogram[(c.r << 16) | (c.g << 8) | c.b] > 0UZ; });
+        std::ignore                 = count(region, [&](Rgb c) { return ++histogram[(c.red << 16) | (c.green << 8) | c.blue] > 0UZ; });
         const int        background = std::ranges::max_element(histogram, {}, [](const auto& entry) { return entry.second; })->first;
         const Rgb        bg{background >> 16, (background >> 8) & 0xFF, background & 0xFF};
         std::vector<Rgb> lines;
         std::ignore = count(region, [&](Rgb c) {
-            if (isGrey(c) && (std::abs(c.r - bg.r) > 4 || std::abs(c.g - bg.g) > 4 || std::abs(c.b - bg.b) > 4)) {
+            if (isGrey(c) && (std::abs(c.red - bg.red) > 4 || std::abs(c.green - bg.green) > 4 || std::abs(c.blue - bg.blue) > 4)) {
                 lines.push_back(c);
             }
             return false;
@@ -147,6 +139,11 @@ ChartStyle chartStyle(auto configure) {
     ChartStyle style;
     configure(style);
     return style;
+}
+
+/// the plot of the chart with two Y axes, the only one that enables Y2
+const ImPlotPlot* twoAxesPlot() {
+    return test::ImGuiTestApp::findPlot([](const ImPlotPlot& plot) { return plot.Axes[ImAxis_Y2].Enabled; });
 }
 
 std::unique_ptr<Pixels> drawAndCapture(ImGuiTestContext* ctx, charts::XYChart& chart, Mode mode, const ChartStyle& style) {
@@ -228,12 +225,12 @@ struct TestApp : public test::ImGuiTestApp {
             };
 
             "a series takes its sink's line width unless the host's style sets one"_test = [&] {
-                const auto thin = drawAndCapture(ctx, *state.singleAxis, Mode::View, {});
-                state.voltage->setLineWidth(4.f);
-                const auto thick         = drawAndCapture(ctx, *state.singleAxis, Mode::View, {});
-                const auto hostOverrides = drawAndCapture(ctx, *state.singleAxis, Mode::View, chartStyle([](ChartStyle& s) { s.lineWidth = 1.f; }));
-                state.voltage->setLineWidth(1.f);
-                const auto nThin = thin->count(kPlotInterior, isVoltageGreen);
+                const auto thin                   = drawAndCapture(ctx, *state.singleAxis, Mode::View, {});
+                state.voltage->metadata.lineWidth = 4.f;
+                const auto thick                  = drawAndCapture(ctx, *state.singleAxis, Mode::View, {});
+                const auto hostOverrides          = drawAndCapture(ctx, *state.singleAxis, Mode::View, chartStyle([](ChartStyle& s) { s.lineWidth = 1.f; }));
+                state.voltage->metadata.lineWidth = 1.f;
+                const auto nThin                  = thin->count(kPlotInterior, isVoltageGreen);
                 expect(nThin > 500UZ) << fatal;
                 expect(thick->count(kPlotInterior, isVoltageGreen) > 5UZ * nThin / 2UZ) << std::format("sink width 4: {} green pixels, sink width 1: {}", thick->count(kPlotInterior, isVoltageGreen), nThin);
                 expect(hostOverrides->count(kPlotInterior, isVoltageGreen) < 6UZ * nThin / 5UZ) << std::format("host width 1 over sink width 4: {} green pixels, 1 px line: {}", hostOverrides->count(kPlotInterior, isVoltageGreen), nThin);
@@ -305,6 +302,78 @@ struct TestApp : public test::ImGuiTestApp {
                 expect(eq(chart.legendVisibility(), 1.f)) << "movement in the plot shows it";
                 ctx->MouseMoveToPos(ImVec2(5.f, 5.f));
                 look.autoHideLegends = false;
+            };
+
+            "the axis menu's placement and title choices are kept in the chart's axes entries, spelt as a .grc spells them"_test = [] {
+                charts::XYChart chart;
+                chart.setAxisPlacement(charts::AxisKind::Y, charts::AxisPlacement::Canvas, 1UZ);
+                chart.setAxisShowTitle(charts::AxisKind::Y, false, 1UZ);
+                chart.setAxisPlacement(charts::AxisKind::X, charts::AxisPlacement::None);
+                expect(chart.axisDecoration(charts::AxisKind::Y, 1UZ).placement == charts::AxisPlacement::Canvas);
+                expect(!chart.axisDecoration(charts::AxisKind::Y, 1UZ).showTitle);
+                expect(chart.axisDecoration(charts::AxisKind::Y).placement == charts::AxisPlacement::Outside && chart.axisDecoration(charts::AxisKind::Y).showTitle) << "the first Y entry only holds the second's place";
+                expect(chart.axisDecoration(charts::AxisKind::X).placement == charts::AxisPlacement::None);
+                const auto axes = chart.ui_constraints.value.get_if<gr::TensorView<gr::pmt::Value>>("axes");
+                expect(axes.has_value()) << fatal;
+                std::size_t nY = 0UZ;
+                for (const gr::pmt::Value& value : *axes) {
+                    const auto entry = value.get_if<gr::property_map>();
+                    if (!entry || entry->value_or<std::string_view>("axis", std::string_view{}) != std::string_view{"Y"}) {
+                        continue;
+                    }
+                    if (nY == 1UZ) {
+                        expect(eq(entry->value_or<std::string_view>("placement", std::string_view{}), std::string_view{"Canvas"})) << "the second Y entry holds the enum by its name";
+                        const auto showTitle = entry->get_if<bool>("show_title");
+                        expect(showTitle && !*showTitle) << "and the title as a boolean";
+                    }
+                    ++nY;
+                }
+                expect(eq(nY, 2UZ)) << "a placeholder and the second Y entry";
+            };
+
+            "a second Y axis on the canvas draws its labels on the plot, None draws none, and either leaves the plot the axis' room"_test = [&] {
+                auto&      chart     = *state.twoAxes;
+                const auto drawnWith = [&](charts::AxisPlacement placement) {
+                    chart.setAxisPlacement(charts::AxisKind::Y, placement, 1UZ);
+                    auto              pixels = drawAndCapture(ctx, chart, Mode::Interaction, {});
+                    const ImPlotPlot* plot   = twoAxesPlot();
+                    return std::pair{std::move(pixels), plot != nullptr ? plot->PlotRect.GetWidth() : 0.f};
+                };
+                const auto [outside, outsideWidth] = drawnWith(charts::AxisPlacement::Outside);
+                const auto [canvas, canvasWidth]   = drawnWith(charts::AxisPlacement::Canvas);
+                const auto [none, noneWidth]       = drawnWith(charts::AxisPlacement::None);
+                chart.setAxisPlacement(charts::AxisKind::Y, charts::AxisPlacement::Outside, 1UZ);
+
+                // outside, the axis takes at least its title's room: a text line and ImPlot's label padding
+                expect(canvasWidth >= outsideWidth + ImGui::GetTextLineHeight() + ImPlot::GetStyle().LabelPadding.x) << std::format("the plot is {} px wide with the axis outside, {} on the canvas", outsideWidth, canvasWidth);
+                expect(approx(noneWidth, canvasWidth, 1.f)) << std::format("{} px without the axis", noneWidth);
+                // ground truth by construction: Canvas and None draw the same plot and traces, so only the labels tell them apart; a
+                // label inks at least a digit's stroke, a text line high
+                constexpr Region kInsideRight{.85f, .05f, .99f, .85f};
+                const auto       onCanvas = canvas->count(kInsideRight, isCurrentOrange);
+                const auto       bare     = none->count(kInsideRight, isCurrentOrange);
+                expect(onCanvas > bare + static_cast<std::size_t>(ImGui::GetTextLineHeight())) << std::format("{} current-coloured pixels inside the right edge on the canvas, {} without the axis", onCanvas, bare);
+            };
+
+            "show_title false keeps an axis' ticks and labels outside and drops its title"_test = [&] {
+                auto&             chart       = *state.twoAxes;
+                const auto        titled      = drawAndCapture(ctx, chart, Mode::Interaction, {});
+                const ImPlotPlot* plot        = twoAxesPlot();
+                const bool        hadTitle    = plot != nullptr && plot->Axes[ImAxis_Y2].HasLabel();
+                const float       titledWidth = plot != nullptr ? plot->PlotRect.GetWidth() : 0.f;
+                chart.setAxisShowTitle(charts::AxisKind::Y, false, 1UZ);
+                const auto untitled       = drawAndCapture(ctx, chart, Mode::Interaction, {});
+                plot                      = twoAxesPlot();
+                const bool  hasTitle      = plot != nullptr && plot->Axes[ImAxis_Y2].HasLabel();
+                const bool  hasLabels     = plot != nullptr && plot->Axes[ImAxis_Y2].HasTickLabels();
+                const float untitledWidth = plot != nullptr ? plot->PlotRect.GetWidth() : 0.f;
+                const auto  labelCount    = plot != nullptr ? static_cast<std::size_t>(std::ranges::count_if(plot->Axes[ImAxis_Y2].Ticker.Ticks, &ImPlotTick::ShowLabel)) : 0UZ;
+                chart.setAxisShowTitle(charts::AxisKind::Y, true, 1UZ);
+
+                expect(hadTitle && !hasTitle) << "the title goes";
+                expect(hasLabels) << "the tick labels stay";
+                expect(untitledWidth >= titledWidth + ImGui::GetTextLineHeight()) << std::format("the title's text line goes to the plot: {} px wide, {} with the title", untitledWidth, titledWidth);
+                expect(untitled->count(kRightAxis, isCurrentOrange) > labelCount * static_cast<std::size_t>(ImGui::GetTextLineHeight())) << "the labels outside, in the signal's colour, each at least a digit's stroke";
             };
 
             "an axis colour draws the tick labels, axis label and ticks in that colour"_test = [&] {

@@ -10,7 +10,6 @@
 
 #include <blocks/Arithmetic.hpp>
 #include <blocks/ImPlotSink.hpp>
-#include <blocks/TestSpectrumGenerator.hpp>
 
 #include <gnuradio-4.0/AtomicRef.hpp>
 #include <gnuradio-4.0/Scheduler.hpp>
@@ -192,13 +191,13 @@ struct TestApp : public test::ImGuiTestApp {
                     using Tensor = gr::Tensor<gr::pmt::Value>;
                     const gr::property_map child{{"unique_name", "test-block"}};
                     const gr::property_map data{{"graph", gr::property_map{{"blocks", Tensor(gr::data_from, {gr::pmt::Value(child)})}}}};
-                    const auto             children = getOptionalProperty<Tensor>(data, "graph", "blocks");
+                    const auto             children = gr::getProperty<Tensor>(data, "graph", "blocks");
                     expect(children.has_value()) << fatal;
                     expect(eq(children->size(), 1UZ)) << fatal;
                     const auto block = (*children)[0].get_if<gr::property_map>();
                     expect(block.has_value()) << fatal;
-                    expect(eq(getProperty<std::string>(*block, "unique_name"), std::string("test-block")));
-                    expect(!getOptionalProperty<Tensor>(gr::property_map{{"blocks", "not a tensor"}}, "blocks"));
+                    expect(eq(gr::getProperty<std::string>(*block, "unique_name").value_or(std::string{}), std::string("test-block")));
+                    expect(!gr::getProperty<Tensor>(gr::property_map{{"blocks", "not a tensor"}}, "blocks"));
                 };
                 "registry type decoding"_test = [] {
                     UiGraphModel model;
@@ -216,6 +215,22 @@ struct TestApp : public test::ImGuiTestApp {
                     expect(model.apply(makeMessage(gr::message::Command::Notify, "root", gr::graph::property::kRegistrySchedulerTypes, schedulerData)));
                     const std::map<std::string, std::set<std::string>> expectedSchedulers{{"gr::Graph", {"<>"}}, {"gr::scheduler::Simple", {"<gr::scheduler::ExecutionPolicy::singleThreaded>"}}};
                     expect(model.knownSchedulerTypes == expectedSchedulers);
+                };
+                "a block's ComputeDomainFallback is kept until its compute_domain changes"_test = [] {
+                    UiGraphModel model;
+                    model.sendMessage               = [](gr::Message) {};
+                    model.rootBlock.blockUniqueName = "root";
+                    const gr::property_map fallback{{"compute_domain", "gpu"}, {"reason", "kernel not translated: f64"}};
+                    expect(model.apply(makeMessage(gr::message::Command::Notify, "root", gr::block::property::kComputeDomainFallback, fallback)));
+                    expect(eq(model.rootBlock.computeDomainFallbackReason, std::string("kernel not translated: f64")));
+
+                    const gr::property_map otherSetting{{"name", "renamed"}};
+                    expect(model.apply(makeMessage(gr::message::Command::Notify, "root", gr::block::property::kSetting, otherSetting)));
+                    expect(eq(model.rootBlock.computeDomainFallbackReason, std::string("kernel not translated: f64"))) << "another setting leaves it";
+
+                    const gr::property_map newDomain{{"compute_domain", "host"}};
+                    expect(model.apply(makeMessage(gr::message::Command::Notify, "root", gr::block::property::kSetting, newDomain)));
+                    expect(model.rootBlock.computeDomainFallbackReason.empty()) << "a new compute_domain clears it";
                 };
             };
         }

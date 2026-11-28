@@ -18,6 +18,7 @@
 #include <gnuradio-4.0/Profiler.hpp>
 #include <gnuradio-4.0/Scheduler.hpp>
 
+#include <gnuradio-4.0/device/DeviceContext.hpp>
 #include <gnuradio-4.0/testing/NullSources.hpp>
 
 #include <Dashboard.hpp>
@@ -31,7 +32,8 @@
 #include "blocks/ImControlTrigger.hpp"
 #include "blocks/ImPlotSink.hpp"
 #include "blocks/ImPropertyReadout.hpp"
-#include "blocks/TestSpectrumGenerator.hpp" // symbol unused here: static block registration
+#include "common/ProcessorGlyphs.hpp"
+#include "components/DataTypeStyle.hpp"
 
 #include <cmrc/cmrc.hpp>
 
@@ -1139,6 +1141,156 @@ struct TestApp : public test::ImGuiTestApp { // NOSONAR (more methods than autho
                 expect(nested != nullptr) << fatal;
                 expect(pickInDialog ? nested->isScheduler() : nested->isGraph()) << "the type of subgraph should match what the user asked for\n";
 
+                gState->stopScheduler();
+            };
+        }
+
+        {
+            ImGuiTest* t = IM_REGISTER_TEST(engine(), "flowgraph", "Blocks and links take their compute domain's colour and glyph: grey on the host, orange on a GPU, cyan on a TPU");
+            t->GuiFunc   = fitGuiFunc;
+
+            t->TestFunc = [](ImGuiTestContext* ctx) {
+                // ground truth by construction: `gpu` and `tpu` ask for domains the test serves (CPU contexts under device names),
+                // `stuck` for one nobody serves, the source for none; four blocks fit the view at 1:1. The copies keep running without
+                // a consumer: a graph whose blocks are all done leaves a scheduler that reads RUNNING but serves no messages
+                "each block shows its compute domain"_test = [&] {
+                    expect(gr::device::DeviceContextRegistry::instance().registerContext("gpu:qa_flowgraph", std::make_unique<gr::device::DeviceContextCpu>()) >> fatal);
+                    expect(gr::device::DeviceContextRegistry::instance().registerContext("tpu:qa_flowgraph", std::make_unique<gr::device::DeviceContextCpu>()) >> fatal);
+                    gState->reloadFromYamlString(R"(blocks:
+  - id: "gr::basic::SignalGenerator<float32>"
+    parameters:
+      name: "source"
+  - id: "gr::testing::Copy<float32>"
+    parameters:
+      name: "gpu"
+      compute_domain: "gpu:qa_flowgraph"
+      disconnect_on_done: false
+  - id: "gr::testing::Copy<float32>"
+    parameters:
+      name: "stuck"
+      compute_domain: "gpu:qa_unserved"
+      disconnect_on_done: false
+  - id: "gr::testing::Copy<float32>"
+    parameters:
+      name: "tpu"
+      compute_domain: "tpu:qa_flowgraph"
+      disconnect_on_done: false
+connections:
+  - [source, 0, gpu, 0]
+  - [source, 0, stuck, 0]
+  - [source, 0, tpu, 0]
+)");
+                    gState->waitForScheduler(ctx);
+                    gState->waitUntil(ctx, "the graph has blocks", [] { return gState->hasBlocks(); });
+                    while (gState->flowgraphPage.editorCount() > 1UZ) {
+                        gState->flowgraphPage.popEditor();
+                    }
+                    auto& editor = gState->flowgraphPage.currentEditor();
+                    waitForSettledView(ctx, editor);
+
+                    auto&       graphModel = gState->dashboard->session.graphModel;
+                    const auto  block      = [&graphModel](std::string_view name) { return static_cast<const UiGraphBlock*>(graphModel.recursiveFindBlockByName(std::string(name)).block); };
+                    const auto *source = block("source"), *gpu = block("gpu"), *stuck = block("stuck"), *tpu = block("tpu");
+                    expect(source && gpu && stuck && tpu) << fatal;
+                    expect(gpu->computeDomainFallbackReason.empty() && tpu->computeDomainFallbackReason.empty()) << "both run on their domains" << fatal;
+
+                    const auto onScreen = [&editor](const UiGraphBlock* node) {
+                        const ImRect rect = getBlockRegionCanvasSpace(editor, node);
+                        return ImRect(ax::NodeEditor::CanvasToScreen(rect.Min), ax::NodeEditor::CanvasToScreen(rect.Max));
+                    };
+                    // between two blocks' facing edges, inset past their port icons, which keep their data type's colour
+                    const auto linkArea = [&onScreen](const UiGraphBlock* from, const UiGraphBlock* to) {
+                        const ImRect a = onScreen(from), b = onScreen(to);
+                        return ImRect(ImVec2(a.Max.x + 8.f, std::min(a.Min.y, b.Min.y)), ImVec2(b.Min.x - 8.f, std::max(a.Max.y, b.Max.y)));
+                    };
+                    // the glyph's upper half, clear of the bottom border that runs through it
+                    const auto& style     = LookAndFeel::instance().flowgraph;
+                    const auto  glyphArea = [&editor, &style](const UiGraphBlock* node) {
+                        const ImVec2 corner = getBlockRegionCanvasSpace(editor, node).Max;
+                        const float  size   = style.computeDomainGlyphSize;
+                        const ImVec2 min    = ax::NodeEditor::CanvasToScreen(ImVec2(corner.x - style.nodeRounding - size - 1.f, corner.y - .5f * size - 1.f));
+                        const ImVec2 max    = ax::NodeEditor::CanvasToScreen(ImVec2(corner.x - style.nodeRounding + 1.f, corner.y));
+                        return ImRect(min, max - ImVec2(0.f, 2.f));
+                    };
+                    const auto& palette  = LookAndFeel::instance().palette();
+                    const auto  colourOf = [](unsigned int pixel) {
+                        const auto [red, green, blue] = CapturedPixels::rgb(pixel);
+                        return ImVec4(static_cast<float>(red) / 255.f, static_cast<float>(green) / 255.f, static_cast<float>(blue) / 255.f, 1.f);
+                    };
+                    const auto matches = [&colourOf](unsigned int pixel, const ImVec4& colour) {
+                        const ImVec4 seen = colourOf(pixel);
+                        return std::abs(seen.x - colour.x) < .1f && std::abs(seen.y - colour.y) < .1f && std::abs(seen.z - colour.z) < .1f;
+                    };
+                    const auto pixelsOf = [ctx, &matches](const ImRect& screenRect, const ImVec4& colour) { return std::ranges::count_if(captureSettledPixels(*ctx, screenRect).rgba, [&](unsigned int pixel) { return matches(pixel, colour); }); };
+                    // the chip's strokes are under 1 px wide: ink is any pixel at least 40 % of the way from the block's background to `colour`
+                    const auto inkOf = [&colourOf, &palette](unsigned int pixel, const ImVec4& colour) {
+                        const ImVec4& background = palette.flowgraphNodeBg;
+                        const ImVec4  seen       = colourOf(pixel);
+                        const ImVec4  d(colour.x - background.x, colour.y - background.y, colour.z - background.z, 0.f);
+                        const ImVec4  p(seen.x - background.x, seen.y - background.y, seen.z - background.z, 0.f);
+                        const float   share = (p.x * d.x + p.y * d.y + p.z * d.z) / (d.x * d.x + d.y * d.y + d.z * d.z);
+                        return share > .4f && std::hypot(p.x - share * d.x, p.y - share * d.y, p.z - share * d.z) < .15f;
+                    };
+                    const auto inkPixels    = [ctx, &inkOf](const ImRect& screenRect, const ImVec4& colour) { return std::ranges::count_if(captureSettledPixels(*ctx, screenRect).rgba, [&](unsigned int pixel) { return inkOf(pixel, colour); }); };
+                    const auto float32Style = ImGui::ColorConvertU32ToFloat4(styleForDataType("float32").color());
+
+                    for (char32_t codepoint = glyphs::kFirstCodepoint; codepoint <= glyphs::kLastCodepoint; ++codepoint) {
+                        expect(LookAndFeel::instance().fontGlyphs->IsGlyphInFont(static_cast<ImWchar>(codepoint))) << std::format("od-glyphs has U+{:04X}", static_cast<unsigned>(codepoint));
+                    }
+                    // ~80 of a 1.5 px border around a 63 x 42 px block are unblended; a chip glyph's upper half inks 14 pixels, none without it
+                    for (const auto& [node, colour, name] : {std::tuple{gpu, palette.flowgraphGpu, "GPU"}, std::tuple{tpu, palette.flowgraphTpu, "TPU"}}) {
+                        const auto border = pixelsOf(onScreen(node), colour);
+                        const auto glyph  = inkPixels(glyphArea(node), colour);
+                        expect(border > 40) << std::format("the {} block's border: {} pixels", name, border);
+                        expect(glyph > 6) << std::format("the {} block's glyph: {} pixels", name, glyph);
+                    }
+                    const auto gpuLink  = pixelsOf(linkArea(source, gpu), palette.flowgraphGpu); // each counts its own colour only: the three links fan out of one port
+                    const auto tpuLink  = pixelsOf(linkArea(source, tpu), palette.flowgraphTpu);
+                    const auto hostLink = pixelsOf(linkArea(source, stuck), palette.flowgraphHostLink);
+                    // a 1 px link keeps its full colour in at least every other column of the gap it crosses, anti-aliasing blends the rest
+                    const auto halfGap = [&](const UiGraphBlock* to) { return static_cast<std::ptrdiff_t>(linkArea(source, to).GetWidth() / 2.f); };
+                    expect(gpuLink > halfGap(gpu) && tpuLink > halfGap(tpu)) << std::format("the links into the device blocks: {} GPU, {} TPU pixels", gpuLink, tpuLink);
+                    expect(hostLink > halfGap(stuck)) << std::format("the host link: {} pixels", hostLink);
+                    expect(eq(pixelsOf(linkArea(source, stuck), float32Style), 0)) << "no link in its data type's colour";
+                    expect(eq(pixelsOf(onScreen(source), palette.flowgraphGpu), 0)) << "the host block's border";
+                    expect(eq(pixelsOf(onScreen(stuck), palette.flowgraphGpu), 0)) << "the block that fell back has the host's border";
+                    const auto glyphOnStuck = inkPixels(glyphArea(stuck), palette.flowgraphGpuError);
+                    expect(glyphOnStuck > 10) << std::format("the red glyph of the block that fell back: {} pixels", glyphOnStuck);
+
+                    // below the GPU block only its glyph has the GPU colour: its ink ends where the corner's rounding begins
+                    const auto outsideGlyph = [&](const UiGraphBlock* node) {
+                        const ImRect frame = onScreen(node);
+                        const ImRect below(ImVec2(frame.Min.x, frame.Max.y + 2.f), ImVec2(frame.Max.x + 20.f, frame.Max.y + 20.f));
+                        const auto   image = captureSettledPixels(*ctx, below);
+                        ImRect       ink(ImVec2(FLT_MAX, FLT_MAX), ImVec2(-FLT_MAX, -FLT_MAX));
+                        for (int y = 0; y < image.height; ++y) {
+                            for (int x = 0; x < image.width; ++x) {
+                                if (inkOf(image.rgba[static_cast<std::size_t>(y * image.width + x)], palette.flowgraphGpu)) {
+                                    ink.Add(below.Min + ImVec2(static_cast<float>(x), static_cast<float>(y)));
+                                }
+                            }
+                        }
+                        return std::pair{frame, ink};
+                    };
+                    const auto [gpuBlock, gpuInk] = outsideGlyph(gpu);
+                    const float roundingStart     = gpuBlock.Max.x - style.nodeRounding * viewZoom(editor);
+                    expect(gpuInk.Max.x <= roundingStart + .5f && gpuInk.Max.x > roundingStart - 3.f) << std::format("the glyph's ink ends at {}, where the rounding begins at {}", gpuInk.Max.x, roundingStart);
+
+                    // zoomed out, the glyph shrinks with its block: its ink shrinks with the area, under half of it below a zoom of 0.6
+                    const auto   glyphAtOne = inkPixels(glyphArea(gpu), palette.flowgraphGpu);
+                    auto*        context    = reinterpret_cast<ax::NodeEditor::Detail::EditorContext*>(editor._editorPtr);
+                    const ImRect view       = context->GetViewRect();
+                    context->NavigateTo(ImRect(view.GetCenter() - view.GetSize(), view.GetCenter() + view.GetSize()), true, 0.f);
+                    waitForSettledView(ctx, editor);
+                    const float zoomedOut  = viewZoom(editor);
+                    const auto  glyphSmall = inkPixels(glyphArea(gpu), palette.flowgraphGpu);
+                    expect(zoomedOut < .6f) << std::format("zoomed out: {}", zoomedOut);
+                    expect(2 * glyphSmall < glyphAtOne) << std::format("the GPU glyph: {} pixels at 1:1, {} at {:.2f}", glyphAtOne, glyphSmall, zoomedOut);
+
+                    ctx->MouseMoveToPos(glyphArea(stuck).GetCenter());
+                    gState->waitUntil(ctx, "the glyph of the block that fell back shows its tooltip", [] { return std::ranges::any_of(GImGui->Windows, [](const ImGuiWindow* window) { return window->WasActive && std::string_view(window->Name).contains("##Tooltip"); }); });
+                    captureScreenshot(*ctx, "Fit Window");
+                };
                 gState->stopScheduler();
             };
         }

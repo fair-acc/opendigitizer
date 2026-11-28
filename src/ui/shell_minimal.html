@@ -79,6 +79,14 @@
 
       var Module = {
         print: (...args) => console.log(args.join(' ')),
+        // a WebGPU build takes its device before SDL creates the WebGL context: created later, a hardware adapter's device never arrives
+        preRun: [() => {
+          if (typeof Module.gr4WebGpuStart !== 'function') {
+            return;
+          }
+          addRunDependency('gr4WebGpuStart');
+          Module.gr4WebGpuStart().then(() => removeRunDependency('gr4WebGpuStart'), () => removeRunDependency('gr4WebGpuStart'));
+        }],
         canvas: (() => {
           var canvas = document.getElementById('canvas');
 

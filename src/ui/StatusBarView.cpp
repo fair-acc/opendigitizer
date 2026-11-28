@@ -135,7 +135,7 @@ void StatusBarView::drawLogLine(float width) {
     const std::uint64_t errors   = counts[static_cast<std::size_t>(Level::fatal)] + counts[static_cast<std::size_t>(Level::failure)] + counts[static_cast<std::size_t>(Level::error)];
     const std::uint64_t warnings = counts[static_cast<std::size_t>(Level::warning)];
     const std::uint64_t others   = counts[static_cast<std::size_t>(Level::info)] + counts[static_cast<std::size_t>(Level::debug)] + counts[static_cast<std::size_t>(Level::trace)];
-    const auto          now      = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count());
+    const auto          now      = gr::settings::convertTimePointToUint64Ns(std::chrono::system_clock::now());
 
     const float startX   = ImGui::GetCursorPosX();
     const auto  levelDot = [](const char* id, bool isLit, ImVec4 colour, std::uint64_t count) {

@@ -107,6 +107,7 @@ cmrc_add_resource_library(
   assets/fair-logo/FAIR_Logo_rgb_72dpi_dark.png
   assets/fontawesome/fa-regular-400.otf
   assets/fontawesome/fa-solid-900.otf
+  assets/odglyphs/od-glyphs.ttf
   assets/roboto/Roboto-Medium-subscripts.ttf
   assets/xkcd/xkcd.otf
   assets/xkcd/xkcd-script.ttf)
@@ -131,6 +132,8 @@ cmrc_add_resource_library(
   assets/sampleDashboards/SpectrumRangeDemo.grc
   assets/sampleDashboards/StreamingStress.grc
   assets/sampleDashboards/UIControlledSines.grc
+  assets/sampleDashboards/WebGpuBenchmark.grc
+  assets/sampleDashboards/WebGpuDemo.grc
   assets/sampleDashboards/XtraCameraDemo.grc)
 if((NOT EMSCRIPTEN OR OD_WASM_STATIC_BLOCKLIBS)
    AND TARGET gnuradio4::GrAudioBlocksShared
@@ -294,6 +297,7 @@ add_library(
   common/LookAndFeel.hpp
   common/TouchHandler.hpp
   utils/Browser.hpp
+  utils/WebGpuRuntime.hpp
   utils/TransparentStringHash.hpp)
 target_include_directories(opendigitizer-ui-common PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>)
 target_link_libraries(
@@ -441,6 +445,8 @@ add_library(
   DashboardBlocks.hpp
   DashboardBlocksLocalisation.cpp
   DashboardBlocksSignal.cpp
+  DashboardBlocksSinkFrames.cpp
+  DashboardBlocksSinks.cpp
   DashboardBlocksVideo.cpp
   StatusBarView.cpp
   StatusBarView.hpp
@@ -452,7 +458,7 @@ add_library(
   blocks/SchedulerStateIndicator.hpp
   blocks/StridedWindow.hpp
   blocks/TagToSample.hpp
-  blocks/TestSpectrumGenerator.hpp
+  blocks/ToUncertainValue.hpp
   blocks/ImControl.hpp
   blocks/ImControlCamera.hpp
   blocks/ImControlDevice.hpp
@@ -478,6 +484,7 @@ add_library(
   components/Block.hpp
   components/BlockNeighboursPreview.cpp
   components/BlockNeighboursPreview.hpp
+  components/ComputeDomainTag.hpp
   components/DashboardPreview.cpp
   components/DashboardPreview.hpp
   components/DataTypeStyle.cpp
@@ -575,6 +582,11 @@ target_link_libraries(${target_name} PRIVATE ${target_name}lib opendigitizer-opt
 
 if(EMSCRIPTEN)
   target_link_options(${target_name} PRIVATE ${_od_emscripten_main_link_options})
+  # writes index.kernels.json, the WGSL pipelines of the device-capable blocks, then strips the name section only the
+  # translator reads; a no-op without GR_ENABLE_WEBGPU
+  if(COMMAND gr_translate_webgpu_kernels)
+    gr_translate_webgpu_kernels(${target_name} STRIP_NAMES)
+  endif()
 
   if(OD_WASM_STATIC_BLOCKLIBS)
     message(STATUS "OD_WASM_STATIC_BLOCKLIBS: linking Gr*Blocks into the main module (no SIDE_MODULE plugins)")

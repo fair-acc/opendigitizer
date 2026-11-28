@@ -231,7 +231,10 @@ struct TestApp : public test::ImGuiTestApp {
                     state.background = background;
                     test::waitForStableCharts(ctx, *state.dashboard);
                     const CapturedPixels pixels  = captureSettledPixels(*ctx, chartsBounds());
-                    const auto           magenta = std::ranges::count_if(pixels.rgba, [](unsigned int c) { return (c & 0xFFU) > 240U && ((c >> 8U) & 0xFFU) < 15U && ((c >> 16U) & 0xFFU) > 240U; });
+                    const auto           magenta = std::ranges::count_if(pixels.rgba, [](unsigned int c) {
+                        const auto [red, green, blue] = CapturedPixels::rgb(c);
+                        return red > 240 && green < 15 && blue > 240;
+                    });
                     return static_cast<double>(magenta) / static_cast<double>(pixels.rgba.size());
                 };
                 state.mode                                               = Mode::View;

@@ -55,9 +55,9 @@ struct SpectrumView : gr::Block<SpectrumView, gr::Drawable<gr::UICategory::Conte
     A<gr::Size_t, "histogram decay tau", gr::Doc<"histogram decay in frames (0 = infinite)">> histogram_decay_tau_frames = 100U;
     A<bool, "show current overlay", gr::Visible>                                              show_current_overlay       = true;
 
-    A<gr::Size_t, "history depth", gr::Visible, gr::Limits<16U, 4096U>>                                      n_history        = 256U;
-    A<ImPlotColormap_, "colormap", gr::Visible>                                                              colormap         = ImPlotColormap_Viridis;
-    A<bool, "GPU acceleration", gr::Doc<"use GPU texture for rendering (falls back to CPU if unavailable)">> gpu_acceleration = true;
+    A<gr::Size_t, "history depth", gr::Visible, gr::Limits<16U, 4096U>>                                                                                                               n_history             = 256U;
+    A<ImPlotColormap_, "colormap", gr::Visible>                                                                                                                                       colormap              = ImPlotColormap_Viridis;
+    A<DensityNormalisation, "density normalisation", gr::Visible, gr::Doc<"peak: a steady signal at full scale (p ← p (1 − 1/τ) + 1, → τ); maximum: the densest cell at full scale">> density_normalisation = DensityNormalisation::peak;
 
     A<float, "top pane ratio", gr::Limits<0.2f, 0.8f>, gr::Doc<"fraction of height for top pane">> top_pane_ratio = 0.4f;
 
@@ -84,7 +84,7 @@ struct SpectrumView : gr::Block<SpectrumView, gr::Drawable<gr::UICategory::Conte
     RangeLabelsSetting     show_range_labels = true;
     F0LabelsSetting        show_f0_labels    = true;
 
-    GR_MAKE_REFLECTABLE(SpectrumView, chart_name, data_sinks, show_legend, show_grid, top_pane_mode, show_max_hold, show_min_hold, show_average, trace_color, decay_tau_frames, amplitude_bins, histogram_decay_tau_frames, show_current_overlay, n_history, colormap, gpu_acceleration, top_pane_ratio, x_auto_scale, y_auto_scale, x_min, x_max, y_min, y_max, range_style, range_min, range_max, range_min_width, range_color, range_min_targets, range_max_targets, f0_style, f0, f0_color, f0_targets, follow_inputs, snap_to_bins, show_range_labels, show_f0_labels);
+    GR_MAKE_REFLECTABLE(SpectrumView, chart_name, data_sinks, show_legend, show_grid, top_pane_mode, show_max_hold, show_min_hold, show_average, trace_color, decay_tau_frames, amplitude_bins, histogram_decay_tau_frames, show_current_overlay, n_history, colormap, density_normalisation, top_pane_ratio, x_auto_scale, y_auto_scale, x_min, x_max, y_min, y_max, range_style, range_min, range_max, range_min_width, range_color, range_min_targets, range_max_targets, f0_style, f0, f0_color, f0_targets, follow_inputs, snap_to_bins, show_range_labels, show_f0_labels);
 
     std::unordered_map<std::string, TraceAccumulator> _tracesPerSink;
     std::unordered_map<std::string, std::size_t>      _topPaneSampleCountPerSink;
@@ -93,7 +93,6 @@ struct SpectrumView : gr::Block<SpectrumView, gr::Drawable<gr::UICategory::Conte
     std::size_t                                       _lastWaterfallSampleCount = std::numeric_limits<std::size_t>::max();
     std::array<float, 2UZ>                            _rowRatios                = {0.4f, 0.6f};
     std::array<std::string, 6UZ>                      _unitStore{};
-    std::string                                       _waterfallTimeUnit;
 
     std::optional<FrequencySpan> _lastRenderInfo;
     ImPlotCond                   _sharedXCond = ImPlotCond_Once; // computed once per frame, shared across both panes
@@ -117,7 +116,6 @@ struct SpectrumView : gr::Block<SpectrumView, gr::Drawable<gr::UICategory::Conte
     gr::work::Status draw(const gr::property_map& config = {}) {
         [[maybe_unused]] auto [plotFlags, plotSize, showLegend, chartMode, showGrid, chartStyle] = prepareDrawPrologue(config);
 
-        _waterfall.setPreferGpu(gpu_acceleration);
         if (_pendingResizeTime == 0.0 && _waterfall.width() > 0) {
             _waterfall.resizeHistory(static_cast<std::size_t>(n_history));
         }
@@ -161,6 +159,8 @@ struct SpectrumView : gr::Block<SpectrumView, gr::Drawable<gr::UICategory::Conte
         }
 
         ImPlot::PushStyleVar(ImPlotStyleVar_FitPadding, LookAndFeel::instance().chartStyle.spectrumFitPadding);
+        _xDecorationEntryOffset = 1UZ; // the top pane's frequency axis repeats the waterfall's below it: hidden unless a second X entry says otherwise
+        _x1DecorationFallback   = {.placement = AxisPlacement::None};
         if (ImPlot::BeginPlot("##spectrum", ImVec2(0, 0), plotFlags)) {
             setupSingleAxis(true, ImAxis_X1, paneSize, showGrid, LabelFormat::MetricInline, /*foreground=*/true, _sharedXCond);
             setupSingleAxis(false, ImAxis_Y1, paneSize, showGrid);
@@ -199,7 +199,7 @@ struct SpectrumView : gr::Block<SpectrumView, gr::Drawable<gr::UICategory::Conte
 
             const std::string sinkKey = std::string(sink.uniqueName());
             const std::size_t nNew    = consumeNewData(_topPaneSampleCountPerSink[sinkKey], sink.totalSampleCount());
-            _density.accumulateAndPlot(f, nNew, logRange, ampBins, static_cast<double>(histogram_decay_tau_frames), effYMin, effYMax, colormap.value, gpu_acceleration);
+            _density.accumulateAndPlot(f, nNew, logRange, ampBins, static_cast<double>(histogram_decay_tau_frames), effYMin, effYMax, colormap.value, density_normalisation);
 
             ImVec4 traceBase = sinkColor(trace_color);
             drawTraceOverlays(_tracesPerSink[sinkKey], f, nNew, static_cast<double>(decay_tau_frames), traceBase, show_max_hold, show_min_hold, show_average);
@@ -219,11 +219,13 @@ struct SpectrumView : gr::Block<SpectrumView, gr::Drawable<gr::UICategory::Conte
         ImPlot::PushStyleColor(ImPlotCol_AxisGrid, contrastingGridColor(colormap.value));
         ImPlot::PushStyleVar(ImPlotStyleVar_FitPadding, LookAndFeel::instance().chartStyle.spectrumFitPadding);
 
+        _xDecorationEntryOffset = 0UZ;
+        _x1DecorationFallback   = {};
         if (ImPlot::BeginPlot("##waterfall", ImVec2(0, 0), plotFlags | ImPlotFlags_NoLegend)) {
             setupSingleAxis(true, ImAxis_X1, paneSize, showGrid, LabelFormat::None, /*foreground=*/true, _sharedXCond);
-            setupTimeAxis(ImAxis_Y1, AxisScale::LinearReverse, showGrid, _waterfallTimeUnit);
+            setupTimeAxis(ImAxis_Y1, AxisScale::LinearReverse, showGrid);
 
-            const auto renderInfo = _waterfall.pushNewSpectra(_signalSinks, _lastWaterfallSampleCount, logFreqRange(parseAxisConfig(this->ui_constraints.value, AxisKind::X)), static_cast<std::size_t>(n_history), gpu_acceleration, colormap.value, [&] { return std::pair{_topPaneYMin, _topPaneYMax}; });
+            const auto renderInfo = _waterfall.pushNewSpectra(_signalSinks, _lastWaterfallSampleCount, logFreqRange(parseAxisConfig(this->ui_constraints.value, AxisKind::X)), static_cast<std::size_t>(n_history), colormap.value, [&] { return std::pair{_topPaneYMin, _topPaneYMax}; });
             if (renderInfo) {
                 _lastRenderInfo = renderInfo;
             }
@@ -238,9 +240,7 @@ struct SpectrumView : gr::Block<SpectrumView, gr::Drawable<gr::UICategory::Conte
             setupFinish();
 
             constexpr bool kNewestAtTop = true;
-            if (renderInfo) {
-                _waterfall.render(renderInfo->freqMin, renderInfo->freqMax, yLo, yHi, kNewestAtTop);
-            } else if (_waterfall.filledRows() > 0 && _lastRenderInfo) {
+            if (_lastRenderInfo && (renderInfo || _waterfall.filledRows() > 0)) {
                 _waterfall.render(_lastRenderInfo->freqMin, _lastRenderInfo->freqMax, yLo, yHi, kNewestAtTop);
             }
             drawFrequencyMarkers(1UZ);

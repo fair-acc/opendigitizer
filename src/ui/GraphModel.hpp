@@ -66,10 +66,10 @@ struct UiGraphEdge {
     gr::PortDefinition edgeDestinationPortDefinition;
 
     std::int32_t edgeWeight        = 0;
-    std::size_t  edgeMinBufferSize = 0;
-    std::size_t  edgeBufferSize    = 0;
-    std::size_t  edgeNReaders      = 0;
-    std::size_t  edgeNWriters      = 0;
+    gr::Size_t   edgeMinBufferSize = 0;
+    gr::Size_t   edgeBufferSize    = 0;
+    gr::Size_t   edgeNReaders      = 0;
+    gr::Size_t   edgeNWriters      = 0;
     std::string  edgeName;
     std::string  edgeState;
     std::string  edgeType;
@@ -158,6 +158,8 @@ struct UiGraphBlock {
 
     gr::property_map blockSettings;
     gr::property_map blockMetaInformation;
+
+    std::string computeDomainFallbackReason; // GR4's ComputeDomainFallback for the current run: ran on the host instead; empty: none
 
     std::map<std::string, SettingsMetaInformation> blockSettingsMetaInformation;
 

@@ -45,8 +45,8 @@ struct SpectrumDensity : gr::Block<SpectrumDensity, gr::Drawable<gr::UICategory:
     A<std::uint32_t, "trace color", gr::Visible, gr::Unit<"Color">, gr::Doc<"RGB colour for overlay lines (0xRRGGBB)">> trace_color            = 0xFF8C00U;
     A<gr::Size_t, "trace decay tau", gr::Doc<"trace decay in frames (0 = infinite hold)">>                              trace_decay_tau_frames = 25U;
 
-    A<bool, "GPU acceleration", gr::Doc<"use GPU shaders for histogram (falls back to CPU if unavailable)">> gpu_acceleration = true;
-    A<bool, "adaptive Y range", gr::Visible, gr::Doc<"rebin histogram to visible Y-axis range on zoom">>     adaptive_y_range = true;
+    A<DensityNormalisation, "density normalisation", gr::Visible, gr::Doc<"peak: a steady signal at full scale (p ← p (1 − 1/τ) + 1, → τ); maximum: the densest cell at full scale">> density_normalisation = DensityNormalisation::peak;
+    A<bool, "adaptive Y range", gr::Visible, gr::Doc<"rebin histogram to visible Y-axis range on zoom">>                                                                              adaptive_y_range      = true;
 
     A<bool, "X auto-scale"> x_auto_scale = true;
     A<bool, "Y auto-scale"> y_auto_scale = false;
@@ -71,7 +71,7 @@ struct SpectrumDensity : gr::Block<SpectrumDensity, gr::Drawable<gr::UICategory:
     RangeLabelsSetting     show_range_labels = true;
     F0LabelsSetting        show_f0_labels    = true;
 
-    GR_MAKE_REFLECTABLE(SpectrumDensity, chart_name, chart_title, data_sinks, show_legend, show_grid, amplitude_bins, colormap, histogram_decay_tau_frames, gpu_acceleration, adaptive_y_range, show_current_overlay, show_max_hold, show_min_hold, show_average, trace_color, trace_decay_tau_frames, x_auto_scale, y_auto_scale, x_min, x_max, y_min, y_max, range_style, range_min, range_max, range_min_width, range_color, range_min_targets, range_max_targets, f0_style, f0, f0_color, f0_targets, follow_inputs, snap_to_bins, show_range_labels, show_f0_labels);
+    GR_MAKE_REFLECTABLE(SpectrumDensity, chart_name, chart_title, data_sinks, show_legend, show_grid, amplitude_bins, colormap, histogram_decay_tau_frames, density_normalisation, adaptive_y_range, show_current_overlay, show_max_hold, show_min_hold, show_average, trace_color, trace_decay_tau_frames, x_auto_scale, y_auto_scale, x_min, x_max, y_min, y_max, range_style, range_min, range_max, range_min_width, range_color, range_min_targets, range_max_targets, f0_style, f0, f0_color, f0_targets, follow_inputs, snap_to_bins, show_range_labels, show_f0_labels);
 
     DensityHistogram             _density;
     TraceAccumulator             _traces;
@@ -135,7 +135,7 @@ struct SpectrumDensity : gr::Block<SpectrumDensity, gr::Drawable<gr::UICategory:
 
     void enableAxisAutoFit(AxisKind axis, std::size_t axisIndex = 0UZ) {
         if (axis == AxisKind::Y) {
-            writeAutoScale(y_auto_scale, axisIndex, true);
+            writeAxisField(y_auto_scale, axisIndex, true);
             return;
         }
         Chart::enableAxisAutoFit(axis, axisIndex);
@@ -154,7 +154,8 @@ struct SpectrumDensity : gr::Block<SpectrumDensity, gr::Drawable<gr::UICategory:
 
             auto [xQuantity, xUnit] = sinkAxisInfo(true);
             AxisCategory xCat{.quantity = xQuantity, .unit = xUnit};
-            axis::setupAxis(ImAxis_X1, xCat, format, axisLabelWidthOrDefault(dashCfg, defaultAxisLabelWidthFor(ImAxis_X1, plotSize)), minLimit, maxLimit, 1UZ, scale, _unitStore, showGrid, /*foreground=*/true);
+
+            axis::setupAxis(ImAxis_X1, xCat, format, axisLabelWidthOrDefault(dashCfg, defaultAxisLabelWidthFor(ImAxis_X1, plotSize)), minLimit, maxLimit, 1UZ, scale, _unitStore, showGrid, /*foreground=*/true, ImPlotCond_Always, nullptr, this->decorated(ImAxis_X1, AxisKind::X));
         }
 
         // always finite limits: the heatmap gives ImPlot's AutoFit no plottable data.
@@ -170,7 +171,8 @@ struct SpectrumDensity : gr::Block<SpectrumDensity, gr::Drawable<gr::UICategory:
             const auto limitCond = trackLimitsCond(false, minLimit, maxLimit);
 
             AxisCategory yCat{.quantity = yQuantity, .unit = yUnit};
-            axis::setupAxis(ImAxis_Y1, yCat, format, axisLabelWidthOrDefault(dashCfg, defaultAxisLabelWidthFor(ImAxis_Y1, plotSize)), minLimit, maxLimit, 1UZ, scale, _unitStore, showGrid, /*foreground=*/true, limitCond);
+
+            axis::setupAxis(ImAxis_Y1, yCat, format, axisLabelWidthOrDefault(dashCfg, defaultAxisLabelWidthFor(ImAxis_Y1, plotSize)), minLimit, maxLimit, 1UZ, scale, _unitStore, showGrid, /*foreground=*/true, limitCond, nullptr, this->decorated(ImAxis_Y1, AxisKind::Y));
         }
     }
 
@@ -187,7 +189,7 @@ struct SpectrumDensity : gr::Block<SpectrumDensity, gr::Drawable<gr::UICategory:
             }
 
             const std::size_t nNew = consumeNewData(_lastSampleCount, sink.totalSampleCount());
-            _density.accumulateAndPlot(f, nNew, logRange, ampBins, static_cast<double>(histogram_decay_tau_frames), effYMin, effYMax, colormap.value, gpu_acceleration);
+            _density.accumulateAndPlot(f, nNew, logRange, ampBins, static_cast<double>(histogram_decay_tau_frames), effYMin, effYMax, colormap.value, density_normalisation);
 
             ImVec4 traceBase = sinkColor(trace_color);
             drawTraceOverlays(_traces, f, nNew, static_cast<double>(trace_decay_tau_frames), traceBase, show_max_hold, show_min_hold, show_average);

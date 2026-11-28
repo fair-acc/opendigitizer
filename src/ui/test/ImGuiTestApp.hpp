@@ -10,6 +10,7 @@
 #include "imgui_test_engine/imgui_te_context.h"
 #include "imgui_test_engine/imgui_te_engine.h"
 #include "imgui_test_engine/imgui_te_internal.h"
+#include <implot_internal.h>
 #pragma GCC diagnostic pop
 
 #include <memory>
@@ -51,6 +52,13 @@ struct ImGuiTestApp {
         int                       width  = 0;
         int                       height = 0;
         std::vector<unsigned int> rgba; // RGBA8, row-major
+
+        struct Rgb {
+            int red;
+            int green;
+            int blue;
+        };
+        [[nodiscard]] static constexpr Rgb rgb(unsigned int pixel) noexcept { return {static_cast<int>(pixel & 0xFFU), static_cast<int>((pixel >> 8U) & 0xFFU), static_cast<int>((pixel >> 16U) & 0xFFU)}; }
     };
 
     std::unique_ptr<ImGuiApp> _app;
@@ -77,6 +85,18 @@ struct ImGuiTestApp {
     [[nodiscard]] static CapturedPixels capturePixels(ImGuiTestContext& ctx, const ImRect& screenRect);
     // the first capture equal to the one of the frame before: the drawing has settled
     [[nodiscard]] static CapturedPixels captureSettledPixels(ImGuiTestContext& ctx, const ImRect& screenRect);
+
+    /// the first of ImPlot's plots that `matches`, by its axes (a "##" title leaves no text to match); ImPlot keeps a plot's
+    /// last frame after it ends
+    [[nodiscard]] static const ImPlotPlot* findPlot(auto matches) {
+        ImPlotContext& context = *ImPlot::GetCurrentContext();
+        for (int i = 0; i < context.Plots.GetBufSize(); ++i) {
+            if (const ImPlotPlot* plot = context.Plots.GetByIndex(i); plot != nullptr && matches(*plot)) {
+                return plot;
+            }
+        }
+        return nullptr;
+    }
 
     // for debugging
     static void printWindows();

@@ -21,7 +21,7 @@ constexpr std::uint32_t rgbToImGuiABGR(std::uint32_t rgb, std::uint8_t alpha = 0
 constexpr std::uint32_t float3ToRGB(const float (&rgb)[3]) { return (static_cast<std::uint32_t>(rgb[0] * 255.0f) << 16) | (static_cast<std::uint32_t>(rgb[1] * 255.0f) << 8) | static_cast<std::uint32_t>(rgb[2] * 255.0f); }
 
 constexpr std::uint32_t float4ToRGBA(ImVec4 float4) {
-    const auto saturate = [](float f) { return (f < 0.0f) ? 0.0f : (f > 1.0f) ? 1.0f : f; };
+    const auto saturate = [](float f) { return std::clamp(f, 0.0f, 1.0f); };
     auto       r        = static_cast<std::uint32_t>(saturate(float4.x) * 255.0f + 0.5f);
     auto       g        = static_cast<std::uint32_t>(saturate(float4.y) * 255.0f + 0.5f);
     auto       b        = static_cast<std::uint32_t>(saturate(float4.z) * 255.0f + 0.5f);
@@ -29,31 +29,23 @@ constexpr std::uint32_t float4ToRGBA(ImVec4 float4) {
     return (r << 24) | (g << 16) | (b << 8) | a;
 }
 
-inline ImVec4 lightenColorByReducingSaturation(const ImVec4& color, float percent) {
+inline ImVec4 scaledHsv(const ImVec4& color, float saturationScale, float valueScale) {
     float h;
     float s;
     float v;
     ImGui::ColorConvertRGBtoHSV(color.x, color.y, color.z, h, s, v);
-    s = std::max(0.0f, s * percent);
     float r;
     float g;
     float b;
-    ImGui::ColorConvertHSVtoRGB(h, s, v, r, g, b);
+    ImGui::ColorConvertHSVtoRGB(h, std::max(0.0f, s * saturationScale), std::max(0.0f, v * valueScale), r, g, b);
     return {r, g, b, color.w};
 }
 
-inline ImVec4 darkenColorByReducingValue(const ImVec4& color, float percent) {
-    float h;
-    float s;
-    float v;
-    ImGui::ColorConvertRGBtoHSV(color.x, color.y, color.z, h, s, v);
-    v = std::max(0.0f, v * percent);
-    float r;
-    float g;
-    float b;
-    ImGui::ColorConvertHSVtoRGB(h, s, v, r, g, b);
-    return {r, g, b, color.w};
-}
+/// ITU-R BT.601 luma: 0 for black to 1 for white
+constexpr float luminance(const ImVec4& color) { return 0.299f * color.x + 0.587f * color.y + 0.114f * color.z; }
+
+/// black on a light `background`, white on a dark one
+constexpr ImVec4 contrastingText(const ImVec4& background) { return luminance(background) > .5f ? ImVec4{0.f, 0.f, 0.f, 1.f} : ImVec4{1.f, 1.f, 1.f, 1.f}; }
 
 inline ImVec4 overlayTransparentOverOpaque(ImVec4 color, ImVec4 opaqueBackground) {
     const float a = color.w;
@@ -85,11 +77,13 @@ struct Palette {
     ImVec4 flowgraphBg;
     ImVec4 flowgraphNodeBg;
     ImVec4 flowgraphNodeBorder;
-    ImVec4 flowgraphSubgraphBorder;
-    ImVec4 flowgraphSubgraphBorderText;
+    ImVec4 flowgraphGpu;
+    ImVec4 flowgraphTpu;
+    ImVec4 flowgraphHostLink;
     ImVec4 flowgraphUiControlHighlight;
     ImVec4 flowgraphUiControlConnectionIndicator;
     ImVec4 flowgraphUiControlPendingConnection;
+    ImVec4 flowgraphGpuError;
     ImVec4 flowgraphUiControlUnlink;
     ImVec4 flowgraphUiControlUnlinkPressed;
     ImVec4 flowgraphNodeMenuButtonHovered;
@@ -177,10 +171,14 @@ struct ChartStyle {
     ImVec2 spectrumFitPadding     = {0.f, .05f};
     ImVec4 frequencyMarkerColour  = {.95f, .55f, .1f, 1.f}; // spectrum charts' frequency range and f0: orange, legible on light and dark
     float  rangeFillAlpha         = .2f;                    // the range's shaded area: 80 % translucent
-    float  rangeLineWidth         = 2.f;                    // px, the range's edges and the f0 line
-    float  f0DashLength           = 6.f;                    // px, dash and gap of a dashed f0
-    double markerInitialInset     = .05;                    // an unset range starts this fraction of the visible span inside its edges
-    float  menuSpinnerSpacing     = 2.f;                    // between the spinner buttons and their drag field
+    float  errorSurfaceAlpha      = .25f;                   // multiplies the signal colour's alpha
+    float  errorBarAlpha          = .8f;
+    float  rangeLineWidth         = 2.f; // px, the range's edges and the f0 line
+    float  f0DashLength           = 6.f; // px, dash and gap of a dashed f0
+    double markerInitialInset     = .05; // an unset range starts this fraction of the visible span inside its edges
+    float  menuSpinnerSpacing     = 2.f; // between the spinner buttons and their drag field
+    float  canvasAxisLabelPadding = 2.f; // px between a canvas axis' tick and its label
+    float  canvasAxisColumnGap    = 6.f; // px between two canvas axes on one edge
     float  menuAxisLimitDragWidth = 70.f;
     float  menuAxisComboWidth     = 80.f;
     float  menuSettingWidgetWidth = 120.f;
@@ -188,10 +186,8 @@ struct ChartStyle {
     float  historyDepthComboWidth = 65.f;
     int    colormapPreviewSteps   = 32;
 
-    float       imageTileGap       = .04f;          // between ImageChart tiles, as a fraction of the larger tile extent
-    std::size_t imageCpuMaxCells   = 512UZ * 512UZ; // ImageChart CPU heatmap budget; larger frames are decimated
-    std::size_t imageCpuMaxRects   = 120UZ * 120UZ; // CPU cells of a layer with transparency: 4 vertices each, within 16-bit indices (WebGL2)
-    ImVec2      imageStatusPadding = {6.f, 4.f};    // skipped-frame indicator, from the plot's top-left corner
+    float  imageTileGap       = .04f;       // between ImageChart tiles, as a fraction of the larger tile extent
+    ImVec2 imageStatusPadding = {6.f, 4.f}; // skipped-frame indicator, from the plot's top-left corner
 
     float scatterMarkerSize       = 2.f; // px, YYChart scatter markers
     float scatterNewestMarkerSize = 5.f; // px, the newest point
@@ -313,6 +309,8 @@ struct LookAndFeel {
         float nestedEditorInset                    = 16.f;
         float computeDomainTagMaxOffset            = 30.f; // from the left edge of the subgraph
         float computeDomainTagOffsetRatio          = .2f;  // of the space available for the tag
+        float computeDomainGlyphSize               = 14.f; // canvas units
+        float computeDomainGlyphSlashWidth         = .12f; // of the glyph's size
         float uiControlRegionGap                   = 16.f; // around the UI control block region and between its blocks
         float uiControlDragHandleRadius            = 5.f;
         float uiControlDragHandleHoveredRadius     = 6.f;
@@ -352,6 +350,7 @@ struct LookAndFeel {
     ImFont*                fontIconsSolid;
     ImFont*                fontIconsSolidBig;
     ImFont*                fontIconsSolidLarge;
+    ImFont*                fontGlyphs; // OpenDigitizer's own glyphs (ProcessorGlyphs.hpp)
     std::chrono::seconds   editPaneCloseDelay{15};
     float                  editPaneCloseBarHeight                  = 3.f;
     float                  requiredDragDistanceForWindowUndock     = 30.f;
@@ -361,6 +360,7 @@ struct LookAndFeel {
     float                  splitterRatioDeltaPerFrame              = .02f; // how much of (splitter / rest of screen) fraction to add
     float                  splitterRatioDeltaPerFrameSlow          = .01f;
     float                  keypadRounding                          = 6.f;
+    std::size_t            minVisibleLabelCharacters               = 4UZ;
     ImVec2                 keypadPortraitSize                      = {400.f, 600.f};
     ImVec2                 keypadLandscapeSize                     = {485.f, 400.f};
     float                  popupMenuButtonRounding                 = 6.f;

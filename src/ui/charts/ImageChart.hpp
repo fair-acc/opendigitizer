@@ -31,78 +31,25 @@
 
 namespace gr::od::charts {
 
-/// RGBA8 texture holding the latest frame; GL_RGBA bytes are R,G,B,A, i.e. 0xAABBGGRR on little-endian hosts
-struct ImageTexture {
-    GLuint      _id      = 0U;
-    std::size_t _rows    = 0UZ;
-    std::size_t _columns = 0UZ;
-    bool        _failed  = false;
-
-    ImageTexture() = default;
-    ImageTexture(ImageTexture&& other) noexcept : _id(std::exchange(other._id, 0U)), _rows(other._rows), _columns(other._columns), _failed(other._failed) {}
-    ImageTexture& operator=(ImageTexture&& other) noexcept {
-        std::swap(_id, other._id);
-        std::swap(_rows, other._rows);
-        std::swap(_columns, other._columns);
-        std::swap(_failed, other._failed);
-        return *this;
-    }
-    ~ImageTexture() {
-        if (_id != 0U) {
-            glDeleteTextures(1, &_id);
-        }
-    }
-
-    [[nodiscard]] bool upload(std::span<const std::uint32_t> pixels, std::size_t rows, std::size_t columns) {
-        if (_id == 0U && !_failed) {
-            glGenTextures(1, &_id);
-            _failed = _id == 0U;
-        }
-        if (_id == 0U) {
-            return false;
-        }
-        withTextureBound(_id, [&] {
-            if (rows != _rows || columns != _columns) {
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-                glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, static_cast<GLsizei>(columns), static_cast<GLsizei>(rows), 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
-                _rows    = rows;
-                _columns = columns;
-            } else {
-                glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, static_cast<GLsizei>(columns), static_cast<GLsizei>(rows), GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
-            }
-        });
-        return true;
-    }
-};
-
 enum class ImageComposition { tile, overlay };
 
 struct ImageLayer {
-    ImageTexture               texture;
-    std::vector<std::uint32_t> rgba;   // texture upload buffer, alpha 0 outside the layer's transparency range
-    std::vector<double>        scalar; // CPU fallback, decimated, rows flipped for PlotHeatmap
-    std::size_t                rows = 0UZ, columns = 0UZ, scalarRows = 0UZ, scalarColumns = 0UZ;
-    std::pair<double, double>  zRange{0.0, 1.0};
-    std::pair<double, double>  valueRange{0.0, 1.0}; // of the last frame, for the shared tile scale
-    std::uint64_t              shown     = 0U;       // generation on screen
-    std::uint64_t              displayed = 0U;
-    std::uint64_t              skipped   = 0U;
-    double                     shownRate = 0.0, receivedRate = 0.0; // Hz, smoothed
-    double                     lastTime = -1.0;
-    bool                       onGpu    = false;
+    gl::Texture2D              texture{gl::Texture2D::Options{.minFilter = GL_LINEAR}};
+    std::vector<std::uint32_t> rgba; // texture upload buffer, alpha 0 outside the layer's transparency range
+
+    std::size_t               rows = 0UZ, columns = 0UZ;
+    std::pair<double, double> zRange{0.0, 1.0};
+    std::pair<double, double> valueRange{0.0, 1.0}; // of the last frame, for the shared tile scale
+    std::uint64_t             shown     = 0U;       // generation on screen
+    std::uint64_t             displayed = 0U;
+    std::uint64_t             skipped   = 0U;
+    double                    shownRate = 0.0, receivedRate = 0.0; // Hz, smoothed
+    double                    lastTime = -1.0;
+    bool                      uploaded = false; // the texture holds the latest frame; not without a GL context
 };
 
 /// frames a sink received after the generation on screen and before `next`, the one shown now; none before the first
 [[nodiscard]] constexpr std::uint64_t skippedBetween(std::uint64_t shown, std::uint64_t next) noexcept { return shown == 0U || next <= shown ? 0U : next - shown - 1U; }
-
-/// the CPU fallback's step in rows and columns, so a rows x columns frame fits within `budget` cells
-[[nodiscard]] inline std::size_t cpuDecimationStep(std::size_t rows, std::size_t columns, std::size_t budget) noexcept {
-    const double cellsPerBudget = static_cast<double>(rows * columns) / static_cast<double>(std::max<std::size_t>(1UZ, budget));
-    return std::max<std::size_t>(1UZ, static_cast<std::size_t>(std::ceil(std::sqrt(cellsPerBudget))));
-}
 
 struct ImageChart : gr::Block<ImageChart, gr::Drawable<gr::UICategory::Content, "ImGui">>, Chart {
     using Description = gr::Doc<R""(@brief Displays Tensor<T> frames: uint32 as packed 0xAARRGGBB colour, float/double through `colormap`.
@@ -114,24 +61,24 @@ Frames a sink received but the chart never showed are counted and indicated.)"">
     using A = gr::Annotated<T, description, Arguments...>;
 
     static constexpr std::string_view kChartTypeName    = "ImageChart";
-    static constexpr SignalKind       kSupportedSignals = SignalKind::Image2D;
+    static constexpr SignalKind       kSupportedSignals = SignalKind::Image2D | SignalKind::Dataset1D; // a rank-2 DataSet is an image
 
-    A<std::string, "chart name", gr::Visible>                                                                                                     chart_name;
-    A<std::string, "chart title">                                                                                                                 chart_title;
-    A<std::vector<std::string>, "data sinks", gr::Visible>                                                                                        data_sinks       = {};
-    A<bool, "show legend", gr::Visible>                                                                                                           show_legend      = false;
-    A<bool, "show grid", gr::Visible>                                                                                                             show_grid        = false;
-    A<ImPlotColormap_, "colormap", gr::Visible, gr::Doc<"for float/double frames">>                                                               colormap         = ImPlotColormap_Greys;
-    A<bool, "reverse colormap", gr::Doc<"ImPlot's Greys runs white to black">>                                                                    reverse_colormap = true;
-    A<bool, "GPU acceleration", gr::Doc<"use a GPU texture (falls back to a CPU heatmap if unavailable)">>                                        gpu_acceleration = true;
-    A<bool, "X auto-scale">                                                                                                                       x_auto_scale     = true;
-    A<bool, "Y auto-scale">                                                                                                                       y_auto_scale     = true;
-    A<ImageComposition, "composition", gr::Visible, gr::Doc<"several inputs: tile = grid, overlay = layers in input order">>                      composition      = ImageComposition::tile;
+    A<std::string, "chart name", gr::Visible>                                       chart_name;
+    A<std::string, "chart title">                                                   chart_title;
+    A<std::vector<std::string>, "data sinks", gr::Visible>                          data_sinks       = {};
+    A<bool, "show legend", gr::Visible>                                             show_legend      = false;
+    A<bool, "show grid", gr::Visible>                                               show_grid        = false;
+    A<ImPlotColormap_, "colormap", gr::Visible, gr::Doc<"for float/double frames">> colormap         = ImPlotColormap_Greys;
+    A<bool, "reverse colormap", gr::Doc<"ImPlot's Greys runs white to black">>      reverse_colormap = true;
+
+    A<bool, "X auto-scale">                                                                                                                       x_auto_scale = true;
+    A<bool, "Y auto-scale">                                                                                                                       y_auto_scale = true;
+    A<ImageComposition, "composition", gr::Visible, gr::Doc<"several inputs: tile = grid, overlay = layers in input order">>                      composition  = ImageComposition::tile;
     A<std::vector<double>, "layer min", gr::Doc<"per input: lower transparency bound (luma in [0, 1] for colour frames); missing or NaN = none">> layer_min;
     A<std::vector<double>, "layer max", gr::Doc<"per input: upper transparency bound (luma in [0, 1] for colour frames); missing or NaN = none">> layer_max;
     A<std::vector<std::string>, "layer colormaps", gr::Doc<"per input from the second on (overlay): ImPlot colormap name">>                       layer_colormaps;
 
-    GR_MAKE_REFLECTABLE(ImageChart, chart_name, chart_title, data_sinks, show_legend, show_grid, colormap, reverse_colormap, gpu_acceleration, x_auto_scale, y_auto_scale, composition, layer_min, layer_max, layer_colormaps);
+    GR_MAKE_REFLECTABLE(ImageChart, chart_name, chart_title, data_sinks, show_legend, show_grid, colormap, reverse_colormap, x_auto_scale, y_auto_scale, composition, layer_min, layer_max, layer_colormaps);
 
     std::vector<ImageLayer>   _layers;
     std::pair<double, double> _fittedExtent{0.0, 0.0};
@@ -141,7 +88,6 @@ Frames a sink received but the chart never showed are counted and indicated.)"">
     ImVec2                    _fittedPlotSize{0.f, 0.f};
 
     [[nodiscard]] std::span<const ImageLayer> layers() const noexcept { return _layers; }
-    [[nodiscard]] bool                        rendersOnGpu() const noexcept { return !_layers.empty() && _layers.front().onGpu; }
 
     /// screen position of image coordinates (column, row) as last drawn; row 0 is on top
     [[nodiscard]] ImVec2 screenPosition(double column, double row) const noexcept {
@@ -260,9 +206,9 @@ Frames a sink received but the chart never showed are counted and indicated.)"">
     }
 
     void fetchFrame(const SignalSink& sink, std::size_t index, std::optional<std::pair<double, double>> shared) {
-        ImageLayer&      layer = _layers[index];
-        auto             guard = sink.dataGuard();
-        const ImageFrame frame = sink.imageFrame(layer.shown + 1U);
+        ImageLayer&     layer = _layers[index];
+        auto            guard = sink.dataGuard();
+        const FrameView frame = sink.frame(layer.shown + 1U);
         if (frame.generation == 0U || frame.generation <= layer.shown || frame.rows * frame.columns == 0UZ) {
             return;
         }
@@ -280,8 +226,8 @@ Frames a sink received but the chart never showed are counted and indicated.)"">
                     convert(layer, index, pixels, [](auto v) { return static_cast<double>(v); }, shared);
                 }
             },
-            frame.pixels);
-        layer.onGpu = gpu_acceleration && layer.texture.upload(layer.rgba, layer.rows, layer.columns);
+            frame.values);
+        layer.uploaded = layer.texture.upload(layer.columns, layer.rows, layer.rgba.data());
     }
 
     static void updateRates(ImageLayer& layer, std::uint64_t generation) {
@@ -297,10 +243,9 @@ Frames a sink received but the chart never showed are counted and indicated.)"">
 
     template<typename TPixel>
     void convert(ImageLayer& layer, std::size_t index, std::span<const TPixel> pixels, auto toScalar, std::optional<std::pair<double, double>> shared) {
-        constexpr bool colour  = std::is_same_v<TPixel, std::uint32_t>;
-        auto           numbers = pixels | std::views::transform(toScalar) | std::views::filter([](double v) { return !std::isnan(v); });
-        const auto [lo, hi]    = std::ranges::empty(numbers) ? std::ranges::minmax_result<double>{std::numeric_limits<double>::infinity(), -std::numeric_limits<double>::infinity()} : std::ranges::minmax(numbers);
-        layer.valueRange       = {lo, hi};
+        constexpr bool colour = std::is_same_v<TPixel, std::uint32_t>;
+        const auto [lo, hi]   = finiteRange(pixels | std::views::transform(toScalar)).value_or(std::pair{std::numeric_limits<double>::infinity(), -std::numeric_limits<double>::infinity()});
+        layer.valueRange      = {lo, hi};
         if constexpr (colour) {
             layer.zRange = {0.0, 1.0};
         } else {
@@ -320,7 +265,6 @@ Frames a sink received but the chart never showed are counted and indicated.)"">
             }
             layer.rgba[i] = (v < cutLo || v > cutHi) ? (rgba & 0x00FFFFFFU) : rgba;
         }
-        fillScalar(layer, pixels, toScalar);
     }
 
     [[nodiscard]] std::array<std::uint32_t, kColormapSize> layerLut(ImPlotColormap map) const {
@@ -331,63 +275,16 @@ Frames a sink received but the chart never showed are counted and indicated.)"">
         return lut;
     }
 
-    /// PlotHeatmap puts its first row at the top of the bounds, i.e. at y = rows on the inverted axis
-    void fillScalar(ImageLayer& layer, auto pixels, auto toScalar) {
-        const std::size_t step = cpuDecimationStep(layer.rows, layer.columns, LookAndFeel::instance().chartStyle.imageCpuMaxCells);
-        layer.scalarRows       = (layer.rows + step - 1UZ) / step;
-        layer.scalarColumns    = (layer.columns + step - 1UZ) / step;
-        layer.scalar.resize(layer.scalarRows * layer.scalarColumns);
-        for (std::size_t r = 0UZ; r < layer.scalarRows; ++r) {
-            const std::size_t target = (layer.scalarRows - 1UZ - r) * layer.scalarColumns;
-            for (std::size_t c = 0UZ; c < layer.scalarColumns; ++c) {
-                layer.scalar[target + c] = toScalar(pixels[r * step * layer.columns + c * step]);
-            }
-        }
-    }
-
-    /// PlotHeatmap paints every cell, so the opaque ones are drawn as rectangles
-    void drawCells(const ImageLayer& layer, std::size_t index, ImPlotPoint topLeft, ImPlotPoint bottomRight) const {
-        const auto [cutLo, cutHi] = transparencyRange(index);
-        const auto        lut     = layerLut(layerColormap(index));
-        const std::size_t step    = cpuDecimationStep(layer.scalarRows, layer.scalarColumns, LookAndFeel::instance().chartStyle.imageCpuMaxRects);
-        const double      cellW = (bottomRight.x - topLeft.x) / static_cast<double>(layer.scalarColumns), cellH = (bottomRight.y - topLeft.y) / static_cast<double>(layer.scalarRows);
-        ImDrawList*       drawList = ImPlot::GetPlotDrawList();
-        ImPlot::PushPlotClipRect();
-        for (std::size_t r = 0UZ; r < layer.scalarRows; r += step) {
-            for (std::size_t c = 0UZ; c < layer.scalarColumns; c += step) {
-                const double v = layer.scalar[r * layer.scalarColumns + c];
-                if (v < cutLo || v > cutHi) {
-                    continue;
-                }
-                const double y = topLeft.y + static_cast<double>(layer.scalarRows - r - std::min(step, layer.scalarRows - r)) * cellH; // scalar rows are flipped
-                drawList->AddRectFilled(ImPlot::PlotToPixels(topLeft.x + static_cast<double>(c) * cellW, y), ImPlot::PlotToPixels(topLeft.x + static_cast<double>(std::min(c + step, layer.scalarColumns)) * cellW, y + static_cast<double>(std::min(step, layer.scalarRows - r)) * cellH), colormapLookup(v, layer.zRange.first, layer.zRange.second, lut));
-            }
-        }
-        ImPlot::PopPlotClipRect();
-    }
-
     void drawLayer(std::size_t index) {
         const ImageLayer& layer = _layers[index];
-        if (layer.rows == 0UZ) {
+        if (layer.rows == 0UZ || !layer.uploaded) {
             return;
         }
         const ImPlotPoint origin        = tileOrigin(index);
         const ImageLayer& sizeReference = composition.value == ImageComposition::overlay ? _layers.front() : layer;
         const ImPlotPoint topLeft(origin.x, origin.y);
         const ImPlotPoint bottomRight(origin.x + static_cast<double>(sizeReference.columns), origin.y + static_cast<double>(sizeReference.rows));
-        const std::string id = std::format("##frame{}", index);
-        if (layer.onGpu) {
-            ImPlot::PlotImage(id.c_str(), toTextureId(layer.texture._id), topLeft, bottomRight, ImVec2(0.f, 1.f), ImVec2(1.f, 0.f)); // PlotImage puts uv0 at (x min, y max)
-            return;
-        }
-        if (const auto [cutLo, cutHi] = transparencyRange(index); std::isfinite(cutLo) || std::isfinite(cutHi)) {
-            drawCells(layer, index, topLeft, bottomRight);
-            return;
-        }
-        ImPlot::PushColormap(layerColormap(index));
-        const auto [scaleMin, scaleMax] = reverse_colormap ? std::pair{layer.zRange.second, layer.zRange.first} : layer.zRange;
-        ImPlot::PlotHeatmap(id.c_str(), layer.scalar.data(), static_cast<int>(layer.scalarRows), static_cast<int>(layer.scalarColumns), scaleMin, scaleMax, nullptr, topLeft, bottomRight);
-        ImPlot::PopColormap();
+        ImPlot::PlotImage(std::format("##frame{}", index).c_str(), layer.texture.id(), topLeft, bottomRight, ImVec2(0.f, 1.f), ImVec2(1.f, 0.f)); // PlotImage puts uv0 at (x min, y max)
     }
 
     /// equal axes would otherwise crop the wider dimension

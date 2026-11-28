@@ -17,7 +17,6 @@
 #include "blocks/Arithmetic.hpp"
 #include "blocks/ImControlValue.hpp"
 #include "blocks/ImPlotSink.hpp"
-#include "blocks/TestSpectrumGenerator.hpp"
 #include "blocks/ValueSource.hpp"
 #include "charts/LocalisationChart.hpp"
 #include "charts/SpectrumPlot.hpp"
@@ -89,9 +88,19 @@ struct TestApp : public test::ImGuiTestApp {
                 ut::expect(sinkPtr != nullptr);
 
                 test::waitUntilAllSamplesDrawn(ctx, *gState->dashboard);
-                ut::expect(ut::eq(sinkPtr->size(), 2000UZ)) << "n_samples_max of SineClock in qa_chart.grc";
+                ut::expect(ut::eq(sinkPtr->sampleCount(), 2000UZ)) << "n_samples_max of SineClock in qa_chart.grc";
 
                 captureScreenshot(*ctx);
+            };
+
+            "a SpectrumView hides its top pane's frequency axis, which the waterfall below it shows"_test = [] {
+                // the panes, by their axes: the spectrum's Y1 is its magnitude, the waterfall shares its frequency range
+                const ImPlotPlot* spectrum = test::ImGuiTestApp::findPlot([](const ImPlotPlot& plot) { return plot.Axes[ImAxis_Y1].HasLabel() && std::string_view(plot.GetAxisLabel(plot.Axes[ImAxis_Y1])).starts_with("magnitude"); });
+                expect(spectrum != nullptr) << fatal << "the spectrum pane";
+                const ImPlotAxis& frequency = spectrum->Axes[ImAxis_X1];
+                expect(!frequency.HasTickLabels() && !frequency.HasLabel()) << "placement None by default";
+                const ImPlotPlot* waterfall = test::ImGuiTestApp::findPlot([&](const ImPlotPlot& plot) { return &plot != spectrum && plot.Axes[ImAxis_X1].Range.Min == frequency.Range.Min && plot.Axes[ImAxis_X1].Range.Max == frequency.Range.Max; });
+                expect(waterfall != nullptr && waterfall->Axes[ImAxis_X1].HasTickLabels()) << "the waterfall's linked frequency axis keeps its labels";
             };
 
             "YYChart scatter draws one marker per sine-cosine sample"_test = [ctx] {
@@ -162,8 +171,8 @@ struct TestApp : public test::ImGuiTestApp {
                 expect(!chart->follow_inputs.value) << "a drag stops following the inputs";
                 expect(gState->waitUntil(ctx, "the display shows it, right-aligned", [&] { return display->_drawnNumber == std::format("{:.1f}", dragged) && std::abs(display->_drawnRightGap) < 0.5f; })) << display->_drawnNumber;
                 expect(gState->waitUntil(ctx, "the time plot's sink receives it", [&] {
-                    std::lock_guard lock(sink->dataMutex());
-                    return sink->size() > 0UZ;
+                    const DataGuard guard = sink->signalSink()->dataGuard();
+                    return sink->signalSink()->sampleCount() > 0UZ;
                 }));
 
                 const auto [low, upper, marker] = *chart->drawnHandles();
@@ -270,9 +279,9 @@ struct TestApp : public test::ImGuiTestApp {
                         if (block == nullptr) {
                             return std::nullopt;
                         }
-                        const auto*     sink = static_cast<const ImPlotSink<gr::DataSet<float>>*>(block->raw());
-                        std::lock_guard lock(sink->dataMutex());
-                        return sink->dataSets().empty() ? std::nullopt : std::optional(sink->dataSets().back());
+                        const auto*     sink  = static_cast<const ImPlotSink<gr::DataSet<float>>*>(block->raw());
+                        const DataGuard guard = sink->signalSink()->dataGuard();
+                        return sink->signalSink()->dataSets().empty() ? std::nullopt : std::optional(sink->signalSink()->dataSets().back());
                     };
                     expect(gState->waitUntil(ctx, std::format("{}: a triggered snapshot and a spectrum", array), [&] { return newest(std::format("snapshotSink{}", shown.front())) && newest("spectrum"); })) << array;
                     if (array != "Square") { // the fork arrays: the first two band-passed channels against each other
@@ -319,12 +328,12 @@ struct TestApp : public test::ImGuiTestApp {
                     if (block == nullptr) {
                         return std::nullopt;
                     }
-                    const auto*     sink = static_cast<const ImPlotSink<gr::DataSet<float>>*>(block->raw());
-                    std::lock_guard lock(sink->dataMutex());
-                    if (sink->dataSets().empty()) {
+                    const auto*     sink  = static_cast<const ImPlotSink<gr::DataSet<float>>*>(block->raw());
+                    const DataGuard guard = sink->signalSink()->dataGuard();
+                    if (sink->signalSink()->dataSets().empty()) {
                         return std::nullopt;
                     }
-                    for (const auto& [index, map] : sink->dataSets().back().timing_events | std::views::join) {
+                    for (const auto& [index, map] : sink->signalSink()->dataSets().back().timing_events | std::views::join) {
                         if (const auto it = map.find(gr::tag::kTriggerName); it != map.end() && it->second.value_or(std::string_view{}) == std::format("audio{}", channel)) {
                             return index - 1440; // n_pre
                         }
@@ -401,7 +410,6 @@ void registerTestBlocks(Registry& registry) {
 #pragma GCC diagnostic ignored "-Wunused-variable"
     registerWithIdPrefix<Arithmetic, float>(registry, kOpendigitizerIdPrefix);
     registerWithIdPrefix<ImPlotSink, float, gr::DataSet<float>>(registry, kOpendigitizerIdPrefix);
-    registerWithIdPrefix<TestSpectrumGenerator, float>(registry, kOpendigitizerIdPrefix); // the spectrum range demo's, as in the application
 #pragma GCC diagnostic pop
 }
 } // namespace

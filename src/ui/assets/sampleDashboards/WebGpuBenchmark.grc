@@ -1,0 +1,76 @@
+blocks:
+  # one unpaced chain: N = 65,536-point FFTs as fast as the back end runs them. Source and FFT run on 'gpu' (the
+  # browser's WebGPU adapter in a WebGPU build; the CPU elsewhere, with one warning, as the block's struck-through
+  # glyph shows). Switch the blocks' compute_domain to 'host' in the flowgraph editor to compare. The
+  # PerformanceMonitor streams FFTs per second, and the GPU's dispatch and read-back rates, into ordinary sinks. (Two
+  # chains in one graph would share one scheduler pass and report the same rate.)
+  - id: gr::testing::ConstantSource<float32>
+    parameters:
+      name: source
+      default_value: 1
+      compute_domain: gpu
+  - id: gr::blocks::fft::FFT<float32, gr::DataSet<float32>>
+    parameters:
+      name: fft
+      fft_size: 65536
+      sample_rate: 1000000
+      window: Hann
+      output_in_db: true
+      compute_domain: gpu
+  - id: gr::testing::PerformanceMonitor<gr::DataSet<float32>>
+    parameters:
+      name: monitor
+      publish_rate: 1
+      device_domain: gpu
+  - id: opendigitizer::ImPlotSink<float64>
+    parameters:
+      name: rateSink
+      signal_name: FFTs/s
+      signal_quantity: rate
+      signal_unit: 1/s
+  - id: opendigitizer::ImPlotSink<float64>
+    parameters:
+      name: dispatchSink
+      signal_name: GPU kernel dispatches/s
+      signal_quantity: rate
+      signal_unit: 1/s
+  - id: opendigitizer::ImPlotSink<float64>
+    parameters:
+      name: readBackSink
+      signal_name: GPU read-back
+      signal_quantity: rate
+      signal_unit: B/s
+connections:
+  - [source, 0, fft, 0]
+  - [fft, 0, monitor, 0]
+  - [monitor, outRate, rateSink, 0]
+  - [monitor, outDeviceDispatchRate, dispatchSink, 0]
+  - [monitor, outDeviceToHostRate, readBackSink, 0]
+dashboard:
+  layout: Grid
+  sources:
+    - name: rateSink
+      block: rateSink
+    - name: dispatchSink
+      block: dispatchSink
+    - name: readBackSink
+      block: readBackSink
+  plots:
+    - name: FFTs per second (N = 65,536)
+      type: XYChart
+      parameters:
+        show_legend: true
+      sources:
+        - rateSink
+    - name: GPU dispatches per second
+      type: XYChart
+      parameters:
+        show_legend: true
+      sources:
+        - dispatchSink
+    - name: GPU read-back
+      type: XYChart
+      parameters:
+        show_legend: true
+      sources:
+        - readBackSink

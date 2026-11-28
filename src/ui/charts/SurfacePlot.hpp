@@ -36,11 +36,6 @@ struct SurfaceBuffer {
     double _scaleMin = 0.0;
     double _scaleMax = 0.0;
 
-    // linearised arrays for PlotSurface CPU fallback (rebuilt each frame from ring buffer)
-    mutable std::vector<double> _xCoords;
-    mutable std::vector<double> _yCoords;
-    mutable std::vector<double> _zCoords;
-
     void init(std::size_t width, std::size_t depth) {
         _spectrumWidth = width;
         _historyDepth  = depth;
@@ -78,37 +73,7 @@ struct SurfaceBuffer {
         _dirty = true;
     }
 
-    void updateAutoScale(std::span<const float> yValues, std::size_t nBins) {
-        auto [minIt, maxIt] = std::ranges::minmax_element(yValues | std::views::take(static_cast<std::ptrdiff_t>(nBins)));
-        followColourScale(_scaleMin, _scaleMax, static_cast<double>(*minIt), static_cast<double>(*maxIt), _filledRows == 0);
-    }
-
-    void buildSurfaceArrays() const {
-        if (_filledRows == 0 || _freqAxis.empty()) {
-            return;
-        }
-
-        const auto nX     = _freqAxis.size();
-        const auto nY     = _filledRows;
-        const auto nTotal = nX * nY;
-
-        _xCoords.resize(nTotal);
-        _yCoords.resize(nTotal);
-        _zCoords.resize(nTotal);
-
-        for (std::size_t row = 0; row < nY; ++row) {
-            std::size_t srcRow = (_writeRow + _historyDepth - nY + row) % _historyDepth;
-            double      rowY   = static_cast<double>(relativeTime(srcRow));
-
-            const float* mag = _magnitudes.data() + srcRow * _spectrumWidth;
-            for (std::size_t col = 0; col < nX; ++col) {
-                std::size_t idx = row * nX + col;
-                _xCoords[idx]   = static_cast<double>(_freqAxis[col]);
-                _yCoords[idx]   = rowY;
-                _zCoords[idx]   = static_cast<double>(mag[col]);
-            }
-        }
-    }
+    void updateAutoScale(std::span<const float> yValues, std::size_t nBins) { followColourScale(_scaleMin, _scaleMax, yValues.first(std::min(nBins, yValues.size())), _filledRows == 0); }
 
     void resizeHistory(std::size_t newDepth) {
         if (newDepth == _historyDepth || _spectrumWidth == 0) {
@@ -185,12 +150,12 @@ struct SurfaceGpuRenderer {
         float gridColor[4]{1.f, 1.f, 1.f, 0.3f};
     };
 
-    GLuint         _program            = 0;
-    GLuint         _vao                = 0;
-    GLuint         _vbo                = 0;
-    GLuint         _ibo                = 0;
-    GLuint         _colormapLutTexture = 0;
-    ImPlotColormap _activeColormap     = -1;
+    GLuint         _program = 0;
+    GLuint         _vao     = 0;
+    GLuint         _vbo     = 0;
+    GLuint         _ibo     = 0;
+    gl::Texture2D  _colormapLutTexture{gl::Texture2D::Options{.minFilter = GL_LINEAR, .magFilter = GL_LINEAR}};
+    ImPlotColormap _activeColormap = -1;
 
     GLint _locAxisMin          = -1;
     GLint _locAxisMax          = -1;
@@ -228,7 +193,7 @@ struct SurfaceGpuRenderer {
         if (_gpuAvailable) {
             gr::log::info("[SurfacePlot] GPU mesh renderer initialised");
         } else {
-            gr::log::warning("[SurfacePlot] GPU init failed, using CPU fallback");
+            gr::log::warning("[SurfacePlot] GPU init failed: the surface cannot be drawn");
         }
     }
 
@@ -322,11 +287,7 @@ void main() {
 }
 )glsl";
 
-        GLuint vs = gl::compileShader(GL_VERTEX_SHADER, gl::kGlslPrefix, kVertBody);
-        GLuint fs = gl::compileShader(GL_FRAGMENT_SHADER, gl::kGlslPrefix, kFragBody);
-        _program  = gl::linkProgram(vs, fs);
-        glDeleteShader(vs);
-        glDeleteShader(fs);
+        _program = gl::buildProgram(kVertBody, kFragBody);
 
         if (!_program) {
             return false;
@@ -418,19 +379,12 @@ void main() {
     }
 
     void updateColormapLut(ImPlotColormap colormap) {
-        if (_activeColormap == colormap && _colormapLutTexture != 0) {
+        if (_activeColormap == colormap && _colormapLutTexture) {
             return;
         }
         _activeColormap = colormap;
-        auto lut        = buildColormapLut(colormap);
-
-        if (!_colormapLutTexture) {
-            gl::createRGBA8Texture(_colormapLutTexture, static_cast<GLsizei>(kColormapSize), 1);
-        }
-        glBindTexture(GL_TEXTURE_2D, _colormapLutTexture);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, static_cast<GLsizei>(kColormapSize), 1, GL_RGBA, GL_UNSIGNED_BYTE, lut.data());
+        const auto lut  = buildColormapLut(colormap);
+        std::ignore     = _colormapLutTexture.upload(kColormapSize, 1UZ, lut.data());
     }
 
     void captureGridFromTickers(const ImPlot3DPlot* plot, bool showGrid, bool showMinorGrid, const float gridColor[4]) {
@@ -569,7 +523,7 @@ void main() {
         glUniform2fv(self->_locColormapRange, 1, f.colormapRange);
 
         glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, self->_colormapLutTexture);
+        glBindTexture(GL_TEXTURE_2D, self->_colormapLutTexture.handle());
         glUniform1i(self->_locColormapLut, 0);
 
         glUniform2fv(self->_locGridOrigin, 1, f.gridOrigin);
@@ -609,10 +563,7 @@ void main() {
             glDeleteBuffers(1, &_ibo);
             _ibo = 0;
         }
-        if (_colormapLutTexture) {
-            glDeleteTextures(1, &_colormapLutTexture);
-            _colormapLutTexture = 0;
-        }
+        _colormapLutTexture.reset();
         _indexCount     = 0;
         _initAttempted  = false;
         _gpuAvailable   = false;
@@ -628,9 +579,8 @@ struct SurfacePlot : gr::Block<SurfacePlot, gr::Drawable<gr::UICategory::Content
     template<typename T, gr::meta::fixed_string description = "", typename... Arguments>
     using A = gr::Annotated<T, description, Arguments...>;
 
-    static constexpr std::string_view kChartTypeName       = "SurfacePlot";
-    static constexpr SignalKind       kSupportedSignals    = SignalKind::Dataset1D;
-    static constexpr std::array       kImPlotColormapNames = {"Deep", "Dark", "Pastel", "Paired", "Viridis", "Plasma", "Hot", "Cool", "Pink", "Jet", "Twilight", "RdBu", "BrBG", "PiYG", "Spectral", "Greys"};
+    static constexpr std::string_view kChartTypeName    = "SurfacePlot";
+    static constexpr SignalKind       kSupportedSignals = SignalKind::Dataset1D;
 
     A<std::string, "chart name", gr::Visible>                                                                 chart_name;
     A<std::string, "chart title">                                                                             chart_title;
@@ -641,9 +591,8 @@ struct SurfacePlot : gr::Block<SurfacePlot, gr::Drawable<gr::UICategory::Content
     A<std::uint32_t, "grid color", gr::Visible, gr::Unit<"Color">, gr::Doc<"grid line colour (0xRRGGBB)">>    grid_color      = 0xFFFFFFU;
     A<float, "grid opacity", gr::Visible, gr::Limits<0.f, 1.f>, gr::Doc<"grid line opacity (0=transparent)">> grid_opacity    = 0.3f;
 
-    A<gr::Size_t, "history depth", gr::Visible, gr::Limits<4U, 1024U>>                                n_history        = 250U;
-    A<ImPlotColormap_, "colormap", gr::Visible>                                                       colormap         = ImPlotColormap_Viridis;
-    A<bool, "GPU acceleration", gr::Doc<"use GPU mesh rendering (falls back to CPU if unavailable)">> gpu_acceleration = true;
+    A<gr::Size_t, "history depth", gr::Visible, gr::Limits<4U, 1024U>> n_history = 250U;
+    A<ImPlotColormap_, "colormap", gr::Visible>                        colormap  = ImPlotColormap_Viridis;
 
     A<bool, "X auto-scale"> x_auto_scale = true;
     A<bool, "Y auto-scale"> y_auto_scale = true;
@@ -655,16 +604,16 @@ struct SurfacePlot : gr::Block<SurfacePlot, gr::Drawable<gr::UICategory::Content
     A<double, "Z-axis min"> z_min        = std::numeric_limits<double>::lowest();
     A<double, "Z-axis max"> z_max        = std::numeric_limits<double>::max();
 
-    GR_MAKE_REFLECTABLE(SurfacePlot, chart_name, chart_title, data_sinks, show_legend, show_grid, show_minor_grid, grid_color, grid_opacity, n_history, colormap, gpu_acceleration, x_auto_scale, y_auto_scale, z_auto_scale, x_min, x_max, y_min, y_max, z_min, z_max);
+    GR_MAKE_REFLECTABLE(SurfacePlot, chart_name, chart_title, data_sinks, show_legend, show_grid, show_minor_grid, grid_color, grid_opacity, n_history, colormap, x_auto_scale, y_auto_scale, z_auto_scale, x_min, x_max, y_min, y_max, z_min, z_max);
 
-    SurfaceBuffer              _surface;
-    SurfaceGpuRenderer         _gpuRenderer;
-    std::vector<float>         _logBinnedRow;
-    std::vector<float>         _logFreqAxis; // log10(centre frequency) per log column — the X coordinate in log mode
-    bool                       _logModeActive         = false;
-    std::size_t                _lastSpectrumSize      = 0;
-    std::size_t                _lastPushedSampleCount = std::numeric_limits<std::size_t>::max();
-    ImPlot3DColormap           _implot3dColormap      = -1;
+    SurfaceBuffer      _surface;
+    SurfaceGpuRenderer _gpuRenderer;
+    std::vector<float> _logBinnedRow;
+    std::vector<float> _logFreqAxis; // log10(centre frequency) per log column — the X coordinate in log mode
+    bool               _logModeActive         = false;
+    std::size_t        _lastSpectrumSize      = 0;
+    std::size_t        _lastPushedSampleCount = std::numeric_limits<std::size_t>::max();
+
     std::array<std::string, 6> _unitStore{};
     bool                       _needsRefit       = true;
     std::array<int, 3>         _pendingScale     = {-1, -1, -1}; // -1 = no change
@@ -700,9 +649,10 @@ struct SurfacePlot : gr::Block<SurfacePlot, gr::Drawable<gr::UICategory::Content
             return gr::work::Status::OK;
         }
 
-        syncColormap();
-        if (gpu_acceleration) {
-            _gpuRenderer.init();
+        _gpuRenderer.init();
+        if (!_gpuRenderer.available()) {
+            drawEmptyPlot("GPU surface renderer unavailable", plotFlags, plotSize, chartMode);
+            return gr::work::Status::OK;
         }
 
         ImPlot3DFlags flags3d = ImPlot3DFlags_NoTitle | ImPlot3DFlags_NoMenus;
@@ -744,7 +694,7 @@ struct SurfacePlot : gr::Block<SurfacePlot, gr::Drawable<gr::UICategory::Content
         std::string zLabel = buildLabel(zQuantity, zUnit, _axisFormat[2]);
 
         ImPlot3DAxisFlags gridFlag = show_grid ? ImPlot3DAxisFlags_None : ImPlot3DAxisFlags_NoGridLines;
-        ImPlot3D::SetupAxes(xLabel.empty() ? "" : xLabel.c_str(), yLabel.empty() ? "" : yLabel.c_str(), zLabel.empty() ? "" : zLabel.c_str(), gridFlag, gridFlag, gridFlag);
+        ImPlot3D::SetupAxes(xLabel.c_str(), yLabel.c_str(), zLabel.c_str(), gridFlag, gridFlag, gridFlag);
 
         // the context menu's scale changes apply here: only the Setup phase may change them
         for (int i = 0; i < 3; ++i) {
@@ -804,33 +754,23 @@ struct SurfacePlot : gr::Block<SurfacePlot, gr::Drawable<gr::UICategory::Content
 
         auto [yLo, yHi] = _surface.timeBounds();
 
-        const bool useGpu = gpu_acceleration.value && _gpuRenderer.available();
-        if (useGpu) {
-            // GPU path: PlotSurface's ExtendFit is skipped — set axis limits from data
-            if (x_auto_scale.value && !_surface._freqAxis.empty()) {
-                ImPlot3D::SetupAxisLimits(ImAxis3D_X, static_cast<double>(_surface._freqAxis.front()), static_cast<double>(_surface._freqAxis.back()), xzCond);
-            }
-            if (y_auto_scale.value) {
-                ImPlot3D::SetupAxisLimits(ImAxis3D_Y, yLo, yHi, ImPlot3DCond_Always);
-            }
-            if (z_auto_scale.value) {
-                ImPlot3D::SetupAxisLimits(ImAxis3D_Z, _surface.scaleMin(), _surface.scaleMax(), xzCond);
-            }
-
-            if (_surface._dirty) {
-                _gpuRenderer.uploadMesh(_surface);
-                _surface._dirty = false;
-            }
-            // capture projection while ImPlot3D context is still active
-            _gpuRenderer.captureProjection(cMin, cMax, colormap);
-        } else {
-            _surface.buildSurfaceArrays();
-            const auto nX = static_cast<int>(_surface._freqAxis.size());
-            const auto nY = static_cast<int>(_surface._filledRows);
-            ImPlot3D::PushColormap(_implot3dColormap);
-            ImPlot3D::PlotSurface("##surface", _surface._xCoords.data(), _surface._yCoords.data(), _surface._zCoords.data(), nX, nY, cMin, cMax);
-            ImPlot3D::PopColormap();
+        // the mesh is no ImPlot3D item, so no ExtendFit: the axis limits come from the data
+        if (x_auto_scale.value && !_surface._freqAxis.empty()) {
+            ImPlot3D::SetupAxisLimits(ImAxis3D_X, static_cast<double>(_surface._freqAxis.front()), static_cast<double>(_surface._freqAxis.back()), xzCond);
         }
+        if (y_auto_scale.value) {
+            ImPlot3D::SetupAxisLimits(ImAxis3D_Y, yLo, yHi, ImPlot3DCond_Always);
+        }
+        if (z_auto_scale.value) {
+            ImPlot3D::SetupAxisLimits(ImAxis3D_Z, _surface.scaleMin(), _surface.scaleMax(), xzCond);
+        }
+
+        if (_surface._dirty) {
+            _gpuRenderer.uploadMesh(_surface);
+            _surface._dirty = false;
+        }
+        // capture projection while ImPlot3D context is still active
+        _gpuRenderer.captureProjection(cMin, cMax, colormap);
 
         // save plot pointer — Axes[i].Hovered is set during EndPlot and persists on the plot object
         _savedPlot = ImPlot3D::GImPlot3D->CurrentPlot;
@@ -842,16 +782,12 @@ struct SurfacePlot : gr::Block<SurfacePlot, gr::Drawable<gr::UICategory::Content
         _needsRefit = false;
 
         // extract grid tick spacing AFTER EndPlot (tickers are populated during EndPlot)
-        if (useGpu) {
-            const auto  rgb = grid_color.value;
-            const float gc[4]{static_cast<float>((rgb >> 16) & 0xFF) / 255.f, static_cast<float>((rgb >> 8) & 0xFF) / 255.f, static_cast<float>(rgb & 0xFF) / 255.f, grid_opacity.value};
-            _gpuRenderer.captureGridFromTickers(_savedPlot, show_grid.value, show_minor_grid.value, gc);
-        }
+        const auto  rgb = grid_color.value;
+        const float gc[4]{static_cast<float>((rgb >> 16) & 0xFF) / 255.f, static_cast<float>((rgb >> 8) & 0xFF) / 255.f, static_cast<float>(rgb & 0xFF) / 255.f, grid_opacity.value};
+        _gpuRenderer.captureGridFromTickers(_savedPlot, show_grid.value, show_minor_grid.value, gc);
 
         // after EndPlot: ImPlot3D draws the box background during EndPlot, which would cover a callback placed earlier
-        if (useGpu) {
-            ImGui::GetWindowDrawList()->AddCallback(SurfaceGpuRenderer::renderCallback, &_gpuRenderer);
-        }
+        ImGui::GetWindowDrawList()->AddCallback(SurfaceGpuRenderer::renderCallback, &_gpuRenderer);
 
         drawSurfaceContextMenu(chartMode);
         if (chartMode == ChartMode::Interaction) {
@@ -867,70 +803,27 @@ struct SurfacePlot : gr::Block<SurfacePlot, gr::Drawable<gr::UICategory::Content
         _needsRefit = true;
     }
 
-    void syncColormap() {
-        registerImPlotColormaps();
-
-        auto cmapIdx = static_cast<std::size_t>(colormap.value);
-        if (cmapIdx < kImPlotColormapNames.size()) {
-            _implot3dColormap = ImPlot3D::GetColormapIndex(kImPlotColormapNames[cmapIdx]);
-        }
-        if (_implot3dColormap < 0) {
-            _implot3dColormap = 0;
-        }
-    }
-
-    static void registerImPlotColormaps() {
-        static constexpr std::array kImPlotColormapEnums = {ImPlotColormap_Deep, ImPlotColormap_Dark, ImPlotColormap_Pastel, ImPlotColormap_Paired, ImPlotColormap_Viridis, ImPlotColormap_Plasma, ImPlotColormap_Hot, ImPlotColormap_Cool, ImPlotColormap_Pink, ImPlotColormap_Jet, ImPlotColormap_Twilight, ImPlotColormap_RdBu, ImPlotColormap_BrBG, ImPlotColormap_PiYG, ImPlotColormap_Spectral, ImPlotColormap_Greys};
-
-        constexpr std::size_t        kLutSize = 256;
-        std::array<ImVec4, kLutSize> colours{};
-
-        for (std::size_t cm = 0; cm < kImPlotColormapEnums.size(); ++cm) {
-            if (ImPlot3D::GetColormapIndex(kImPlotColormapNames[cm]) >= 0) {
-                continue;
-            }
-            for (std::size_t i = 0; i < kLutSize; ++i) {
-                float t    = static_cast<float>(i) / static_cast<float>(kLutSize - 1);
-                colours[i] = ImPlot::SampleColormap(t, kImPlotColormapEnums[cm]);
-            }
-            ImPlot3D::AddColormap(kImPlotColormapNames[cm], colours.data(), static_cast<int>(kLutSize), false);
-        }
-    }
-
     void drawSurfaceContextMenu(ChartMode mode) {
         if (mode == ChartMode::Layout || !_savedPlot) {
             return;
         }
 
+        const auto hoveredAxes = [this] { return std::ranges::count(_savedPlot->Axes, true, &ImPlot3DAxis::Hovered); };
         // ImPlot3D hovers 1 axis on an edge, 2 on a plane face, 3 in empty space:
         // the axis menu opens on an edge, the canvas menu on a face, and empty space keeps right-click rotation
         if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
-            _hoveredAxisIndex   = -1;
-            int hoveredCount    = 0;
-            int lastHoveredAxis = -1;
-            for (int i = 0; i < 3; ++i) {
-                if (_savedPlot->Axes[i].Hovered) {
-                    ++hoveredCount;
-                    lastHoveredAxis = i;
-                }
-            }
-            if (hoveredCount == 1) {
-                _hoveredAxisIndex = lastHoveredAxis;
+            _hoveredAxisIndex = -1;
+            if (const auto hovered = hoveredAxes(); hovered == 1) {
+                _hoveredAxisIndex = static_cast<int>(std::ranges::find(_savedPlot->Axes, true, &ImPlot3DAxis::Hovered) - std::ranges::begin(_savedPlot->Axes));
                 ImGui::OpenPopup("##Srf3DAxis");
-            } else if (hoveredCount == 2) {
+            } else if (hovered == 2) {
                 ImGui::OpenPopup("##Srf3DCanvas");
             }
         }
 
         // double-click on axis edge: fit-once without enabling auto-scale
-        if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
-            int hoveredCount = 0;
-            for (int i = 0; i < 3; ++i) {
-                hoveredCount += _savedPlot->Axes[i].Hovered ? 1 : 0;
-            }
-            if (hoveredCount == 1) {
-                _needsRefit = true;
-            }
+        if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left) && hoveredAxes() == 1) {
+            _needsRefit = true;
         }
 
         if (ImGui::BeginPopup("##Srf3DAxis")) {
@@ -1033,7 +926,7 @@ struct SurfacePlot : gr::Block<SurfacePlot, gr::Drawable<gr::UICategory::Content
     }
 
     // log10(centre frequency) of each log-spaced column of buildLogBinnedRow, the linear X coordinate in log mode:
-    // a linear axis over [log10(fMin), log10(fMax)] then renders correctly on both the CPU and the GPU mesh path (which projects vertices linearly),
+    // a linear axis over [log10(fMin), log10(fMax)] then renders correctly on the mesh, which projects vertices linearly,
     // with decade-uniform grid spacing
     void buildLog10FreqAxis(double fMin, double fMax) {
         _logFreqAxis.resize(kLogSpectrumColumns);
