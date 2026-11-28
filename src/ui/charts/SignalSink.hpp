@@ -106,21 +106,37 @@ struct SampleWindow {
 
     std::span<const double> x; // UTC seconds
     Values                  y;
+    Values                  yError;      // each y's standard deviation; empty for a sink without uncertainties
     std::size_t             first = 0UZ; // the index of x[0] among every sample received, for incremental uploads
 
     [[nodiscard]] std::size_t size() const noexcept { return x.size(); }
     [[nodiscard]] double      yAt(std::size_t i) const noexcept {
         return std::visit([i](auto values) { return static_cast<double>(values[i]); }, y);
     }
+    [[nodiscard]] bool hasErrors() const noexcept {
+        return std::visit([](auto errors) { return !errors.empty(); }, yError);
+    }
+    [[nodiscard]] double yErrorAt(std::size_t i) const noexcept {
+        return std::visit([i](auto errors) { return static_cast<double>(errors[i]); }, yError);
+    }
 
     /// all when fewer than `count` are held
     [[nodiscard]] SampleWindow newest(std::size_t count) const noexcept {
         const std::size_t skip = size() - std::min(count, size());
-        return {.x = x.subspan(skip), .y = std::visit([skip](auto values) -> Values { return values.subspan(skip); }, y), .first = first + skip};
+        const auto        tail = [skip](auto values) -> Values { return values.empty() ? values : values.subspan(skip); };
+        return {.x = x.subspan(skip), .y = std::visit(tail, y), .yError = std::visit(tail, yError), .first = first + skip};
     }
 };
 
-/// a dated property map: a stream's tag at its sample's UTC time, or a tag at its arrival time
+/// a complex stream's imaginary part is a signal of its own, registered as `<unique name>.im` beside the real part
+inline constexpr std::string_view kImaginaryPartSuffix = ".im";
+
+/// one DataSet's standard deviations, laid out as its signal_values and axis_values
+struct DataSetErrors {
+    std::vector<float>              signals;
+    std::vector<std::vector<float>> axes;
+};
+
 struct DatedMap {
     double           utcSeconds = 0.0;
     gr::property_map map;
@@ -149,7 +165,8 @@ struct SignalSink {
         std::string name;
         std::size_t capacity      = 2048UZ; // samples, DataSets or events held until a chart asks (required_size)
         std::size_t capacityFloor = 0UZ;    // a chart's request is raised to at least this
-        bool        doubleSamples = false;  // float64 samples stay double
+        bool        doubleSamples = false;
+        bool        withErrors    = false; // one standard deviation per value
     };
 
     using Samples = std::variant<gr::HistoryBuffer<float>, gr::HistoryBuffer<double>>;
@@ -165,10 +182,13 @@ struct SignalSink {
     std::size_t        _capacity;
     CapacityRequests   _capacityRequests;
 
-    gr::HistoryBuffer<double>       _xValues;               // streaming samples' UTC seconds, oldest first; double: ns precision
-    Samples                         _yValues;               // oldest first
-    std::deque<DatedMap>            _tags;                  // streaming: at their sample's time; tag sinks: at arrival
-    std::vector<gr::DataSet<float>> _dataSets;              // oldest first; the oldest's buffers take the next DataSet
+    gr::HistoryBuffer<double>       _xValues; // streaming samples' UTC seconds, oldest first; double: ns precision
+    Samples                         _yValues;
+    Samples                         _yErrors;
+    std::deque<DatedMap>            _tags;     // streaming sinks: at their sample's UTC time
+    std::vector<gr::DataSet<float>> _dataSets; // oldest first
+    std::vector<DataSetErrors>      _dataSetErrors;
+    bool                            _withErrors;
     Frames                          _frames;                // tensor sinks: the newest max_backlog + 1 frames
     std::uint64_t                   _frameGeneration = 0U;  // of the newest frame, counting every frame received
     std::array<ImageAxis, 2>        _axes{};                // tensor sinks: {rows, columns}, from the gr:axis_* tags
@@ -179,7 +199,9 @@ struct SignalSink {
     explicit SignalSink(Config config)
         : _uniqueName(std::move(config.uniqueName)), _name(std::move(config.name)), _kind(config.kind), _configuredCapacity(std::max(config.capacity, 1UZ)), _capacity(_configuredCapacity), _capacityRequests{.minimum = config.capacityFloor}, //
           _xValues(_kind == SignalKind::Streaming ? _capacity : 1UZ),                                                                                                                                                                            //
-          _yValues(config.doubleSamples ? Samples(std::in_place_type<gr::HistoryBuffer<double>>, _xValues.capacity()) : Samples(std::in_place_type<gr::HistoryBuffer<float>>, _xValues.capacity())) {}
+          _yValues(makeSamples(config.doubleSamples, _xValues.capacity())), _yErrors(makeSamples(config.doubleSamples, config.withErrors ? _xValues.capacity() : 1UZ)), _withErrors(config.withErrors) {}
+
+    [[nodiscard]] static Samples makeSamples(bool doubles, std::size_t capacity) { return doubles ? Samples(std::in_place_type<gr::HistoryBuffer<double>>, capacity) : Samples(std::in_place_type<gr::HistoryBuffer<float>>, capacity); }
 
     SignalSink(const SignalSink&)            = delete;
     SignalSink& operator=(const SignalSink&) = delete;
@@ -204,12 +226,16 @@ struct SignalSink {
     [[nodiscard]] std::size_t size() const noexcept { return _xValues.size(); }
 
     [[nodiscard]] SampleWindow samples() const {
-        const auto y = std::visit([](const auto& values) -> SampleWindow::Values { return values.get_span(0); }, _yValues);
-        return {.x = _xValues.get_span(0), .y = y, .first = _totalSampleCount - std::min(_totalSampleCount, _xValues.size())};
+        const auto held   = [](const auto& values) -> SampleWindow::Values { return values.get_span(0); };
+        const auto errors = _withErrors ? std::visit(held, _yErrors) : SampleWindow::Values{};
+        return {.x = _xValues.get_span(0), .y = std::visit(held, _yValues), .yError = errors, .first = _totalSampleCount - std::min(_totalSampleCount, _xValues.size())};
     }
 
     [[nodiscard]] bool                                hasDataSets() const noexcept { return !_dataSets.empty(); }
     [[nodiscard]] std::span<const gr::DataSet<float>> dataSets() const noexcept { return _dataSets; }
+    /// beside dataSets(), same order; empty for a sink without uncertainties
+    [[nodiscard]] std::span<const DataSetErrors> dataSetErrors() const noexcept { return _dataSetErrors; }
+    [[nodiscard]] bool                           hasErrors() const noexcept { return _withErrors; }
 
     [[nodiscard]] std::size_t datasetRow(const gr::DataSet<float>& dataSet) const noexcept { return metadata.datasetIndex < dataSet.size() ? metadata.datasetIndex : 0UZ; }
 
@@ -332,9 +358,15 @@ struct SignalSink {
         case SignalKind::Streaming:
             keepNewest(_xValues);
             std::visit(keepNewest, _yValues);
+            if (_withErrors) {
+                std::visit(keepNewest, _yErrors);
+            }
             dropTagsBeforeOldestSample();
             break;
-        case SignalKind::Dataset1D: _dataSets.erase(_dataSets.begin(), _dataSets.end() - static_cast<std::ptrdiff_t>(std::min(_dataSets.size(), capacity))); break;
+        case SignalKind::Dataset1D:
+            _dataSets.erase(_dataSets.begin(), _dataSets.end() - static_cast<std::ptrdiff_t>(std::min(_dataSets.size(), capacity)));
+            _dataSetErrors.erase(_dataSetErrors.begin(), _dataSetErrors.end() - static_cast<std::ptrdiff_t>(std::min(_dataSetErrors.size(), capacity)));
+            break;
         case SignalKind::Events: keepNewestEvents(capacity); break;
         default: break; // tensor frames: max_backlog decides
         }
@@ -347,7 +379,13 @@ struct SignalSink {
         ++_totalSampleCount;
     }
 
-    /// moves every held sample and tag in time: the provisional history rebased onto the first valid trigger
+    template<typename V>
+    void pushSample(double utcSeconds, V value, V standardDeviation) {
+        pushSample(utcSeconds, value);
+        std::visit([standardDeviation](auto& errors) { errors.push_back(static_cast<typename std::remove_cvref_t<decltype(errors)>::value_type>(standardDeviation)); }, _yErrors);
+    }
+
+    /// rebases the provisional history onto the first valid trigger
     void shiftTimes(double seconds) {
         for (std::size_t i = 0UZ, n = _xValues.size(); i < n; ++i) {
             const double utcSeconds = _xValues.front();
@@ -397,7 +435,15 @@ struct SignalSink {
         ++_totalSampleCount;
     }
 
-    /// the newest `keep` of `frames` (TensorViews), reusing the dropped oldest frames' buffers; every frame counts
+    void pushDataSet(gr::DataSet<float>&& dataSet, DataSetErrors&& errors) {
+        if (_dataSetErrors.size() >= _capacity) {
+            _dataSetErrors.erase(_dataSetErrors.begin());
+        }
+        _dataSetErrors.push_back(std::move(errors));
+        pushDataSet(std::move(dataSet));
+    }
+
+    /// reuses the dropped frames' buffers; every frame counts in the generation, kept or not
     template<typename V>
     void pushFrames(const std::ranges::random_access_range auto& frames, std::size_t keep) {
         if (!std::holds_alternative<std::deque<gr::Tensor<V>>>(_frames)) {

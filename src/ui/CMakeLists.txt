@@ -444,6 +444,8 @@ add_library(
   DashboardBlocks.hpp
   DashboardBlocksLocalisation.cpp
   DashboardBlocksSignal.cpp
+  DashboardBlocksSinkFrames.cpp
+  DashboardBlocksSinks.cpp
   DashboardBlocksVideo.cpp
   StatusBarView.cpp
   StatusBarView.hpp

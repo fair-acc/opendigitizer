@@ -40,6 +40,85 @@ struct ToUncertainValue : gr::Block<ToUncertainValue> {
     [[nodiscard]] constexpr gr::UncertainValue<float> processOne(float value) const noexcept { return {value, 0.5f}; }
 };
 
+struct UncertainDataSetSource : gr::Block<UncertainDataSetSource> {
+    gr::PortOut<gr::DataSet<gr::UncertainValue<float>>> out;
+    GR_MAKE_REFLECTABLE(UncertainDataSetSource, out);
+
+    bool _sent = false;
+
+    gr::work::Status processBulk(gr::OutputSpanLike auto& output) noexcept {
+        if (_sent) {
+            output.publish(0UZ);
+            return gr::work::Status::DONE;
+        }
+        gr::DataSet<gr::UncertainValue<float>> dataSet;
+        dataSet.signal_names  = {"current"};
+        dataSet.axis_values   = {{{0.f, 0.01f}, {1.f, 0.02f}}};
+        dataSet.extents       = {2};
+        dataSet.signal_values = {{1.f, 0.1f}, {2.f, 0.2f}};
+        output[0UZ]           = std::move(dataSet);
+        output.publish(1UZ);
+        _sent = true;
+        return gr::work::Status::OK;
+    }
+};
+
+struct ToUncertainComplex : gr::Block<ToUncertainComplex> {
+    gr::PortIn<std::complex<float>>                      in;
+    gr::PortOut<gr::UncertainValue<std::complex<float>>> out;
+    GR_MAKE_REFLECTABLE(ToUncertainComplex, in, out);
+
+    [[nodiscard]] constexpr gr::UncertainValue<std::complex<float>> processOne(std::complex<float> z) const noexcept { return {z, {0.1f, 0.2f}}; }
+};
+
+struct ComplexDataSetSource : gr::Block<ComplexDataSetSource> {
+    gr::PortOut<gr::DataSet<std::complex<float>>> out;
+    GR_MAKE_REFLECTABLE(ComplexDataSetSource, out);
+
+    bool _sent = false;
+
+    gr::work::Status processBulk(gr::OutputSpanLike auto& output) noexcept {
+        if (_sent) {
+            output.publish(0UZ);
+            return gr::work::Status::DONE;
+        }
+        gr::DataSet<std::complex<float>> dataSet;
+        dataSet.signal_names      = {"iq"};
+        dataSet.signal_quantities = {"voltage"};
+        dataSet.signal_units      = {"V"};
+        dataSet.axis_values       = {{{0.f, 0.f}, {1.f, 0.f}}};
+        dataSet.extents           = {2};
+        dataSet.signal_values     = {{1.f, 2.f}, {3.f, 4.f}};
+        output[0UZ]               = std::move(dataSet);
+        output.publish(1UZ);
+        _sent = true;
+        return gr::work::Status::OK;
+    }
+};
+
+struct Int16DataSetSource : gr::Block<Int16DataSetSource> {
+    gr::PortOut<gr::DataSet<std::int16_t>> out;
+    GR_MAKE_REFLECTABLE(Int16DataSetSource, out);
+
+    bool _sent = false;
+
+    gr::work::Status processBulk(gr::OutputSpanLike auto& output) noexcept {
+        if (_sent) {
+            output.publish(0UZ);
+            return gr::work::Status::DONE;
+        }
+        gr::DataSet<std::int16_t> dataSet;
+        dataSet.signal_names  = {"counts"};
+        dataSet.axis_values   = {{0, 1}};
+        dataSet.extents       = {2};
+        dataSet.signal_values = {-32767, 32767};
+        output[0UZ]           = std::move(dataSet);
+        output.publish(1UZ);
+        _sent = true;
+        return gr::work::Status::OK;
+    }
+};
+
 int main() {
     using namespace boost::ut;
     using namespace charts;
@@ -227,6 +306,161 @@ int main() {
         expect(eq(sink.signalSink()->size(), 3000UZ)) << "growing keeps what is held";
     };
 
+    // ground truth, IEEE 754: float holds every 16-bit integer exactly and double every integer up to 2^53;
+    // 2^53 + 1 lies halfway between 2^53 and 2^53 + 2 and rounds to the even one, 2^53
+    "an integer stream is kept exactly, as float up to 16 bits and as double above"_test = [] {
+        const auto received = []<typename T>(std::vector<T> values) {
+            gr::Graph graph;
+            auto&     source = graph.emplaceBlock<gr::testing::TagSource<T>>({{"n_samples_max", static_cast<gr::Size_t>(values.size())}, {"mark_tag", false}});
+            source.values    = gr::Tensor<T>(gr::data_from, values);
+            auto& sink       = graph.emplaceBlock<ImPlotSink<T>>();
+            expect(graph.connect<"out", "in">(source, sink).has_value());
+            gr::scheduler::Simple<> scheduler;
+            expect(scheduler.exchange(std::move(graph)).has_value());
+            expect(scheduler.runAndWait().has_value());
+            return sink.signalSink(); // the store outlives its block
+        };
+        const auto asFloat = [](const SampleWindow& window) { return std::holds_alternative<std::span<const float>>(window.y); };
+
+        const auto         int16Sink = received(std::vector<std::int16_t>{-32767, 32767}); // a window views the sink's storage
+        const SampleWindow int16     = int16Sink->samples();
+        expect(asFloat(int16)) << "16 bits: float";
+        expect(eq(int16.yAt(0UZ), -32767.0) && eq(int16.yAt(1UZ), 32767.0));
+
+        const auto         int32Sink = received(std::vector<std::int32_t>{std::numeric_limits<std::int32_t>::max()});
+        const SampleWindow int32     = int32Sink->samples();
+        expect(!asFloat(int32)) << "32 bits: double";
+        expect(eq(int32.yAt(0UZ), 2147483647.0));
+
+        const auto         int64Sink = received(std::vector<std::int64_t>{std::int64_t{1} << 53});
+        const SampleWindow int64     = int64Sink->samples();
+        expect(eq(int64.yAt(0UZ), 9007199254740992.0)) << "2^53 exactly";
+
+        const auto         uint64Sink = received(std::vector<std::uint64_t>{(std::uint64_t{1} << 53) + 1U});
+        const SampleWindow uint64     = uint64Sink->samples();
+        expect(eq(uint64.yAt(0UZ), 9007199254740992.0)) << "2^53 + 1 rounds to even, 2^53";
+    };
+
+    "a DataSet of UncertainValues keeps its values and their standard deviations, signal and axis"_test = [] {
+        gr::Graph graph;
+        auto&     source = graph.emplaceBlock<UncertainDataSetSource>();
+        auto&     sink   = graph.emplaceBlock<ImPlotSink<gr::DataSet<gr::UncertainValue<float>>>>();
+        expect(graph.connect<"out", "in">(source, sink).has_value());
+        gr::scheduler::Simple<> scheduler;
+        expect(scheduler.exchange(std::move(graph)).has_value());
+        expect(scheduler.runAndWait().has_value());
+
+        const auto& signal = *sink.signalSink();
+        expect(signal.hasErrors());
+        expect(eq(signal.dataSets().size(), 1UZ) && eq(signal.dataSetErrors().size(), 1UZ) >> fatal);
+        const gr::DataSet<float>& values = signal.dataSets().back();
+        const DataSetErrors&      errors = signal.dataSetErrors().back();
+        expect(eq(values.signal_values[0], 1.f) && eq(values.signal_values[1], 2.f));
+        expect(eq(errors.signals.size(), 2UZ) && eq(errors.signals[0], 0.1f) && eq(errors.signals[1], 0.2f));
+        expect(eq(values.axis_values[0][1], 1.f));
+        expect(eq(errors.axes.size(), 1UZ) >> fatal);
+        expect(eq(errors.axes[0][0], 0.01f) && eq(errors.axes[0][1], 0.02f)) << "the x errors";
+    };
+
+    // ground truth by construction: the same uint32 frame, 0xFF0000FF (opaque red) and 1000, read as colour and as values
+    "a uint32 tensor sink keeps packed colour, or integer values when packed_colour is false"_test = [] {
+        const auto received = [](bool packedColour) {
+            gr::Graph graph;
+            auto&     source = graph.emplaceBlock<gr::testing::TensorSource<std::uint32_t>>();
+            source._frames.push_back({.extents = {1UZ, 2UZ}, .elements = {0xFF0000FFU, 1000U}});
+            auto& sink = graph.emplaceBlock<ImPlotSink<gr::Tensor<std::uint32_t>>>({{"packed_colour", packedColour}});
+            expect(graph.connect<"out", "in">(source, sink).has_value());
+            gr::scheduler::Simple<> scheduler;
+            expect(scheduler.exchange(std::move(graph)).has_value());
+            expect(scheduler.runAndWait().has_value());
+            return sink.signalSink();
+        };
+        const auto      colourSink = received(true);
+        const FrameView colour     = colourSink->frame();
+        const auto*     pixels     = std::get_if<std::span<const std::uint32_t>>(&colour.values);
+        expect(fatal(pixels != nullptr)) << "packed colour by default";
+        expect(eq((*pixels)[0], 0xFF0000FFU));
+        const auto      valueSink = received(false);
+        const FrameView values    = valueSink->frame();
+        expect(eq(values.row(0UZ).size(), 2UZ) >> fatal) << "float values";
+        expect(eq(values.row(0UZ)[1], 1000.f));
+    };
+
+    // ground truth by construction: 1 + 2i and 3 + 4i, σ 0.1 + 0.2i
+    "a complex stream is two signals, its real part under the block's name and its imaginary part beside it"_test = [] {
+        gr::Graph graph;
+        auto&     source = graph.emplaceBlock<gr::testing::TagSource<std::complex<float>>>({{"n_samples_max", gr::Size_t{2U}}, {"mark_tag", false}});
+        source.values    = gr::Tensor<std::complex<float>>(gr::data_from, std::vector<std::complex<float>>{{1.f, 2.f}, {3.f, 4.f}});
+        auto& convert    = graph.emplaceBlock<ToUncertainComplex>();
+        auto& plain      = graph.emplaceBlock<ImPlotSink<std::complex<float>>>({{"name", "iqSink"}, {"signal_name", "iq"}});
+        auto& uncertain  = graph.emplaceBlock<ImPlotSink<gr::UncertainValue<std::complex<float>>>>({{"name", "uncertainIqSink"}}); // a sink registers with its first settings, as a dashboard's do
+        expect(graph.connect<"out", "in">(source, plain).has_value());
+        expect(graph.connect<"out", "in">(source, convert).has_value());
+        expect(graph.connect<"out", "in">(convert, uncertain).has_value());
+        gr::scheduler::Simple<> scheduler;
+        expect(scheduler.exchange(std::move(graph)).has_value());
+        expect(scheduler.runAndWait().has_value());
+
+        const auto real      = plain.signalSink();
+        const auto imaginary = SinkRegistry::instance().getSink(std::format("{}{}", plain.unique_name, kImaginaryPartSuffix));
+        expect(fatal(imaginary != nullptr)) << "the imaginary part registered beside the block";
+        expect(eq(real->signalName(), std::string_view("Re(iq)")) && eq(imaginary->signalName(), std::string_view("Im(iq)")));
+        expect(eq(imaginary->name(), std::string_view("iqSink.im")));
+        expect(real->color() != imaginary->color()) << "two traces, two colours";
+        const SampleWindow re = real->samples();
+        const SampleWindow im = imaginary->samples();
+        expect(eq(re.size(), 2UZ) && eq(im.size(), 2UZ) >> fatal);
+        expect(eq(re.yAt(0UZ), 1.0) && eq(re.yAt(1UZ), 3.0) && eq(im.yAt(0UZ), 2.0) && eq(im.yAt(1UZ), 4.0));
+        expect(eq(re.x[1], im.x[1])) << "dated alike";
+
+        const auto uncertainImaginary = SinkRegistry::instance().getSink(std::format("{}{}", uncertain.unique_name, kImaginaryPartSuffix));
+        expect(fatal(uncertainImaginary != nullptr));
+        expect(approx(uncertain.signalSink()->samples().yErrorAt(0UZ), 0.1, 1e-6) && approx(uncertainImaginary->samples().yErrorAt(0UZ), 0.2, 1e-6)) << "σ per component";
+    };
+
+    "a complex DataSet arrives as two real rows per signal, Re and Im, selected by dataset_index"_test = [] {
+        gr::Graph graph;
+        auto&     source = graph.emplaceBlock<ComplexDataSetSource>();
+        auto&     sink   = graph.emplaceBlock<ImPlotSink<gr::DataSet<std::complex<float>>>>({{"dataset_index", gr::Size_t{1U}}});
+        expect(graph.connect<"out", "in">(source, sink).has_value());
+        gr::scheduler::Simple<> scheduler;
+        expect(scheduler.exchange(std::move(graph)).has_value());
+        expect(scheduler.runAndWait().has_value());
+
+        const auto& signal = *sink.signalSink();
+        expect(eq(signal.dataSets().size(), 1UZ) >> fatal);
+        const gr::DataSet<float>& dataSet = signal.dataSets().back();
+        expect(eq(dataSet.signal_names.size(), 2UZ) >> fatal);
+        expect(eq(std::string_view(dataSet.signal_names[0]), std::string_view("Re(iq)")) && eq(std::string_view(dataSet.signal_names[1]), std::string_view("Im(iq)")));
+        expect(eq(std::string_view(dataSet.signal_units[1]), std::string_view("V"))) << "Re and Im keep the unit";
+        expect(dataSet.signal_values == std::pmr::vector<float>{1.f, 3.f, 2.f, 4.f});
+        expect(eq(dataSet.axis_values[0][1], 1.f));
+        const auto row = dataSet.signalValues(signal.datasetRow(dataSet));
+        expect(eq(row[0], 2.f) && eq(row[1], 4.f)) << "dataset_index 1: the Im row";
+    };
+
+    "an integer DataSet and an 8-bit image arrive as float"_test = [] {
+        gr::Graph graph;
+        auto&     dataSetSource = graph.emplaceBlock<Int16DataSetSource>();
+        auto&     dataSetSink   = graph.emplaceBlock<ImPlotSink<gr::DataSet<std::int16_t>>>();
+        auto&     imageSource   = graph.emplaceBlock<gr::testing::TensorSource<std::uint8_t>>();
+        imageSource._frames.push_back({.extents = {2UZ, 2UZ}, .elements = {0U, 1U, 254U, 255U}});
+        auto& imageSink = graph.emplaceBlock<ImPlotSink<gr::Tensor<std::uint8_t>>>();
+        expect(graph.connect<"out", "in">(dataSetSource, dataSetSink).has_value());
+        expect(graph.connect<"out", "in">(imageSource, imageSink).has_value());
+        gr::scheduler::Simple<> scheduler;
+        expect(scheduler.exchange(std::move(graph)).has_value());
+        expect(scheduler.runAndWait().has_value());
+
+        const auto dataSets = dataSetSink.signalSink()->dataSets();
+        expect(eq(dataSets.size(), 1UZ) >> fatal);
+        expect(eq(dataSets.back().signal_values[0], -32767.f) && eq(dataSets.back().signal_values[1], 32767.f));
+        expect(eq(std::string_view(dataSets.back().signal_names[0]), std::string_view("counts")));
+        const FrameView image = imageSink.signalSink()->frame();
+        expect(eq(image.rows, 2UZ) && eq(image.columns, 2UZ) >> fatal);
+        expect(eq(image.row(1UZ)[1], 255.f)) << "an 8-bit pixel as its value";
+    };
+
     "an UncertainValue sink keeps the values"_test = [] {
         gr::Graph graph;
         auto&     source  = graph.emplaceBlock<gr::testing::TagSource<float>>({{"n_samples_max", gr::Size_t{100U}}, {"mark_tag", false}});
@@ -239,11 +473,14 @@ int main() {
         expect(scheduler.runAndWait().has_value());
 
         expect(sink.signalSink()->signalKind() == SignalKind::Streaming);
+        expect(sink.signalSink()->hasErrors());
         expect(eq(sink.signalSink()->size(), 100UZ) >> fatal);
         const SampleWindow window = sink.signalSink()->samples();
         expect(eq(window.yAt(0UZ), 0.0));
         expect(eq(window.yAt(99UZ), 99.0));
         expect(window.x[99UZ] > window.x[0UZ]) << "dated like any streaming sample";
+        expect(window.hasErrors() >> fatal) << "and its uncertainty kept";
+        expect(eq(window.yErrorAt(0UZ), 0.5) && eq(window.yErrorAt(99UZ), 0.5));
     };
 
     "a DataSet<double> sink converts each DataSet once, metadata included"_test = [] {
@@ -991,6 +1228,9 @@ int main() {
             expect(registry.contains(name)) << name;
         }
         expect(registry.contains("opendigitizer::Arithmetic<float32>") && registry.contains("opendigitizer::Arithmetic<float64>"));
+        for (const std::string_view name : {"opendigitizer::ImPlotSink<int16>", "opendigitizer::ImPlotSink<gr::UncertainValue<uint64>>", "opendigitizer::ImPlotSink<gr::DataSet<int8>>", "opendigitizer::ImPlotSink<gr::Tensor<uint16>>", "opendigitizer::ImPlotSink<gr::DataSet<gr::UncertainValue<float32>>>", "opendigitizer::ImPlotSink<gr::DataSet<complex<float32>>>", "opendigitizer::ImPlotSink<complex<float32>>", "opendigitizer::ImPlotSink<gr::UncertainValue<complex<float64>>>"}) {
+            expect(registry.contains(name)) << name << "(every sample type in every form, spelt as GR4 spells it)";
+        }
         for (const std::string_view name : {"opendigitizer::ImPlotSink<gr::pmt::ValueMap>", "opendigitizer::localisation::DelayLocator", "opendigitizer::localisation::PointSourceArrivals", "opendigitizer::charts::LocalisationChart"}) {
             expect(registry.contains(name)) << name << "(the event sink's key spells gr::property_map as gr::pmt::ValueMap)";
         }

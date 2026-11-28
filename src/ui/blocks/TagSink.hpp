@@ -38,8 +38,7 @@ Only the newest `n_tag_history` tags are kept.)"">;
 
     GR_MAKE_REFLECTABLE(TagSink, in, signal_name, tag_keys, n_tag_history);
 
-    // the chart signal: the kept tags as events at their arrival time, and the stream's sample count
-    std::shared_ptr<SignalSink> _sink       = std::make_shared<SignalSink>(SignalSink::Config{.kind = SignalKind::Events, .uniqueName = std::string(this->unique_name), .name = std::string(this->name.value), .capacity = static_cast<std::size_t>(n_tag_history.value), .capacityFloor = 0UZ, .doubleSamples = false});
+    std::shared_ptr<SignalSink> _sink       = std::make_shared<SignalSink>(SignalSink::Config{.kind = SignalKind::Events, .uniqueName = std::string(this->unique_name), .name = std::string(this->name.value), .capacity = static_cast<std::size_t>(n_tag_history.value), .capacityFloor = 0UZ, .doubleSamples = false, .withErrors = false});
     bool                        _registered = false;
 
     explicit TagSink(gr::property_map initParameters = {}) : gr::Block<TagSink<T>>(std::move(initParameters)) {}

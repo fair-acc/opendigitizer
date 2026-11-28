@@ -153,6 +153,19 @@ struct GlobalSignalLegend {
                 }
             }
         }
+        if (const auto imaginary = charts::SinkRegistry::instance().getSink(std::format("{}{}", uniqueName, kImaginaryPartSuffix))) {
+            const std::string imaginaryLabel(imaginary->signalName());
+            ImGui::SameLine();
+            if (drawLegendItem(imaginary->color(), imaginaryLabel, visible) == ClickResult::Left) {
+                sink.setSetting("visible", !visible);
+            }
+            if (_dragDropEnabled) {
+                if (auto dndSource = imw::DragDropSource(ImGuiDragDropFlags_None)) {
+                    charts::dnd::setupPayload(imaginary, {});
+                    drawLegendItem(imaginary->color(), imaginaryLabel, visible);
+                }
+            }
+        }
         return clickResult == ClickResult::RightName;
     }
 

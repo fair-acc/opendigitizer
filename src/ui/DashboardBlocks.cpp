@@ -17,13 +17,13 @@
 #include "blocks/ImControlToggle.hpp"
 #include "blocks/ImControlTrigger.hpp"
 #include "blocks/ImControlValue.hpp"
-#include "blocks/ImPlotSink.hpp"
+
 #include "blocks/ImPropertyReadout.hpp"
 #include "blocks/LowPassFilter.hpp"
 #include "blocks/PianoControl.hpp"
 #include "blocks/SchedulerStateIndicator.hpp"
 #include "blocks/SineOscillator.hpp"
-#include "blocks/TagSink.hpp"
+
 #include "blocks/ValueSource.hpp"
 #include "charts/Charts.hpp"
 #include "components/ImGuiNotify.hpp"
@@ -45,8 +45,7 @@ void registerDashboardBlocks(gr::BlockRegistry& blockRegistry) {
     registerChart<LocalisationChart>(blockRegistry);
     registerVideoBlocks(blockRegistry);
     registerLocalisationBlocks(blockRegistry);
-    registerPlotSinks<float, double, gr::DataSet<float>, gr::DataSet<double>, gr::UncertainValue<float>, gr::Tensor<float>, gr::Tensor<double>, gr::Tensor<std::uint32_t>, gr::property_map>(blockRegistry);
-    registerWithIdPrefix<TagSink, std::uint8_t, float>(blockRegistry, kOpendigitizerIdPrefix);
+    registerSinkBlocks(blockRegistry);
     registerWithIdPrefix<ImControlNumber>(blockRegistry, kDigitizerUiIdPrefix);
     registerWithIdPrefix<ImControlToggle>(blockRegistry, kDigitizerUiIdPrefix);
     registerWithIdPrefix<ImControlTrigger>(blockRegistry, kDigitizerUiIdPrefix);

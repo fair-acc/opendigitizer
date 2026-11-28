@@ -77,6 +77,25 @@ int main() {
         expect(eq(sink.bufferCapacity(), 3UZ)) << "at least its own";
     };
 
+    // ground truth by construction: samples n = 0…5 with σ = n / 10 into a sink of 4; a chart showing 2 reads the newest two
+    "a sample's standard deviation stays with it through newest() and a shrinking history"_test = [] {
+        SignalSink sink(SignalSink::Config{.kind = SignalKind::Streaming, .uniqueName = "sigma", .name = "sigma", .capacity = 4UZ, .capacityFloor = 0UZ, .doubleSamples = false, .withErrors = true});
+        for (int n = 0; n < 6; ++n) {
+            sink.pushSample(static_cast<double>(n), static_cast<float>(n), static_cast<float>(n) / 10.f);
+        }
+        const SampleWindow shown = sink.samples().newest(2UZ);
+        expect(shown.hasErrors() >> fatal);
+        expect(eq(shown.yAt(0UZ), 4.0) && approx(shown.yErrorAt(0UZ), 0.4, 1e-6) && approx(shown.yErrorAt(1UZ), 0.5, 1e-6));
+        sink.requestCapacity("chart", 3UZ);
+        const SampleWindow held = sink.samples();
+        expect(eq(held.size(), 3UZ) >> fatal);
+        expect(eq(held.yAt(0UZ), 3.0) && approx(held.yErrorAt(0UZ), 0.3, 1e-6)) << "the oldest dropped with its σ";
+
+        const auto plain = makeTestStreamingSink("plain", 4UZ);
+        plain->pushSample(0.0, 1.f);
+        expect(!plain->hasErrors() && !plain->samples().hasErrors()) << "a sink without uncertainties has none";
+    };
+
     "TestStreamingSink circular buffer behavior"_test = [] {
         auto sink = makeTestStreamingSink("test_sink", 50);
 
