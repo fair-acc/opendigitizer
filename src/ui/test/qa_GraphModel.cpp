@@ -216,6 +216,22 @@ struct TestApp : public test::ImGuiTestApp {
                     const std::map<std::string, std::set<std::string>> expectedSchedulers{{"gr::Graph", {"<>"}}, {"gr::scheduler::Simple", {"<gr::scheduler::ExecutionPolicy::singleThreaded>"}}};
                     expect(model.knownSchedulerTypes == expectedSchedulers);
                 };
+                "a block's ComputeDomainFallback is kept until its compute_domain changes"_test = [] {
+                    UiGraphModel model;
+                    model.sendMessage               = [](gr::Message) {};
+                    model.rootBlock.blockUniqueName = "root";
+                    const gr::property_map fallback{{"compute_domain", "gpu"}, {"reason", "kernel not translated: f64"}};
+                    expect(model.apply(makeMessage(gr::message::Command::Notify, "root", gr::block::property::kComputeDomainFallback, fallback)));
+                    expect(eq(model.rootBlock.computeDomainFallbackReason, std::string("kernel not translated: f64")));
+
+                    const gr::property_map otherSetting{{"name", "renamed"}};
+                    expect(model.apply(makeMessage(gr::message::Command::Notify, "root", gr::block::property::kSetting, otherSetting)));
+                    expect(eq(model.rootBlock.computeDomainFallbackReason, std::string("kernel not translated: f64"))) << "another setting leaves it";
+
+                    const gr::property_map newDomain{{"compute_domain", "host"}};
+                    expect(model.apply(makeMessage(gr::message::Command::Notify, "root", gr::block::property::kSetting, newDomain)));
+                    expect(model.rootBlock.computeDomainFallbackReason.empty()) << "a new compute_domain clears it";
+                };
             };
         }
         {

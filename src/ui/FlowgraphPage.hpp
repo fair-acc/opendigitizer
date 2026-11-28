@@ -4,6 +4,7 @@
 #include "GraphModel.hpp"
 
 #include "components/Block.hpp"
+#include "components/ComputeDomainTag.hpp"
 #include "components/NewBlockSelector.hpp"
 #include "components/SignalSelector.hpp"
 #include "components/Splitter.hpp"
@@ -135,7 +136,8 @@ struct FlowgraphEditor {
 
     UiGraphBlock* _blockContextMenuRequest = nullptr;
 
-    std::unordered_map<const UiGraphPort*, ImVec2> _pinPivots;
+    std::unordered_map<const UiGraphPort*, ImVec2>  _pinPivots;
+    std::unordered_map<const UiGraphBlock*, ImVec4> _deviceColours; // per frame: the blocks running on a device
 
     // set from within a context menu, handled once the menu popup is closed (a modal opened from inside a popup would be nested in it)
     std::optional<std::vector<std::string>> _pendingGroupBlocksRequest;
@@ -268,7 +270,7 @@ struct FlowgraphEditor {
 
     void sendPinsConnectedGraphMessage(ax::NodeEditor::PinId startPinId, ax::NodeEditor::PinId endPinId);
 
-    void drawComputeDomainTag(UiGraphBlock& block);
+    void drawComputeDomainTag(UiGraphBlock& block, const std::optional<components::ComputeDomainTag>& computeDomain);
 
     /// only while the editor is active, in canvas (local) space
     void drawBoundingBoxExterior(const BoundingBox& canvasSpacingBoundingBox);

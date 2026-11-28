@@ -1,5 +1,6 @@
 #include "FlowgraphPage.hpp"
 #include "FlowgraphLayout.hpp"
+#include "common/ProcessorGlyphs.hpp"
 
 #include <algorithm>
 #include <exception>
@@ -25,6 +26,7 @@
 
 #include "common/LookAndFeel.hpp"
 
+#include "components/ComputeDomainTag.hpp"
 #include "components/DataTypeStyle.hpp"
 #include "components/OverlayButton.hpp"
 #include "components/Splitter.hpp"
@@ -299,23 +301,74 @@ FlowgraphEditor::Buttons FlowgraphEditor::drawButtons(const ImVec2& contentScree
     return result;
 }
 
-void FlowgraphEditor::drawComputeDomainTag(UiGraphBlock& block) {
+namespace {
+[[nodiscard]] std::string_view computeDomainSetting(const UiGraphBlock& block) {
+    const auto computeDomainIter = block.blockSettings.find("compute_domain");
+    return computeDomainIter == std::end(block.blockSettings) ? std::string_view{} : computeDomainIter->second.value_or(std::string_view{});
+}
+
+/// nullopt on the host, where an unscheduled sub-graph always runs
+[[nodiscard]] std::optional<components::ComputeDomainTag> blockComputeDomain(const UiGraphBlock& block) { return block.isGraph() ? std::nullopt : components::blockComputeDomain(computeDomainSetting(block), block.computeDomainFallbackReason); }
+
+struct DeviceStyle {
+    ImVec4      colour;
+    const char* glyph;
+    const char* name;
+};
+
+[[nodiscard]] DeviceStyle deviceStyle(const UiGraphBlock& block) {
+    const auto& palette = LookAndFeel::instance().palette();
+    const auto  kind    = gr::ComputeDomain::parse(computeDomainSetting(block)).kind;
+    if (kind == "tpu") {
+        return {palette.flowgraphTpu, glyphs::kTpuOutline, "TPU"};
+    }
+    if (kind == "fpga") {
+        return {palette.flowgraphGpu, glyphs::kFpgaOutline, "FPGA"};
+    }
+    return {palette.flowgraphGpu, glyphs::kGpuOutline, "GPU"};
+}
+
+/// nullopt on the host, also after falling back to it
+[[nodiscard]] std::optional<ImVec4> runningDeviceColour(const UiGraphBlock& block, const std::optional<components::ComputeDomainTag>& computeDomain) { //
+    return computeDomain && !computeDomain->fellBack ? std::optional(deviceStyle(block).colour) : std::nullopt;
+}
+
+void drawComputeDomainGlyph(const UiGraphBlock& block, const components::ComputeDomainTag& tag) {
+    const auto&  lookAndFeel = LookAndFeel::instance();
+    const auto&  palette     = lookAndFeel.palette();
+    const auto&  flowgraph   = lookAndFeel.flowgraph;
+    const auto   blockId     = ax::NodeEditor::NodeId(std::addressof(block));
+    const float  size        = flowgraph.computeDomainGlyphSize;
+    const ImVec2 nodeMax     = ax::NodeEditor::GetNodePosition(blockId) + ax::NodeEditor::GetNodeSize(blockId);
+    const ImVec2 min         = ImVec2{nodeMax.x - flowgraph.nodeRounding - size, nodeMax.y - .5f * size};
+    const ImVec2 max         = min + ImVec2{size, size};
+    const auto   style       = deviceStyle(block);
+    const ImU32  colour      = ImGui::ColorConvertFloat4ToU32(tag.fellBack ? palette.flowgraphGpuError : style.colour);
+    auto*        drawList    = ImGui::GetWindowDrawList();
+    drawList->AddText(lookAndFeel.fontGlyphs, size, min, colour, style.glyph);
+    if (tag.fellBack) {
+        drawList->AddLine({min.x, max.y}, {max.x, min.y}, colour, flowgraph.computeDomainGlyphSlashWidth * size);
+    }
+    if (ImGui::IsMouseHoveringRect(min, max)) {
+        ImGui::SetTooltip("%s", components::computeDomainTooltip(style.name, tag).c_str());
+    }
+}
+} // namespace
+
+void FlowgraphEditor::drawComputeDomainTag(UiGraphBlock& block, const std::optional<components::ComputeDomainTag>& computeDomain) {
     if (!block.ownerGraph) {
-        assert(false && "scheduler {} had no owner graph");
+        assert(false && "block had no owner graph");
         return;
     }
-    std::string tagLabel = "Unmanaged graph";
-    if (block.isScheduler()) {
-        auto computeDomainIter = block.blockSettings.find("compute_domain");
-        if (computeDomainIter == std::end(block.blockSettings)) {
-            return;
+    if (!block.isScheduler() && !block.isGraph()) {
+        if (computeDomain) {
+            drawComputeDomainGlyph(block, *computeDomain);
         }
-        auto computeDomain = gr::ComputeDomain::parse(computeDomainIter->second.value_or(std::string_view{}));
-        if (computeDomain.kind.empty()) {
-            return;
-        }
-        tagLabel = computeDomain.kind;
+        return;
     }
+    const std::string tagLabel = block.isScheduler() ? std::string(gr::ComputeDomain::parse(computeDomainSetting(block)).kind) : std::string("Unmanaged graph");
+    const ImVec4      tagColor = runningDeviceColour(block, computeDomain).value_or(LookAndFeel::instance().palette().flowgraphNodeBorder);
+    const ImVec4      tagText  = contrastingText(tagColor);
 
     const auto blockId         = ax::NodeEditor::NodeId(std::addressof(block));
     const auto nodePosition    = ax::NodeEditor::GetNodePosition(blockId);
@@ -335,11 +388,10 @@ void FlowgraphEditor::drawComputeDomainTag(UiGraphBlock& block) {
     const auto  spacingLeft                  = std::min(availableSpace * labelSpaceFromLeftPercentage, maxLabelSpaceFromLeft);
     const auto  topLeftOfRect                = topLeft + ImVec2{spacingLeft, -(lineHeight / 2.f)};
 
-    const auto schedulerColorU32 = ImGui::ColorConvertFloat4ToU32(LookAndFeel::instance().palette().flowgraphSubgraphBorder);
-    const auto textColorU32      = ImGui::ColorConvertFloat4ToU32(LookAndFeel::instance().palette().flowgraphSubgraphBorderText);
-    auto*      drawList          = ImGui::GetWindowDrawList();
-    drawList->AddRectFilled(topLeftOfRect, topLeftOfRect + textSize + ImVec2{textRectPadding * 2.f, 0.f}, schedulerColorU32, ImGui::GetStyle().FrameRounding);
-    drawList->AddText(topLeftOfRect + ImVec2{textRectPadding, 0.f}, textColorU32, tagLabel.data(), tagLabel.data() + tagLabel.size());
+    const ImVec2 bottomRightOfRect = topLeftOfRect + textSize + ImVec2{textRectPadding * 2.f, 0.f};
+    auto*        drawList          = ImGui::GetWindowDrawList();
+    drawList->AddRectFilled(topLeftOfRect, bottomRightOfRect, ImGui::ColorConvertFloat4ToU32(tagColor), ImGui::GetStyle().FrameRounding);
+    drawList->AddText(topLeftOfRect + ImVec2{textRectPadding, 0.f}, ImGui::ColorConvertFloat4ToU32(tagText), tagLabel.data(), tagLabel.data() + tagLabel.size());
 }
 
 void FlowgraphEditor::drawBoundingBoxExterior(const BoundingBox& canvasSpacingBoundingBox) {
@@ -405,14 +457,17 @@ FlowgraphEditor::NodeDrawResult FlowgraphEditor::drawNode(                      
 ) {
     const auto             blockId        = ax::NodeEditor::NodeId(std::addressof(block));
     const auto             isGroup        = block.isScheduler() || block.isGraph();
-    const ImVec4           borderColor    = isGroup ? LookAndFeel::instance().palette().flowgraphSubgraphBorder : ax::NodeEditor::GetStyle().Colors[ax::NodeEditor::StyleColor_NodeBorder];
+    const auto             computeDomain  = blockComputeDomain(block);
+    const auto             deviceColour   = runningDeviceColour(block, computeDomain);
+    const ImVec4           borderColor    = deviceColour.value_or(ax::NodeEditor::GetStyle().Colors[ax::NodeEditor::StyleColor_NodeBorder]);
     const auto             borderWidthVar = imw::node_editor::StyleFloatVar(ax::NodeEditor::StyleVar_NodeBorderWidth, isGroup ? LookAndFeel::instance().flowgraph.subgraphBorderWidth : ax::NodeEditor::GetStyle().NodeBorderWidth);
     const auto             borderColorVar = imw::node_editor::StyleColor(ax::NodeEditor::StyleColor_NodeBorder, borderColor);
     imw::node_editor::Node node(blockId);
-
-    if (isGroup) {
-        this->drawComputeDomainTag(block);
+    if (deviceColour) {
+        _deviceColours.insert_or_assign(std::addressof(block), *deviceColour);
     }
+
+    this->drawComputeDomainTag(block, computeDomain);
 
     const auto  minimumBlockSize    = LookAndFeel::instance().flowgraph.minimumBlockSize;
     const auto  blockScreenPosition = ImGui::GetCursorScreenPos();
@@ -655,6 +710,7 @@ std::optional<components::BlockDragConnectOverlay> FlowgraphEditor::drawGraph(co
     }
 
     const auto* exportTarget = exportPortTargetBlock();
+    _deviceColours.clear();
 
     const std::vector<UiGraphBlock*> graphBlocks               = nodeBlocks(*rootBlock);
     const std::vector<UiGraphBlock*> controlBlocks             = showUiControlBlocks ? uiControlBlocks(*_graphModel) : std::vector<UiGraphBlock*>{};
@@ -859,9 +915,9 @@ std::optional<components::BlockDragConnectOverlay> FlowgraphEditor::drawGraph(co
         _focusBlockRequest.reset();
     }
 
-    const auto linkColor = [](const UiGraphPort& sourcePort) {
-        const ImU32 typeColor = styleForDataType(sourcePort.portType).color();
-        return (typeColor >> IM_COL32_A_SHIFT) == 0 ? ImGui::GetStyle().Colors[ImGuiCol_Text] : ImGui::ColorConvertU32ToFloat4(typeColor);
+    const auto deviceColourOf = [this](const UiGraphPort* port) -> std::optional<ImVec4> {
+        const auto found = _deviceColours.find(port->ownerBlock);
+        return found == _deviceColours.end() ? std::nullopt : std::optional(found->second);
     };
     for (auto& edge : graphEdges) {
         const auto sourceBlockId      = ax::NodeEditor::NodeId(edge.edgeSourcePort->ownerBlock);
@@ -869,14 +925,15 @@ std::optional<components::BlockDragConnectOverlay> FlowgraphEditor::drawGraph(co
         if (!std::any_of(filteredOutNodes.begin(), filteredOutNodes.end(), [&](const ax::NodeEditor::NodeId& nodeId) { //
                 return nodeId == sourceBlockId || nodeId == destinationBlockId;
             })) {
-            const bool isEventLink = isEventDataType(edge.edgeSourcePort->portType);
+            const bool   isEventLink = isEventDataType(edge.edgeSourcePort->portType);
+            const ImVec4 color       = deviceColourOf(edge.edgeSourcePort).or_else([&] { return deviceColourOf(edge.edgeDestinationPort); }).value_or(LookAndFeel::instance().palette().flowgraphHostLink);
             ax::NodeEditor::Link(ax::NodeEditor::LinkId(&edge), //
                 ax::NodeEditor::PinId(edge.edgeSourcePort),     //
-                ax::NodeEditor::PinId(edge.edgeDestinationPort), isEventLink ? ImVec4{} : linkColor(*edge.edgeSourcePort));
+                ax::NodeEditor::PinId(edge.edgeDestinationPort), isEventLink ? ImVec4{} : color);
             const auto start = _pinPivots.find(edge.edgeSourcePort);
             const auto end   = _pinPivots.find(edge.edgeDestinationPort);
             if (isEventLink && start != _pinPivots.end() && end != _pinPivots.end()) {
-                drawDashedLink(ImGui::GetWindowDrawList(), start->second, end->second, ImGui::GetColorU32(linkColor(*edge.edgeSourcePort)));
+                drawDashedLink(ImGui::GetWindowDrawList(), start->second, end->second, ImGui::GetColorU32(color));
             }
         }
     }

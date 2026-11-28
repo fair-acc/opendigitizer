@@ -1,9 +1,9 @@
 blocks:
   # one unpaced chain: N = 65,536-point FFTs as fast as the back end runs them. Source and FFT run on 'gpu' (the
-  # browser's WebGPU adapter in a WebGPU build; the CPU elsewhere, with one warning, as the flowgraph tag shows). Switch
-  # the blocks' compute_domain to 'host' in the flowgraph editor to compare. The PerformanceMonitor streams FFTs per
-  # second, and the GPU's dispatch and read-back rates, into ordinary sinks. (Two chains in one graph would share one
-  # scheduler pass and report the same rate.)
+  # browser's WebGPU adapter in a WebGPU build; the CPU elsewhere, with one warning, as the block's struck-through
+  # glyph shows). Switch the blocks' compute_domain to 'host' in the flowgraph editor to compare. The
+  # PerformanceMonitor streams FFTs per second, and the GPU's dispatch and read-back rates, into ordinary sinks. (Two
+  # chains in one graph would share one scheduler pass and report the same rate.)
   - id: gr::testing::ConstantSource<float32>
     parameters:
       name: source

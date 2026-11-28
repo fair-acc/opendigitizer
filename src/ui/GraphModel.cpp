@@ -1059,6 +1059,9 @@ bool UiGraphModel::apply(const gr::Message& message) {
     } else if (message.endpoint == block::kSetting || message.endpoint == block::kStagedSetting) {
         withBlock(message.serviceName, "requested an unknown block to be changed settings", [&data](UiGraphBlock& block) { block.applySettings(data); });
 
+    } else if (message.endpoint == block::kComputeDomainFallback) { // once per run, at start or at a refused kernel
+        withBlock(message.serviceName, "reported a compute-domain fallback of an unknown block", [&data](UiGraphBlock& block) { block.computeDomainFallbackReason = data.value_or<std::string>("reason", std::string("ran on the host")); });
+
     } else if (message.endpoint == scheduler::kEdgeEmplaced) {
         targetBlock.block->emplaceEdge(data);
 
@@ -1192,6 +1195,9 @@ void UiGraphModel::requestAvailableBlocksTypesUpdate() {
 }
 
 void UiGraphBlock::applySettings(const gr::property_map& data) {
+    if (data.contains("compute_domain")) {
+        computeDomainFallbackReason.clear(); // the next run reports again
+    }
     bool keysChanged = false;
     for (const auto& [key, value] : data) {
         if (std::string_view(key) != gr::serialization_fields::BLOCK_UNIQUE_NAME) {

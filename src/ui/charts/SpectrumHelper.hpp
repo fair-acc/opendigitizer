@@ -41,14 +41,13 @@ inline std::array<uint32_t, kColormapSize> buildColormapLut(ImPlotColormap cmap)
 }
 
 inline ImVec4 contrastingGridColor(ImPlotColormap cmap, float alpha = 0.3f) {
-    float         luminance = 0.f;
-    constexpr int kSamples  = 16;
+    float         meanLuminance = 0.f;
+    constexpr int kSamples      = 16;
     for (int i = 0; i < kSamples; ++i) {
-        ImVec4 c = ImPlot::SampleColormap(static_cast<float>(i) / static_cast<float>(kSamples - 1), cmap);
-        luminance += 0.299f * c.x + 0.587f * c.y + 0.114f * c.z; // ITU-R BT.601
+        meanLuminance += luminance(ImPlot::SampleColormap(static_cast<float>(i) / static_cast<float>(kSamples - 1), cmap));
     }
-    luminance /= static_cast<float>(kSamples);
-    float grid = (luminance > 0.5f) ? 0.f : 1.f;
+    meanLuminance /= static_cast<float>(kSamples);
+    float grid = (meanLuminance > 0.5f) ? 0.f : 1.f;
     return ImVec4(grid, grid, grid, alpha);
 }
 

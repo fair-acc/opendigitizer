@@ -159,6 +159,8 @@ struct UiGraphBlock {
     gr::property_map blockSettings;
     gr::property_map blockMetaInformation;
 
+    std::string computeDomainFallbackReason; // GR4's ComputeDomainFallback for the current run: ran on the host instead; empty: none
+
     std::map<std::string, SettingsMetaInformation> blockSettingsMetaInformation;
 
     std::map<std::string, std::set<PortNameMapper>> exportedInputPorts;

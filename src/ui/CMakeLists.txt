@@ -107,6 +107,7 @@ cmrc_add_resource_library(
   assets/fair-logo/FAIR_Logo_rgb_72dpi_dark.png
   assets/fontawesome/fa-regular-400.otf
   assets/fontawesome/fa-solid-900.otf
+  assets/odglyphs/od-glyphs.ttf
   assets/roboto/Roboto-Medium-subscripts.ttf
   assets/xkcd/xkcd.otf
   assets/xkcd/xkcd-script.ttf)
@@ -483,6 +484,7 @@ add_library(
   components/Block.hpp
   components/BlockNeighboursPreview.cpp
   components/BlockNeighboursPreview.hpp
+  components/ComputeDomainTag.hpp
   components/DashboardPreview.cpp
   components/DashboardPreview.hpp
   components/DataTypeStyle.cpp

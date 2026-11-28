@@ -1,4 +1,5 @@
 #include "LookAndFeel.hpp"
+#include "ProcessorGlyphs.hpp"
 
 #include "Imw.hpp"
 
@@ -54,12 +55,14 @@ Palette classicPalette(LookAndFeel::Style style) {
 
         .flowgraphBg                           = dark ? rgba(0x202020) : rgba(0xFFFFFF),
         .flowgraphNodeBg                       = dark ? rgba(0x333333) : rgba(0xEFEAFF),
-        .flowgraphNodeBorder                   = dark ? rgba(0xB3B3B3) : rgba(0x606060),
-        .flowgraphSubgraphBorder               = rgba(0xDFA32B),
-        .flowgraphSubgraphBorderText           = black,
+        .flowgraphNodeBorder                   = dark ? rgba(0xB3B3B3) : black,
+        .flowgraphGpu                          = rgba(0xF84000), // GR4's graph_core_structure.svg
+        .flowgraphTpu                          = dark ? rgba(0x26C6DA) : rgba(0x0097A7),
+        .flowgraphHostLink                     = dark ? rgba(0xA0A0A0) : rgba(0x707070),
         .flowgraphUiControlHighlight           = rgba(uiControlHighlight),
         .flowgraphUiControlConnectionIndicator = dark ? rgba(0xA0A0A0) : rgba(0x555555),
         .flowgraphUiControlPendingConnection   = rgba(uiControlHighlight),
+        .flowgraphGpuError                     = rgba(0xD9534F),
         .flowgraphUiControlUnlink              = rgba(0xD32F2F),
         .flowgraphUiControlUnlinkPressed       = rgba(0xFF8A80),
         .flowgraphNodeMenuButtonHovered        = dark ? rgba(0xFFFFFF, 0x20) : rgba(0x000000, 0x14),
@@ -188,12 +191,14 @@ Palette spectrumPalette(LookAndFeel::Style style) {
 
         .flowgraphBg                           = dark ? rgba(c.gray50) : rgba(c.gray200),
         .flowgraphNodeBg                       = dark ? rgba(c.gray200) : rgba(c.gray50),
-        .flowgraphNodeBorder                   = rgba(c.gray400),
-        .flowgraphSubgraphBorder               = rgba(c.orange500),
-        .flowgraphSubgraphBorderText           = rgba(c.gray50),
+        .flowgraphNodeBorder                   = rgba(c.gray900),
+        .flowgraphGpu                          = rgba(0xF84000),
+        .flowgraphTpu                          = dark ? rgba(0x26C6DA) : rgba(0x0097A7),
+        .flowgraphHostLink                     = rgba(c.gray700),
         .flowgraphUiControlHighlight           = rgba(c.blue500),
         .flowgraphUiControlConnectionIndicator = rgba(c.gray800),
         .flowgraphUiControlPendingConnection   = rgba(c.blue500),
+        .flowgraphGpuError                     = rgba(c.red700),
         .flowgraphUiControlUnlink              = rgba(c.red500),
         .flowgraphUiControlUnlinkPressed       = rgba(c.red700),
         .flowgraphNodeMenuButtonHovered        = dark ? rgba(c.gray400) : rgba(c.gray200),
@@ -489,5 +494,9 @@ void LookAndFeel::loadFonts() {
     lookAndFeel.fontIconsSolid      = loadIconsFont("assets/fontawesome/fa-solid-900.otf", kFontSizes[FontSizeTiny]);
     lookAndFeel.fontIconsSolidBig   = loadIconsFont("assets/fontawesome/fa-solid-900.otf", kFontSizes[FontSizeSmall]);
     lookAndFeel.fontIconsSolidLarge = loadIconsFont("assets/fontawesome/fa-solid-900.otf", kFontSizes[FontSizeBig]);
+
+    static constexpr std::array<ImWchar, 3> kGlyphRange = {static_cast<ImWchar>(glyphs::kFirstCodepoint), static_cast<ImWchar>(glyphs::kLastCodepoint), 0};
+    const auto                              glyphFont   = cmrc::ui_assets::get_filesystem().open("assets/odglyphs/od-glyphs.ttf");
+    lookAndFeel.fontGlyphs                              = ImGui::GetIO().Fonts->AddFontFromMemoryTTF(const_cast<char*>(glyphFont.begin()), static_cast<int>(glyphFont.size()), kFontSizes[FontSizeTiny], &config, kGlyphRange.data());
 }
 } // namespace gr::od

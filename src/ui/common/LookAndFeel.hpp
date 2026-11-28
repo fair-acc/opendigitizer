@@ -55,6 +55,12 @@ inline ImVec4 darkenColorByReducingValue(const ImVec4& color, float percent) {
     return {r, g, b, color.w};
 }
 
+/// ITU-R BT.601 luma: 0 for black to 1 for white
+constexpr float luminance(const ImVec4& color) { return 0.299f * color.x + 0.587f * color.y + 0.114f * color.z; }
+
+/// black on a light `background`, white on a dark one
+constexpr ImVec4 contrastingText(const ImVec4& background) { return luminance(background) > .5f ? ImVec4{0.f, 0.f, 0.f, 1.f} : ImVec4{1.f, 1.f, 1.f, 1.f}; }
+
 inline ImVec4 overlayTransparentOverOpaque(ImVec4 color, ImVec4 opaqueBackground) {
     const float a = color.w;
     return {color.x * a + opaqueBackground.x * (1.f - a), color.y * a + opaqueBackground.y * (1.f - a), color.z * a + opaqueBackground.z * (1.f - a), 1.f};
@@ -85,11 +91,13 @@ struct Palette {
     ImVec4 flowgraphBg;
     ImVec4 flowgraphNodeBg;
     ImVec4 flowgraphNodeBorder;
-    ImVec4 flowgraphSubgraphBorder;
-    ImVec4 flowgraphSubgraphBorderText;
+    ImVec4 flowgraphGpu;
+    ImVec4 flowgraphTpu;
+    ImVec4 flowgraphHostLink;
     ImVec4 flowgraphUiControlHighlight;
     ImVec4 flowgraphUiControlConnectionIndicator;
     ImVec4 flowgraphUiControlPendingConnection;
+    ImVec4 flowgraphGpuError;
     ImVec4 flowgraphUiControlUnlink;
     ImVec4 flowgraphUiControlUnlinkPressed;
     ImVec4 flowgraphNodeMenuButtonHovered;
@@ -313,6 +321,8 @@ struct LookAndFeel {
         float nestedEditorInset                    = 16.f;
         float computeDomainTagMaxOffset            = 30.f; // from the left edge of the subgraph
         float computeDomainTagOffsetRatio          = .2f;  // of the space available for the tag
+        float computeDomainGlyphSize               = 14.f; // canvas units
+        float computeDomainGlyphSlashWidth         = .12f; // of the glyph's size
         float uiControlRegionGap                   = 16.f; // around the UI control block region and between its blocks
         float uiControlDragHandleRadius            = 5.f;
         float uiControlDragHandleHoveredRadius     = 6.f;
@@ -352,6 +362,7 @@ struct LookAndFeel {
     ImFont*                fontIconsSolid;
     ImFont*                fontIconsSolidBig;
     ImFont*                fontIconsSolidLarge;
+    ImFont*                fontGlyphs; // OpenDigitizer's own glyphs (ProcessorGlyphs.hpp)
     std::chrono::seconds   editPaneCloseDelay{15};
     float                  editPaneCloseBarHeight                  = 3.f;
     float                  requiredDragDistanceForWindowUndock     = 30.f;
