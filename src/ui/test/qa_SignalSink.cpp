@@ -14,17 +14,17 @@ int main() {
     using namespace charts;
     using namespace test;
 
-    "TestStreamingSink basic usage"_test = [] {
+    "a new streaming sink has its name and capacity, and no samples"_test = [] {
         auto sink = makeTestStreamingSink("test_sink", 100);
 
         expect(eq(sink->uniqueName(), std::string_view("test_sink")));
         expect(eq(sink->signalName(), std::string_view("test_sink")));
         expect(eq(sink->bufferCapacity(), 100UZ));
-        expect(eq(sink->size(), 0UZ));
+        expect(eq(sink->sampleCount(), 0UZ));
         expect(!sink->hasDataSets());
     };
 
-    "TestStreamingSink push and retrieve data"_test = [] {
+    "a streaming sink keeps its samples in push order"_test = [] {
         auto sink = makeTestStreamingSink("test_sink", 100);
 
         for (std::size_t i = 0; i < 50; ++i) {
@@ -33,7 +33,7 @@ int main() {
             sink->pushSample(x, y);
         }
 
-        expect(eq(sink->size(), 50UZ));
+        expect(eq(sink->sampleCount(), 50UZ));
 
         expect(std::abs(sink->samples().x[0] - 0.0) < 1e-9);
         expect(std::abs(sink->samples().x[49] - 0.49) < 1e-9);
@@ -51,7 +51,7 @@ int main() {
         }
         const SampleWindow x = longer->samples().newest(3UZ);
         const SampleWindow y = shorter->samples().newest(3UZ);
-        expect(eq(x.size(), 3UZ) && eq(y.size(), 3UZ));
+        expect((eq(x.size(), 3UZ) && eq(y.size(), 3UZ)) >> fatal);
         expect(eq(x.yAt(0UZ), 2.0) && eq(y.yAt(0UZ), 10.0)) << "the oldest pair shown";
         expect(eq(x.yAt(2UZ), 4.0) && eq(y.yAt(2UZ), 12.0)) << "the newest pair";
         expect(eq(x.first, 2UZ)) << "its place among every sample received";
@@ -96,7 +96,7 @@ int main() {
         expect(!plain->hasErrors() && !plain->samples().hasErrors()) << "a sink without uncertainties has none";
     };
 
-    "TestStreamingSink circular buffer behavior"_test = [] {
+    "a full streaming sink keeps its newest samples"_test = [] {
         auto sink = makeTestStreamingSink("test_sink", 50);
 
         for (std::size_t i = 0; i < 100; ++i) {
@@ -105,13 +105,13 @@ int main() {
             sink->pushSample(x, y);
         }
 
-        expect(eq(sink->size(), 50UZ));
+        expect(eq(sink->sampleCount(), 50UZ));
 
         expect(std::abs(sink->samples().x[0] - 50.0) < 1e-9);
         expect(std::abs(sink->samples().x[49] - 99.0) < 1e-9);
     };
 
-    "TestStreamingSink metadata"_test = [] {
+    "a sink's metadata names, rates and colours its signal"_test = [] {
         auto sink = makeTestStreamingSink("test_sink", 100);
 
         sink->metadata.signalName = "Voltage";
@@ -123,7 +123,7 @@ int main() {
         expect(eq(sink->color(), 0xFF0000U));
     };
 
-    "TestStreamingSink capacity requests"_test = [] {
+    "the largest unexpired capacity request sizes a sink"_test = [] {
         auto sink = makeTestStreamingSink("test_sink", 1000);
 
         sink->requestCapacity("chart1", 3000);
@@ -140,15 +140,15 @@ int main() {
         expect(eq(sink->bufferCapacity(), 5000UZ));
     };
 
-    "TestDataSetSink basic usage"_test = [] {
+    "a new DataSet sink holds no DataSets"_test = [] {
         auto sink = makeTestDataSetSink("dataset_sink", 5);
 
         expect(eq(sink->uniqueName(), std::string_view("dataset_sink")));
-        expect(eq(sink->size(), 0UZ));
+        expect(eq(sink->sampleCount(), 0UZ));
         expect(!sink->hasDataSets());
     };
 
-    "TestDataSetSink push and retrieve DataSets"_test = [] {
+    "a DataSet sink keeps a pushed DataSet as is"_test = [] {
         auto sink = makeTestDataSetSink("dataset_sink", 5);
 
         gr::DataSet<float> ds;
@@ -166,12 +166,12 @@ int main() {
 
         expect(sink->hasDataSets());
         expect(eq(sink->dataSets().size(), 1UZ));
-        expect(eq(sink->size(), 0UZ)) << "no streaming samples";
+        expect(eq(sink->sampleCount(), 0UZ)) << "no streaming samples";
         expect(eq(sink->dataSets().back().axis_values[0].size(), 5UZ));
         expect(approx(sink->dataSets().back().signal_values[0], 1.0f, 1e-6f));
     };
 
-    "TestDataSetSink max capacity"_test = [] {
+    "a full DataSet sink keeps its newest DataSets"_test = [] {
         auto sink = makeTestDataSetSink("dataset_sink", 3);
 
         for (int i = 0; i < 5; ++i) {
@@ -247,7 +247,8 @@ int main() {
         sink->pushDataSet(ds);
 
         auto frame = sink->frame();
-        expect(eq(frame.rows, 2UZ) && eq(frame.columns, 3UZ) && eq(frame.generation, 1U));
+        expect((eq(frame.rows, 2UZ) && eq(frame.columns, 3UZ)) >> fatal);
+        expect(eq(frame.generation, 1U));
         expect(eq(frame.row(1UZ).front(), 4.f)) << "row 1 of signal a";
         expect(eq(frame.axes[1].origin, 10.0) && eq(frame.axes[1].step, 10.0) && eq(frame.axes[1].unit, std::string("s")));
         expect(frame.dataSet == &sink->dataSets().back());
@@ -267,7 +268,8 @@ int main() {
             sink->pushDataSet(ds);
         }
         const auto newest = sink->frame();
-        expect(eq(newest.rows, 2UZ) && eq(newest.columns, 3UZ) && eq(newest.generation, 3U));
+        expect((eq(newest.rows, 2UZ) && eq(newest.columns, 3UZ)) >> fatal);
+        expect(eq(newest.generation, 3U));
         expect(eq(newest.row(1UZ).front(), 21.f)) << "phase of the newest";
         expect(eq(newest.columnCoordinates.size(), 3UZ) && eq(newest.columnCoordinates[2], 4.f)) << "non-uniform axis values kept";
         expect(eq(sink->frame(1U).generation, 2U)) << "clamped to the oldest held";
@@ -283,7 +285,7 @@ int main() {
         frames.push_back(std::move(tensor));
         sink.pushFrames<float>(frames, 1UZ);
         const auto frame = sink.frame();
-        expect(eq(frame.rows, 2UZ) && eq(frame.columns, 2UZ) >> fatal);
+        expect((eq(frame.rows, 2UZ) && eq(frame.columns, 2UZ)) >> fatal);
         expect(eq(frame.row(1UZ)[1], 4.5f));
     };
 

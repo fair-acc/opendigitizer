@@ -9,10 +9,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstddef>
-#include <deque>
-#include <functional>
 #include <memory>
-#include <mutex>
 #include <string>
 #include <string_view>
 #include <utility>

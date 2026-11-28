@@ -73,13 +73,7 @@ struct SurfaceBuffer {
         _dirty = true;
     }
 
-    void updateAutoScale(std::span<const float> yValues, std::size_t nBins) {
-        const auto range = finiteRange(yValues.first(std::min(nBins, yValues.size())));
-        if (!range || range->second <= range->first) {
-            return; // no finite range this frame: the previous colour scale stays
-        }
-        followColourScale(_scaleMin, _scaleMax, range->first, range->second, _filledRows == 0);
-    }
+    void updateAutoScale(std::span<const float> yValues, std::size_t nBins) { followColourScale(_scaleMin, _scaleMax, yValues.first(std::min(nBins, yValues.size())), _filledRows == 0); }
 
     void resizeHistory(std::size_t newDepth) {
         if (newDepth == _historyDepth || _spectrumWidth == 0) {
@@ -293,11 +287,7 @@ void main() {
 }
 )glsl";
 
-        GLuint vs = gl::compileShader(GL_VERTEX_SHADER, gl::kGlslPrefix, kVertBody);
-        GLuint fs = gl::compileShader(GL_FRAGMENT_SHADER, gl::kGlslPrefix, kFragBody);
-        _program  = gl::linkProgram(vs, fs);
-        glDeleteShader(vs);
-        glDeleteShader(fs);
+        _program = gl::buildProgram(kVertBody, kFragBody);
 
         if (!_program) {
             return false;
@@ -704,7 +694,7 @@ struct SurfacePlot : gr::Block<SurfacePlot, gr::Drawable<gr::UICategory::Content
         std::string zLabel = buildLabel(zQuantity, zUnit, _axisFormat[2]);
 
         ImPlot3DAxisFlags gridFlag = show_grid ? ImPlot3DAxisFlags_None : ImPlot3DAxisFlags_NoGridLines;
-        ImPlot3D::SetupAxes(xLabel.empty() ? "" : xLabel.c_str(), yLabel.empty() ? "" : yLabel.c_str(), zLabel.empty() ? "" : zLabel.c_str(), gridFlag, gridFlag, gridFlag);
+        ImPlot3D::SetupAxes(xLabel.c_str(), yLabel.c_str(), zLabel.c_str(), gridFlag, gridFlag, gridFlag);
 
         // the context menu's scale changes apply here: only the Setup phase may change them
         for (int i = 0; i < 3; ++i) {
@@ -818,35 +808,22 @@ struct SurfacePlot : gr::Block<SurfacePlot, gr::Drawable<gr::UICategory::Content
             return;
         }
 
+        const auto hoveredAxes = [this] { return std::ranges::count(_savedPlot->Axes, true, &ImPlot3DAxis::Hovered); };
         // ImPlot3D hovers 1 axis on an edge, 2 on a plane face, 3 in empty space:
         // the axis menu opens on an edge, the canvas menu on a face, and empty space keeps right-click rotation
         if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
-            _hoveredAxisIndex   = -1;
-            int hoveredCount    = 0;
-            int lastHoveredAxis = -1;
-            for (int i = 0; i < 3; ++i) {
-                if (_savedPlot->Axes[i].Hovered) {
-                    ++hoveredCount;
-                    lastHoveredAxis = i;
-                }
-            }
-            if (hoveredCount == 1) {
-                _hoveredAxisIndex = lastHoveredAxis;
+            _hoveredAxisIndex = -1;
+            if (const auto hovered = hoveredAxes(); hovered == 1) {
+                _hoveredAxisIndex = static_cast<int>(std::ranges::find(_savedPlot->Axes, true, &ImPlot3DAxis::Hovered) - std::ranges::begin(_savedPlot->Axes));
                 ImGui::OpenPopup("##Srf3DAxis");
-            } else if (hoveredCount == 2) {
+            } else if (hovered == 2) {
                 ImGui::OpenPopup("##Srf3DCanvas");
             }
         }
 
         // double-click on axis edge: fit-once without enabling auto-scale
-        if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
-            int hoveredCount = 0;
-            for (int i = 0; i < 3; ++i) {
-                hoveredCount += _savedPlot->Axes[i].Hovered ? 1 : 0;
-            }
-            if (hoveredCount == 1) {
-                _needsRefit = true;
-            }
+        if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left) && hoveredAxes() == 1) {
+            _needsRefit = true;
         }
 
         if (ImGui::BeginPopup("##Srf3DAxis")) {

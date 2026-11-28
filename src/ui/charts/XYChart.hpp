@@ -143,60 +143,38 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
     void buildAxisCategoriesWithFallback() {
         axis::buildAxisCategories(_signalSinks, _xCategories, _yCategories, _xAxisGroups, _yAxisGroups);
 
-        if (!_signalSinks.empty() && !_xCategories[0].has_value()) {
-            _xCategories[0] = AxisCategory{.quantity = "time", .unit = "s", .color = _signalSinks[0]->color()};
-            std::ranges::transform(_signalSinks, std::back_inserter(_xAxisGroups[0]), [](const auto& sink) { return std::string(sink->uniqueName()); });
-        }
-        if (!_signalSinks.empty() && !_yCategories[0].has_value()) {
-            _yCategories[0] = AxisCategory{.quantity = "signal", .unit = "", .color = _signalSinks[0]->color()};
-            std::ranges::transform(_signalSinks, std::back_inserter(_yAxisGroups[0]), [](const auto& sink) { return std::string(sink->uniqueName()); });
-        }
+        const auto fallback = [this](std::optional<AxisCategory>& category, std::vector<std::string>& group, const char* quantity, const char* unit) {
+            if (!_signalSinks.empty() && !category.has_value()) {
+                category = AxisCategory{.quantity = quantity, .unit = unit, .color = _signalSinks[0]->color()};
+                std::ranges::transform(_signalSinks, std::back_inserter(group), [](const auto& sink) { return std::string(sink->uniqueName()); });
+            }
+        };
+        fallback(_xCategories[0], _xAxisGroups[0], "time", "s");
+        fallback(_yCategories[0], _yAxisGroups[0], "signal", "");
     }
 
     void setupAxes(const ImVec2& plotSize, bool showGrid = true) {
-        const std::size_t nAxesX = axis::activeAxisCount(_xCategories);
-        const std::size_t nAxesY = axis::activeAxisCount(_yCategories);
-
-        for (std::size_t i = 0; i < _xCategories.size(); ++i) {
-            const auto dashCfg = parseAxisConfig(this->ui_constraints.value, true, i);
-
-            const auto [minLimit, maxLimit] = axisLimits(x_auto_scale.value[i], x_min.value[i], x_max.value[i], dashCfg);
-
-            const LabelFormat format = dashCfg ? dashCfg->format : LabelFormat::Auto;
-            const auto        axisId = ImAxis_X1 + static_cast<int>(i);
-            const float       width  = axisLabelWidthOrDefault(dashCfg, defaultAxisLabelWidthFor(axisId, plotSize));
-            const AxisScale   scale  = dashCfg ? dashCfg->scale.value_or(AxisScale::Linear) : AxisScale::Linear;
-
-            if (_xCategories[i].has_value()) {
-                _xCategories[i]->scale = scale;
+        const auto setup = [&](bool isX, auto& categories, const auto& autoScale, const auto& min, const auto& max) {
+            const std::size_t nAxes = axis::activeAxisCount(categories);
+            for (std::size_t i = 0; i < categories.size(); ++i) {
+                const auto dashCfg              = parseAxisConfig(this->ui_constraints.value, isX, i);
+                const auto [minLimit, maxLimit] = axisLimits(autoScale.value[i], min.value[i], max.value[i], dashCfg);
+                const auto      axisId          = (isX ? ImAxis_X1 : ImAxis_Y1) + static_cast<int>(i);
+                const AxisScale scale           = dashCfg ? dashCfg->scale.value_or(AxisScale::Linear) : AxisScale::Linear;
+                if (categories[i].has_value()) {
+                    categories[i]->scale = scale;
+                }
+                const auto cond      = trackLimitsCond(isX, minLimit, maxLimit, i);
+                double&    threshold = _symLogLinearThresholds[static_cast<std::size_t>(axisId)];
+                threshold            = dashCfg ? static_cast<double>(dashCfg->linearThreshold) : std::numeric_limits<double>::quiet_NaN();
+                axis::setupAxis(axisId, categories[i], dashCfg ? dashCfg->format : LabelFormat::Auto, axisLabelWidthOrDefault(dashCfg, defaultAxisLabelWidthFor(axisId, plotSize)), minLimit, maxLimit, nAxes, scale, _unitStringStorage, showGrid, /*foreground=*/false, cond, &threshold);
+                if (ImPlotAxis& plotAxis = ImPlot::GetCurrentPlot()->Axes[axisId]; !isX && ImHasFlag(plotAxis.Flags, ImPlotAxisFlags_AutoFit)) { // Y fits only what X shows
+                    plotAxis.Flags |= ImPlotAxisFlags_RangeFit;
+                }
             }
-
-            auto xCond                                                = trackLimitsCond(true, minLimit, maxLimit, i);
-            _symLogLinearThresholds[static_cast<std::size_t>(axisId)] = dashCfg ? static_cast<double>(dashCfg->linearThreshold) : std::numeric_limits<double>::quiet_NaN();
-            axis::setupAxis(axisId, _xCategories[i], format, width, minLimit, maxLimit, nAxesX, scale, _unitStringStorage, showGrid, /*foreground=*/false, xCond, &_symLogLinearThresholds[static_cast<std::size_t>(axisId)]);
-        }
-
-        for (std::size_t i = 0; i < _yCategories.size(); ++i) {
-            const auto dashCfg = parseAxisConfig(this->ui_constraints.value, false, i);
-
-            const auto [minLimit, maxLimit] = axisLimits(y_auto_scale.value[i], y_min.value[i], y_max.value[i], dashCfg);
-
-            const LabelFormat format = dashCfg ? dashCfg->format : LabelFormat::Auto;
-            const auto        axisId = ImAxis_Y1 + static_cast<int>(i);
-            const float       width  = axisLabelWidthOrDefault(dashCfg, defaultAxisLabelWidthFor(axisId, plotSize));
-            const AxisScale   scale  = dashCfg ? dashCfg->scale.value_or(AxisScale::Linear) : AxisScale::Linear;
-
-            if (_yCategories[i].has_value()) {
-                _yCategories[i]->scale = scale;
-            }
-
-            auto yCond                                                = trackLimitsCond(false, minLimit, maxLimit, i);
-            _symLogLinearThresholds[static_cast<std::size_t>(axisId)] = dashCfg ? static_cast<double>(dashCfg->linearThreshold) : std::numeric_limits<double>::quiet_NaN();
-            axis::setupAxis(axisId, _yCategories[i], format, width, minLimit, maxLimit, nAxesY, scale, _unitStringStorage, showGrid, /*foreground=*/false, yCond, &_symLogLinearThresholds[static_cast<std::size_t>(axisId)]);
-            if (ImPlotAxis& yAxis = ImPlot::GetCurrentPlot()->Axes[axisId]; ImHasFlag(yAxis.Flags, ImPlotAxisFlags_AutoFit)) { // Y fits only what X shows
-                yAxis.Flags |= ImPlotAxisFlags_RangeFit;
-            }
-        }
+        };
+        setup(true, _xCategories, x_auto_scale, x_min, x_max);
+        setup(false, _yCategories, y_auto_scale, y_min, y_max);
     }
 
     void drawSignals() {
@@ -211,13 +189,14 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
 
             auto dataLock = sink->dataGuard();
 
-            if (sink->hasDataSets() || sink->size() > 0) {
-                ImVec4 baseColor = sinkColor(sink->color());
+            if (sink->hasDataSets() || sink->sampleCount() > 0) {
+                ImVec4     baseColor = sinkColor(sink->color());
+                const bool withTags  = show_tags.value && (tags_of_every_signal.value || !tagsDrawnForFirstSink);
 
                 if (sink->hasDataSets()) {
                     drawDataSetSignal(*sink);
 
-                    if (show_tags.value && (tags_of_every_signal.value || !tagsDrawnForFirstSink)) {
+                    if (withTags) {
                         auto allDataSets = sink->dataSets();
                         if (!allDataSets.empty()) {
                             tags::drawDataSetTimingEvents(allDataSets.back(), baseColor);
@@ -227,7 +206,7 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
                 } else {
                     drawStreamingSignal(*sink);
 
-                    if (show_tags.value && (tags_of_every_signal.value || !tagsDrawnForFirstSink)) {
+                    if (withTags) {
                         const SampleWindow window     = sink->samples().newest(static_cast<std::size_t>(n_history.value));
                         const double       xMin       = window.x.front();
                         const double       xMax       = window.x.back();
@@ -263,7 +242,7 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
     }
 
     void drawStreamingSignal(const SignalSink& sink) {
-        std::size_t totalCount = sink.size();
+        std::size_t totalCount = sink.sampleCount();
         if (totalCount == 0) {
             return;
         }
@@ -279,16 +258,13 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
         const double    now             = ImGui::GetTime();
         const double    refreshInterval = update_rate.value > 0.f ? 1.0 / static_cast<double>(update_rate.value) : 0.0;
         const bool      refreshDue      = snap.sourceCount != dataCount || (now - snap.lastRefresh) >= refreshInterval;
-        const auto      columns         = static_cast<std::size_t>(std::max(ImPlot::GetPlotSize().x, 0.0f));
+        const auto      columns         = axis::plotColumns();
         const bool      drawErrors      = error_style.value != ErrorStyle::none && sink.hasErrors();
         if (drawErrors && (refreshDue || snap.errors.x.empty())) {
             const SampleWindow window = sink.samples().newest(dataCount);
             const double       shift  = xOffset(xAxisScale, window.x.front(), window.x.back());
-            const auto         index  = std::views::iota(0UZ, window.size());
-            const auto         x      = index | std::views::transform([&](std::size_t i) { return window.x[i] - shift; }) | std::ranges::to<std::vector>();
-            const auto         y      = index | std::views::transform([&](std::size_t i) { return window.yAt(i); }) | std::ranges::to<std::vector>();
-            const auto         sigma  = index | std::views::transform([&](std::size_t i) { return window.yErrorAt(i); }) | std::ranges::to<std::vector>();
-            snap.errors               = axis::errorBand(x, y, sigma, columns);
+            const auto         x      = window.x | std::views::transform([shift](double t) { return t - shift; }) | std::ranges::to<std::vector>();
+            snap.errors               = axis::errorBand(x, SampleWindow::doubles(window.y, window.size()), SampleWindow::doubles(window.yError, window.size()), columns);
         }
         if (drawErrors) { // under the line, whichever path draws it
             axis::drawErrorBand(snap.errors, error_style.value, sinkColor(sink.color()), seriesLineWidth(sink), sink.uniqueName());
@@ -388,18 +364,13 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
         if (values.size() < n || errors.signals.size() < (row + 1UZ) * n) {
             return;
         }
-        const auto toDoubles = [](auto range) { return range | std::views::transform([](float v) { return static_cast<double>(v); }) | std::ranges::to<std::vector>(); };
-        const auto x         = toDoubles(std::span(dataSet.axis_values[0]));
-        const auto y         = toDoubles(values.first(n));
-        const auto sigma     = toDoubles(std::span(errors.signals).subspan(row * n, n));
-        const auto band      = axis::errorBand(x, y, sigma, static_cast<std::size_t>(std::max(ImPlot::GetPlotSize().x, 0.0f)));
+        const auto x     = SampleWindow::doubles(std::span(dataSet.axis_values[0]), n);
+        const auto y     = SampleWindow::doubles(values, n);
+        const auto sigma = SampleWindow::doubles(std::span(errors.signals).subspan(row * n, n), n);
+        const auto band  = axis::errorBand(x, y, sigma, axis::plotColumns());
         axis::drawErrorBand(band, error_style.value, colour, seriesLineWidth(sink), sink.uniqueName());
         if (axis::errorDrawing(band, error_style.value).bars && band.perPoint && !errors.axes.empty() && errors.axes[0].size() == n) {
-            const auto xSigma    = toDoubles(std::span(errors.axes[0]));
-            ImVec4     barColour = colour;
-            barColour.w *= LookAndFeel::instance().chartStyle.errorBarAlpha;
-            ImPlot::SetNextErrorBarStyle(barColour, IMPLOT_AUTO, seriesLineWidth(sink));
-            ImPlot::PlotErrorBars(std::format("##{}_x_error_bars", sink.uniqueName()).c_str(), x.data(), y.data(), xSigma.data(), static_cast<int>(n), ImPlotErrorBarsFlags_Horizontal);
+            axis::plotErrorBars(std::format("##{}_x_error_bars", sink.uniqueName()).c_str(), x, y, SampleWindow::doubles(std::span(errors.axes[0]), n), colour, seriesLineWidth(sink), ImPlotErrorBarsFlags_Horizontal);
         }
     }
 };

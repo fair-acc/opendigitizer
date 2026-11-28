@@ -1,6 +1,6 @@
 #include "Imw.hpp"
+#include "LookAndFeel.hpp"
 
-#include <array>
 #include <string>
 
 namespace gr::od::imw {
@@ -13,14 +13,9 @@ static ImVec2 labelPlusSpacing(const ImVec2& labelSize) { //
 }
 
 static WidgetSize calculateLabelMinAndPreferredSize(const std::string& label) {
-    std::string         visible{label.c_str(), ImGui::FindRenderedTextEnd(label.c_str())};
-    const ImVec2        labelSize = ImGui::CalcTextSize(visible.c_str(), nullptr, true);
-    std::array<char, 5> slice     = {};
-    using diff_t                  = decltype(slice.end() - slice.begin());
-    const size_t copyLength       = std::min(slice.size() - 1, visible.size());
-    std::ranges::copy_n(visible.begin(), static_cast<diff_t>(copyLength), slice.begin());
-    assert(slice.back() == '\0');
-    const auto minlabelWidth = ImGui::CalcTextSize(slice.data()).x;
+    std::string  visible{label.c_str(), ImGui::FindRenderedTextEnd(label.c_str())};
+    const ImVec2 labelSize     = ImGui::CalcTextSize(visible.c_str(), nullptr, true);
+    const auto   minlabelWidth = ImGui::CalcTextSize(visible.data(), visible.data() + std::min(visible.size(), LookAndFeel::instance().minVisibleLabelCharacters)).x;
     return WidgetSize{.min = ImVec2{minlabelWidth, labelSize.y}, .preferred = labelSize}.normalized();
 }
 

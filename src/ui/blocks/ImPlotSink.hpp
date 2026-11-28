@@ -1,29 +1,21 @@
 #ifndef OPENDIGITIZER_IMPLOTSINK_HPP
 #define OPENDIGITIZER_IMPLOTSINK_HPP
 
-#include <imgui.h>
-
 #include <algorithm>
 #include <array>
-#include <atomic>
 #include <chrono>
 #include <cstdint>
-#include <deque>
 #include <expected>
 #include <format>
-#include <functional>
 #include <iterator>
 #include <limits>
-#include <map>
 #include <memory>
-#include <mutex>
 #include <optional>
 #include <ranges>
 #include <span>
 #include <string>
 #include <string_view>
 #include <tuple>
-#include <unordered_map>
 #include <variant>
 #include <vector>
 
@@ -31,30 +23,21 @@
 #include <gnuradio-4.0/BlockModel.hpp>
 #include <gnuradio-4.0/BlockRegistry.hpp>
 #include <gnuradio-4.0/DataSet.hpp>
-#include <gnuradio-4.0/HistoryBuffer.hpp>
 #include <gnuradio-4.0/PmtTypeHelpers.hpp>
 #include <gnuradio-4.0/Tag.hpp>
 #include <gnuradio-4.0/Tensor.hpp>
 #include <gnuradio-4.0/meta/UncertainValue.hpp>
 
-#include "../common/Imw.hpp"
-#include "../common/LookAndFeel.hpp"
-
 #include "../components/SignalColours.hpp"
 
-#include <implot.h>
-
-#include "stdex/cast.hpp"
 #include <PluginPaths.hpp>
 
 #include "../charts/Chart.hpp"
 #include "../charts/SignalSink.hpp"
 #include "../charts/SinkRegistry.hpp"
-#include "../utils/Browser.hpp"
 
 namespace gr::od {
 
-using charts::AxisScale;
 using charts::tags::kFishyTagKey;
 
 template<typename T>
@@ -75,15 +58,9 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
     using Description = gr::Doc<"Buffers the samples, DataSets, Tensor frames or events of its input as a chart signal with a name, colour, line style, quantity and unit; streaming samples are dated in UTC from the trigger tags.">;
 
     static constexpr bool kIsStreaming     = std::is_arithmetic_v<T> || gr::UncertainValueLike<T> || gr::meta::complex_like<T>;
-    static constexpr bool kIsComplexStream = []() consteval {
-        if constexpr (gr::UncertainValueLike<T>) {
-            return gr::meta::complex_like<typename T::value_type>;
-        } else {
-            return gr::meta::complex_like<T>;
-        }
-    }();
-    static constexpr bool kExactInFloat = std::is_same_v<ValueType, float> || (std::is_integral_v<ValueType> && sizeof(ValueType) <= 2UZ);
-    static constexpr bool kHasErrors    = []() consteval {
+    static constexpr bool kIsComplexStream = gr::meta::complex_like<gr::UncertainValueType_t<T>>;
+    static constexpr bool kExactInFloat    = std::is_same_v<ValueType, float> || (std::is_integral_v<ValueType> && sizeof(ValueType) <= 2UZ);
+    static constexpr bool kHasErrors       = []() consteval {
         if constexpr (gr::DataSetLike<T>) {
             return gr::UncertainValueLike<typename T::value_type>;
         } else {
@@ -154,7 +131,7 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
     }(); // utc timestamp of the last tag or first sample
     bool        _xUtcOffsetInitialised = false; // after the first kTriggerTime tag
     double      _samplePeriod          = 1.0 / static_cast<double>(sample_rate);
-    std::size_t _sampleCount           = 0UZ; // since the last trigger
+    std::size_t _samplesSinceTrigger   = 0UZ;
 
     std::shared_ptr<SignalSink>  _sink;
     std::shared_ptr<SignalSink>  _imaginarySink;
@@ -393,11 +370,11 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
                     if constexpr (kIsStreaming) {
                         if (firstTrigger) {
                             // the provisional history rebased so that the next sample starts at the first valid trigger time
-                            const double shift = tagEventTime - (_xUtcOffset + static_cast<double>(_sampleCount) * _samplePeriod);
+                            const double shift = tagEventTime - (_xUtcOffset + static_cast<double>(_samplesSinceTrigger) * _samplePeriod);
                             forEachSignal([shift](SignalSink& signal) { signal.shiftTimes(shift); });
                         }
                         _xUtcOffset            = tagEventTime;
-                        _sampleCount           = 0UZ;
+                        _samplesSinceTrigger   = 0UZ;
                         _xUtcOffsetInitialised = true;
                     }
                 } else {
@@ -416,13 +393,13 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
 
             // surface dropped-sample tags at the current position so the gap is visible in the plot
             if (plot_tags && kIsStreaming && tagMap.contains(gr::tag::kNDroppedSamples)) {
-                forEachSignal([&](SignalSink& signal) { signal.pushTag(_xUtcOffset + static_cast<double>(_sampleCount) * _samplePeriod, tagMap); });
+                forEachSignal([&](SignalSink& signal) { signal.pushTag(_xUtcOffset + static_cast<double>(_samplesSinceTrigger) * _samplePeriod, tagMap); });
             }
         }
 
         for (const auto& sample : input) {
             if constexpr (kIsStreaming) {
-                const double utcSeconds = _xUtcOffset + static_cast<double>(_sampleCount) * _samplePeriod;
+                const double utcSeconds = _xUtcOffset + static_cast<double>(_samplesSinceTrigger) * _samplePeriod;
                 if constexpr (kIsComplexStream && kHasErrors) {
                     _sink->pushSample(utcSeconds, sample.value.real(), sample.uncertainty.real());
                     _imaginarySink->pushSample(utcSeconds, sample.value.imag(), sample.uncertainty.imag());
@@ -443,7 +420,7 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
                     _sink->pushDataSet(toStored(sample));
                 }
             }
-            ++_sampleCount;
+            ++_samplesSinceTrigger;
 
             if constexpr (kIsDataSet) {
                 updateAxisMetadataFromDataSet(sample);

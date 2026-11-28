@@ -162,10 +162,10 @@ struct TestApp : public test::ImGuiTestApp {
                             continue;
                         }
                         ++transparent;
-                        const ImVec2       at      = chart->screenPosition(static_cast<double>(c) + 0.5, static_cast<double>(r) + 0.5);
-                        const unsigned int p       = screen.rgba[static_cast<std::size_t>(at.y) * static_cast<std::size_t>(screen.width) + static_cast<std::size_t>(at.x)];
-                        const auto         channel = [p](unsigned int shift) { return static_cast<int>((p >> shift) & 0xFFU); };
-                        grey += std::abs(channel(0U) - channel(8U)) < 16 && std::abs(channel(8U) - channel(16U)) < 16 ? 1UZ : 0UZ; // the grey test card below, not the Hot colormap
+                        const ImVec2       at         = chart->screenPosition(static_cast<double>(c) + 0.5, static_cast<double>(r) + 0.5);
+                        const unsigned int p          = screen.rgba[static_cast<std::size_t>(at.y) * static_cast<std::size_t>(screen.width) + static_cast<std::size_t>(at.x)];
+                        const auto [red, green, blue] = CapturedPixels::rgb(p);
+                        grey += std::abs(red - green) < 16 && std::abs(green - blue) < 16 ? 1UZ : 0UZ; // the grey test card below, not the Hot colormap
                     }
                 }
                 expect(gt(transparent, 0UZ) && ge(grey * 10UZ, transparent * 9UZ)) << std::format("{} of {} cells above layer_max show the layer below", grey, transparent);

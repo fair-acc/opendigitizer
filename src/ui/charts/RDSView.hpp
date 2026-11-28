@@ -113,8 +113,8 @@ With `tuner` set, e.g. to "RTLSDR:frequency", the panel also tunes the radio: th
                 clockUtcSeconds = utcSeconds;
             }
             station     = std::move(next);
-            groupCounts = countsOf(tag, RDSDecoder::kGroupCountsKey);
-            addQualitySample(utcSeconds, countsOf(tag, RDSDecoder::kBlockCountsKey));
+            groupCounts = listOf<std::uint32_t>(tag, RDSDecoder::kGroupCountsKey);
+            addQualitySample(utcSeconds, listOf<std::uint32_t>(tag, RDSDecoder::kBlockCountsKey));
             lastUpdateUtcSeconds = utcSeconds;
         }
 
@@ -195,7 +195,7 @@ With `tuner` set, e.g. to "RTLSDR:frequency", the panel also tunes the radio: th
                 .stereo                  = knownOf<bool>(tag, RDSDecoder::kStereoKey),
                 .dynamicProgrammeType    = knownOf<bool>(tag, RDSDecoder::kDynamicProgrammeTypeKey),
                 .extendedCountryCode     = tag.value_or<std::uint8_t>(RDSDecoder::kExtendedCountryCodeKey, 0U),
-                .alternativeFrequencies  = frequenciesOf(tag),
+                .alternativeFrequencies  = listOf<float>(tag, RDSDecoder::kAlternativeFrequenciesKey),
                 .itemArtist              = textOf(tag, RDSDecoder::kItemArtistKey),
                 .itemTitle               = textOf(tag, RDSDecoder::kItemTitleKey),
                 .otherNetworks           = otherNetworksOf(tag),
@@ -209,14 +209,10 @@ With `tuner` set, e.g. to "RTLSDR:frequency", the panel also tunes the radio: th
             return map.contains(key) ? std::optional(map.value_or<T>(key, T{})) : std::nullopt;
         }
 
-        [[nodiscard]] static std::vector<float> frequenciesOf(const gr::property_map& map) {
-            const auto frequencies = map.value_or<gr::Tensor<float>>(RDSDecoder::kAlternativeFrequenciesKey, gr::Tensor<float>{});
-            return {frequencies.begin(), frequencies.end()};
-        }
-
-        [[nodiscard]] static std::vector<std::uint32_t> countsOf(const gr::property_map& map, std::string_view key) {
-            const auto counts = map.value_or<gr::Tensor<std::uint32_t>>(key, gr::Tensor<std::uint32_t>{});
-            return {counts.begin(), counts.end()};
+        template<typename T>
+        [[nodiscard]] static std::vector<T> listOf(const gr::property_map& map, std::string_view key) {
+            const auto values = map.value_or<gr::Tensor<T>>(key, gr::Tensor<T>{});
+            return {values.begin(), values.end()};
         }
 
         [[nodiscard]] static std::map<std::uint16_t, RDSDecoder::OtherNetwork> otherNetworksOf(const gr::property_map& tag) {
@@ -236,7 +232,7 @@ With `tuner` set, e.g. to "RTLSDR:frequency", the panel also tunes the radio: th
                 const gr::property_map network    = view->owned();
                 networks[programmeIdentification] = {
                     .programmeServiceName   = textOf(network, RDSDecoder::kProgrammeServiceNameKey),
-                    .alternativeFrequencies = frequenciesOf(network),
+                    .alternativeFrequencies = listOf<float>(network, RDSDecoder::kAlternativeFrequenciesKey),
                     .trafficProgramme       = network.value_or<bool>(RDSDecoder::kTrafficProgrammeKey, false),
                     .trafficAnnouncement    = knownOf<bool>(network, RDSDecoder::kTrafficAnnouncementKey),
                     .programmeType          = knownOf<std::uint8_t>(network, RDSDecoder::kProgrammeTypeKey),

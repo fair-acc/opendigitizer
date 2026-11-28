@@ -157,11 +157,7 @@ void main() {
 }
 )glsl";
 
-        const GLuint vertexShader   = shader::compileShader(GL_VERTEX_SHADER, shader::kGlslPrefix, kVertexShader);
-        const GLuint fragmentShader = shader::compileShader(GL_FRAGMENT_SHADER, shader::kGlslPrefix, kFragmentShader);
-        handles.program             = shader::linkProgram(vertexShader, fragmentShader);
-        glDeleteShader(vertexShader);
-        glDeleteShader(fragmentShader);
+        handles.program = shader::buildProgram(kVertexShader, kFragmentShader);
         if (handles.program == 0) {
             return;
         }

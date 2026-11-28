@@ -1213,14 +1213,21 @@ connections:
                         return ImRect(min, max - ImVec2(0.f, 2.f));
                     };
                     const auto& palette  = LookAndFeel::instance().palette();
-                    const auto  channel  = [](unsigned int pixel, unsigned int shift) { return static_cast<float>((pixel >> shift) & 0xFFU) / 255.f; };
-                    const auto  matches  = [&channel](unsigned int pixel, const ImVec4& colour) { return std::abs(channel(pixel, 0U) - colour.x) < .1f && std::abs(channel(pixel, 8U) - colour.y) < .1f && std::abs(channel(pixel, 16U) - colour.z) < .1f; };
-                    const auto  pixelsOf = [ctx, &matches](const ImRect& screenRect, const ImVec4& colour) { return std::ranges::count_if(captureSettledPixels(*ctx, screenRect).rgba, [&](unsigned int pixel) { return matches(pixel, colour); }); };
+                    const auto  colourOf = [](unsigned int pixel) {
+                        const auto [red, green, blue] = CapturedPixels::rgb(pixel);
+                        return ImVec4(static_cast<float>(red) / 255.f, static_cast<float>(green) / 255.f, static_cast<float>(blue) / 255.f, 1.f);
+                    };
+                    const auto matches = [&colourOf](unsigned int pixel, const ImVec4& colour) {
+                        const ImVec4 seen = colourOf(pixel);
+                        return std::abs(seen.x - colour.x) < .1f && std::abs(seen.y - colour.y) < .1f && std::abs(seen.z - colour.z) < .1f;
+                    };
+                    const auto pixelsOf = [ctx, &matches](const ImRect& screenRect, const ImVec4& colour) { return std::ranges::count_if(captureSettledPixels(*ctx, screenRect).rgba, [&](unsigned int pixel) { return matches(pixel, colour); }); };
                     // the chip's strokes are under 1 px wide: ink is any pixel at least 40 % of the way from the block's background to `colour`
-                    const auto inkOf = [&channel, &palette](unsigned int pixel, const ImVec4& colour) {
+                    const auto inkOf = [&colourOf, &palette](unsigned int pixel, const ImVec4& colour) {
                         const ImVec4& background = palette.flowgraphNodeBg;
+                        const ImVec4  seen       = colourOf(pixel);
                         const ImVec4  d(colour.x - background.x, colour.y - background.y, colour.z - background.z, 0.f);
-                        const ImVec4  p(channel(pixel, 0U) - background.x, channel(pixel, 8U) - background.y, channel(pixel, 16U) - background.z, 0.f);
+                        const ImVec4  p(seen.x - background.x, seen.y - background.y, seen.z - background.z, 0.f);
                         const float   share = (p.x * d.x + p.y * d.y + p.z * d.z) / (d.x * d.x + d.y * d.y + d.z * d.z);
                         return share > .4f && std::hypot(p.x - share * d.x, p.y - share * d.y, p.z - share * d.z) < .15f;
                     };

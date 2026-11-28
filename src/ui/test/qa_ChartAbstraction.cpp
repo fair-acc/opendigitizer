@@ -43,26 +43,21 @@ struct FixedUncertainty : gr::Block<FixedUncertainty> {
     [[nodiscard]] constexpr gr::UncertainValue<float> processOne(float value) const noexcept { return {value, 0.5f}; }
 };
 
-struct UncertainDataSetSource : gr::Block<UncertainDataSetSource> {
-    gr::PortOut<gr::DataSet<gr::UncertainValue<float>>> out;
-    GR_MAKE_REFLECTABLE(UncertainDataSetSource, out);
+/// sends `_sets`, then is done
+template<typename T>
+struct DataSetSource : gr::Block<DataSetSource<T>> {
+    gr::PortOut<gr::DataSet<T>> out;
+    GR_MAKE_REFLECTABLE(DataSetSource, out);
 
-    bool _sent = false;
+    std::vector<gr::DataSet<T>> _sets;
+    std::size_t                 _sent = 0UZ;
 
-    gr::work::Status processBulk(gr::OutputSpanLike auto& output) noexcept {
-        if (_sent) {
-            output.publish(0UZ);
-            return gr::work::Status::DONE;
-        }
-        gr::DataSet<gr::UncertainValue<float>> dataSet;
-        dataSet.signal_names  = {"current"};
-        dataSet.axis_values   = {{{0.f, 0.01f}, {1.f, 0.02f}}};
-        dataSet.extents       = {2};
-        dataSet.signal_values = {{1.f, 0.1f}, {2.f, 0.2f}};
-        output[0UZ]           = std::move(dataSet);
-        output.publish(1UZ);
-        _sent = true;
-        return gr::work::Status::OK;
+    gr::work::Status processBulk(gr::OutputSpanLike auto& output) {
+        const std::size_t n = std::min(output.size(), _sets.size() - _sent);
+        std::copy_n(std::next(_sets.begin(), static_cast<std::ptrdiff_t>(_sent)), n, output.begin());
+        output.publish(n);
+        _sent += n;
+        return _sent == _sets.size() ? gr::work::Status::DONE : gr::work::Status::OK;
     }
 };
 
@@ -72,54 +67,6 @@ struct ToUncertainComplex : gr::Block<ToUncertainComplex> {
     GR_MAKE_REFLECTABLE(ToUncertainComplex, in, out);
 
     [[nodiscard]] constexpr gr::UncertainValue<std::complex<float>> processOne(std::complex<float> z) const noexcept { return {z, {0.1f, 0.2f}}; }
-};
-
-struct ComplexDataSetSource : gr::Block<ComplexDataSetSource> {
-    gr::PortOut<gr::DataSet<std::complex<float>>> out;
-    GR_MAKE_REFLECTABLE(ComplexDataSetSource, out);
-
-    bool _sent = false;
-
-    gr::work::Status processBulk(gr::OutputSpanLike auto& output) noexcept {
-        if (_sent) {
-            output.publish(0UZ);
-            return gr::work::Status::DONE;
-        }
-        gr::DataSet<std::complex<float>> dataSet;
-        dataSet.signal_names      = {"iq"};
-        dataSet.signal_quantities = {"voltage"};
-        dataSet.signal_units      = {"V"};
-        dataSet.axis_values       = {{{0.f, 0.f}, {1.f, 0.f}}};
-        dataSet.extents           = {2};
-        dataSet.signal_values     = {{1.f, 2.f}, {3.f, 4.f}};
-        output[0UZ]               = std::move(dataSet);
-        output.publish(1UZ);
-        _sent = true;
-        return gr::work::Status::OK;
-    }
-};
-
-struct Int16DataSetSource : gr::Block<Int16DataSetSource> {
-    gr::PortOut<gr::DataSet<std::int16_t>> out;
-    GR_MAKE_REFLECTABLE(Int16DataSetSource, out);
-
-    bool _sent = false;
-
-    gr::work::Status processBulk(gr::OutputSpanLike auto& output) noexcept {
-        if (_sent) {
-            output.publish(0UZ);
-            return gr::work::Status::DONE;
-        }
-        gr::DataSet<std::int16_t> dataSet;
-        dataSet.signal_names  = {"counts"};
-        dataSet.axis_values   = {{0, 1}};
-        dataSet.extents       = {2};
-        dataSet.signal_values = {-32767, 32767};
-        output[0UZ]           = std::move(dataSet);
-        output.publish(1UZ);
-        _sent = true;
-        return gr::work::Status::OK;
-    }
 };
 
 int main() {
@@ -288,19 +235,19 @@ int main() {
         expect(graph.connect<"out", "in">(source, sink).has_value());
         expect(graph.run().has_value());
         expect(eq(sink.signalSink()->bufferCapacity(), 8192UZ));
-        expect(eq(sink.signalSink()->size(), 5000UZ) >> fatal);
+        expect(eq(sink.signalSink()->sampleCount(), 5000UZ) >> fatal);
 
         const auto now = CapacityRequests::clock::now();
         sink.signalSink()->requestCapacity("chart", 3000UZ, std::chrono::seconds{60}, now);
         expect(eq(sink.signalSink()->bufferCapacity(), 3000UZ)) << "requests decide once a chart asks";
-        expect(eq(sink.signalSink()->size(), 3000UZ) >> fatal);
+        expect(eq(sink.signalSink()->sampleCount(), 3000UZ) >> fatal);
         expect(eq(sink.signalSink()->samples().yAt(0UZ), 2000.0)) << "the oldest kept";
         expect(eq(sink.signalSink()->samples().yAt(2999UZ), 4999.0)) << "the newest";
         expect(eq(sink.required_size.value, gr::Size_t{8192U})) << "a saved dashboard keeps what its author set";
 
         sink.signalSink()->expireCapacityRequests(now + std::chrono::seconds{61});
         expect(eq(sink.signalSink()->bufferCapacity(), 8192UZ)) << "no chart asking: required_size again";
-        expect(eq(sink.signalSink()->size(), 3000UZ)) << "growing keeps what is held";
+        expect(eq(sink.signalSink()->sampleCount(), 3000UZ)) << "growing keeps what is held";
     };
 
     // ground truth, IEEE 754: float holds every 16-bit integer exactly and double every integer up to 2^53;
@@ -356,18 +303,24 @@ int main() {
 
     "a DataSet of UncertainValues keeps its values and their standard deviations, signal and axis"_test = [] {
         gr::testing::GraphFixture<> graph;
-        auto&                       source = graph.emplace<UncertainDataSetSource>();
-        auto&                       sink   = graph.emplace<ImPlotSink<gr::DataSet<gr::UncertainValue<float>>>>();
+        auto&                       source  = graph.emplace<DataSetSource<gr::UncertainValue<float>>>();
+        auto&                       dataSet = source._sets.emplace_back();
+        dataSet.signal_names                = {"current"};
+        dataSet.axis_values                 = {{{0.f, 0.01f}, {1.f, 0.02f}}};
+        dataSet.extents                     = {2};
+        dataSet.signal_values               = {{1.f, 0.1f}, {2.f, 0.2f}};
+        auto& sink                          = graph.emplace<ImPlotSink<gr::DataSet<gr::UncertainValue<float>>>>();
         expect(graph.connect<"out", "in">(source, sink).has_value());
         expect(graph.run().has_value());
 
         const auto& signal = *sink.signalSink();
         expect(signal.hasErrors());
-        expect(eq(signal.dataSets().size(), 1UZ) && eq(signal.dataSetErrors().size(), 1UZ) >> fatal);
+        expect((eq(signal.dataSets().size(), 1UZ) && eq(signal.dataSetErrors().size(), 1UZ)) >> fatal);
         const gr::DataSet<float>& values = signal.dataSets().back();
         const DataSetErrors&      errors = signal.dataSetErrors().back();
         expect(eq(values.signal_values[0], 1.f) && eq(values.signal_values[1], 2.f));
-        expect(eq(errors.signals.size(), 2UZ) && eq(errors.signals[0], 0.1f) && eq(errors.signals[1], 0.2f));
+        expect(eq(errors.signals.size(), 2UZ) >> fatal);
+        expect(eq(errors.signals[0], 0.1f) && eq(errors.signals[1], 0.2f));
         expect(eq(values.axis_values[0][1], 1.f));
         expect(eq(errors.axes.size(), 1UZ) >> fatal);
         expect(eq(errors.axes[0][0], 0.01f) && eq(errors.axes[0][1], 0.02f)) << "the x errors";
@@ -416,7 +369,7 @@ int main() {
         expect(real->color() != imaginary->color()) << "two traces, two colours";
         const SampleWindow re = real->samples();
         const SampleWindow im = imaginary->samples();
-        expect(eq(re.size(), 2UZ) && eq(im.size(), 2UZ) >> fatal);
+        expect((eq(re.size(), 2UZ) && eq(im.size(), 2UZ)) >> fatal);
         expect(eq(re.yAt(0UZ), 1.0) && eq(re.yAt(1UZ), 3.0) && eq(im.yAt(0UZ), 2.0) && eq(im.yAt(1UZ), 4.0));
         expect(eq(re.x[1], im.x[1])) << "dated alike";
 
@@ -427,8 +380,15 @@ int main() {
 
     "a complex DataSet arrives as two real rows per signal, Re and Im, selected by dataset_index"_test = [] {
         gr::testing::GraphFixture<> graph;
-        auto&                       source = graph.emplace<ComplexDataSetSource>();
-        auto&                       sink   = graph.emplace<ImPlotSink<gr::DataSet<std::complex<float>>>>({{"dataset_index", gr::Size_t{1U}}});
+        auto&                       source = graph.emplace<DataSetSource<std::complex<float>>>();
+        auto&                       iq     = source._sets.emplace_back();
+        iq.signal_names                    = {"iq"};
+        iq.signal_quantities               = {"voltage"};
+        iq.signal_units                    = {"V"};
+        iq.axis_values                     = {{{0.f, 0.f}, {1.f, 0.f}}};
+        iq.extents                         = {2};
+        iq.signal_values                   = {{1.f, 2.f}, {3.f, 4.f}};
+        auto& sink                         = graph.emplace<ImPlotSink<gr::DataSet<std::complex<float>>>>({{"dataset_index", gr::Size_t{1U}}});
         expect(graph.connect<"out", "in">(source, sink).has_value());
         expect(graph.run().has_value());
 
@@ -446,9 +406,14 @@ int main() {
 
     "an integer DataSet and an 8-bit image arrive as float"_test = [] {
         gr::testing::GraphFixture<> graph;
-        auto&                       dataSetSource = graph.emplace<Int16DataSetSource>();
-        auto&                       dataSetSink   = graph.emplace<ImPlotSink<gr::DataSet<std::int16_t>>>();
-        auto&                       imageSource   = graph.emplace<gr::testing::TensorSource<std::uint8_t>>();
+        auto&                       dataSetSource = graph.emplace<DataSetSource<std::int16_t>>();
+        auto&                       counts        = dataSetSource._sets.emplace_back();
+        counts.signal_names                       = {"counts"};
+        counts.axis_values                        = {{0, 1}};
+        counts.extents                            = {2};
+        counts.signal_values                      = {-32767, 32767};
+        auto& dataSetSink                         = graph.emplace<ImPlotSink<gr::DataSet<std::int16_t>>>();
+        auto& imageSource                         = graph.emplace<gr::testing::TensorSource<std::uint8_t>>();
         imageSource._frames.push_back({.extents = {2UZ, 2UZ}, .elements = {0U, 1U, 254U, 255U}});
         auto& imageSink = graph.emplace<ImPlotSink<gr::Tensor<std::uint8_t>>>();
         expect(graph.connect<"out", "in">(dataSetSource, dataSetSink).has_value());
@@ -460,7 +425,7 @@ int main() {
         expect(eq(dataSets.back().signal_values[0], -32767.f) && eq(dataSets.back().signal_values[1], 32767.f));
         expect(eq(std::string_view(dataSets.back().signal_names[0]), std::string_view("counts")));
         const FrameView image = imageSink.signalSink()->frame();
-        expect(eq(image.rows, 2UZ) && eq(image.columns, 2UZ) >> fatal);
+        expect((eq(image.rows, 2UZ) && eq(image.columns, 2UZ)) >> fatal);
         expect(eq(image.row(1UZ)[1], 255.f)) << "an 8-bit pixel as its value";
     };
 
@@ -475,7 +440,7 @@ int main() {
 
         expect(sink.signalSink()->signalKind() == SignalKind::Streaming);
         expect(sink.signalSink()->hasErrors());
-        expect(eq(sink.signalSink()->size(), 100UZ) >> fatal);
+        expect(eq(sink.signalSink()->sampleCount(), 100UZ) >> fatal);
         const SampleWindow window = sink.signalSink()->samples();
         expect(eq(window.yAt(0UZ), 0.0));
         expect(eq(window.yAt(99UZ), 99.0));
@@ -485,16 +450,14 @@ int main() {
     };
 
     "a DataSet<double> sink converts each DataSet once, metadata included"_test = [] {
-        constexpr gr::Size_t kFftSize = 64U;
-        gr::Graph            graph;
-        auto&                source = graph.emplaceBlock<gr::testing::TagSource<double>>({{"n_samples_max", kFftSize * 3U}, {"mark_tag", false}});
-        auto&                fft    = graph.emplaceBlock<gr::blocks::fft::FFT<double, gr::DataSet<double>>>({{"fft_size", kFftSize}});
-        auto&                sink   = graph.emplaceBlock<ImPlotSink<gr::DataSet<double>>>();
+        constexpr gr::Size_t        kFftSize = 64U;
+        gr::testing::GraphFixture<> graph;
+        auto&                       source = graph.emplace<gr::testing::TagSource<double>>({{"n_samples_max", kFftSize * 3U}, {"mark_tag", false}});
+        auto&                       fft    = graph.emplace<gr::blocks::fft::FFT<double, gr::DataSet<double>>>({{"fft_size", kFftSize}});
+        auto&                       sink   = graph.emplace<ImPlotSink<gr::DataSet<double>>>();
         expect(graph.connect<"out", "in">(source, fft).has_value());
         expect(graph.connect<"out", "in">(fft, sink).has_value());
-        gr::scheduler::Simple<> scheduler;
-        expect(scheduler.exchange(std::move(graph)).has_value());
-        expect(scheduler.runAndWait().has_value());
+        expect(graph.run().has_value());
 
         const auto held = sink.signalSink()->dataSets();
         expect(eq(held.size(), 3UZ) >> fatal);
@@ -755,7 +718,7 @@ int main() {
         expect(eq(sink->bufferCapacity(), 30UZ));
         chart2->addSignalSink(sink);
 
-        expect(eq(chart1->signalSinks()[0]->size(), chart2->signalSinks()[0]->size()));
+        expect(eq(chart1->signalSinks()[0]->sampleCount(), chart2->signalSinks()[0]->sampleCount()));
 
         expect(eq(sink->bufferCapacity(), 50UZ));
     };
@@ -784,8 +747,8 @@ int main() {
             sink2->pushSample(t, std::sin(5.0f * 3.14159f * static_cast<float>(t)));
         }
 
-        expect(eq(sink1->size(), 100UZ));
-        expect(eq(sink2->size(), 100UZ));
+        expect(eq(sink1->sampleCount(), 100UZ));
+        expect(eq(sink2->sampleCount(), 100UZ));
     };
 
     "YYChart mixin methods"_test = [] {
@@ -1114,7 +1077,7 @@ int main() {
         acq.triggerIndices             = std::vector<int64_t>{1};
         acq.triggerYamlPropertyMaps    = std::vector<std::string>{"trigger_name: CMD_X\n"};
 
-        const auto nowNs  = [] { return std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count(); };
+        const auto nowNs  = [] { return static_cast<std::int64_t>(gr::settings::convertTimePointToUint64Ns(std::chrono::system_clock::now())); };
         const auto before = nowNs();
         const auto ds     = RemoteDataSetSource<float>::toDataSet(acq, 7U);
         const auto after  = nowNs();
@@ -1175,13 +1138,6 @@ int main() {
         expect(isCompatible(SignalKind::All, SignalKind::Streaming)) << "all vs streaming";
         expect(isCompatible(SignalKind::Image2D, SignalKind::Image2D)) << "image vs image";
         expect(!isCompatible(SignalKind::Image2D, SignalKind::All)) << "image vs 1D charts";
-    };
-
-    "TestDataSetSink and TestStreamingSink return correct signalKind"_test = [] {
-        auto streamingSink = makeTestStreamingSink("streaming_kind_test");
-        auto datasetSink   = makeTestDataSetSink("dataset_kind_test");
-        expect(streamingSink->signalKind() == SignalKind::Streaming);
-        expect(datasetSink->signalKind() == SignalKind::Dataset1D);
     };
 
     "displayedSignalKinds empty chart returns None"_test = [] {

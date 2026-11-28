@@ -46,9 +46,7 @@ gr::property_map saveLayoutVisitor(ImGuiDockNode* node, std::unordered_map<std::
         if (child) {
             if (child->ChildNodes[0] == nullptr && child->ChildNodes[1] == nullptr && child->Windows.size() == 1) {
                 childBranch = child->Windows.front()->Name;
-                if (auto iter = remainingWindowsByName.find(child->Windows.front()->Name); iter != remainingWindowsByName.end()) {
-                    remainingWindowsByName.erase(iter);
-                }
+                remainingWindowsByName.erase(child->Windows.front()->Name);
             } else {
                 childBranch = saveLayoutVisitor(child, remainingWindowsByName);
             }

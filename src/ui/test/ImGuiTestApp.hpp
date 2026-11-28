@@ -51,6 +51,13 @@ struct ImGuiTestApp {
         int                       width  = 0;
         int                       height = 0;
         std::vector<unsigned int> rgba; // RGBA8, row-major
+
+        struct Rgb {
+            int red;
+            int green;
+            int blue;
+        };
+        [[nodiscard]] static constexpr Rgb rgb(unsigned int pixel) noexcept { return {static_cast<int>(pixel & 0xFFU), static_cast<int>((pixel >> 8U) & 0xFFU), static_cast<int>((pixel >> 16U) & 0xFFU)}; }
     };
 
     std::unique_ptr<ImGuiApp> _app;

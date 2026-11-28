@@ -87,8 +87,8 @@ Rows lineRows(const test::ImGuiTestApp::CapturedPixels& image, int left) {
     Rows rows(static_cast<std::size_t>(kChartSize.x));
     for (int y = 0; y < image.height; ++y) {
         for (std::size_t column = 0UZ; column < rows.size(); ++column) {
-            const unsigned int pixel = image.rgba[static_cast<std::size_t>(y * image.width + left) + column];
-            if (((pixel >> 8U) & 0xFFU) > 100U && (pixel & 0xFFU) < 80U && ((pixel >> 16U) & 0xFFU) < 80U) {
+            const auto [red, green, blue] = test::ImGuiTestApp::CapturedPixels::rgb(image.rgba[static_cast<std::size_t>(y * image.width + left) + column]);
+            if (green > 100 && red < 80 && blue < 80) {
                 rows[column] = std::pair{rows[column] ? rows[column]->first : y, y};
             }
         }
@@ -133,14 +133,27 @@ std::size_t tintedPixels(const test::ImGuiTestApp::CapturedPixels& image, int le
     std::size_t tinted = 0UZ;
     for (int y = 0; y < image.height; ++y) {
         for (int column = 0; column < static_cast<int>(kChartSize.x); ++column) {
-            const unsigned int pixel = image.rgba[static_cast<std::size_t>(y * image.width + left + column)];
-            const int          red   = static_cast<int>(pixel & 0xFFU);
-            const int          green = static_cast<int>((pixel >> 8U) & 0xFFU);
-            const int          blue  = static_cast<int>((pixel >> 16U) & 0xFFU);
+            const auto [red, green, blue] = test::ImGuiTestApp::CapturedPixels::rgb(image.rgba[static_cast<std::size_t>(y * image.width + left + column)]);
             tinted += green > red + 20 && green > blue + 20 ? 1UZ : 0UZ;
         }
     }
     return tinted;
+}
+
+constexpr std::size_t kPlotPixels = static_cast<std::size_t>(kChartSize.x * kChartSize.y);
+
+/// the tinted pixels of the chart at kGpuPos and of its twin at kCpuPos, from one capture of both, which a failed `holds` keeps as a screenshot
+void expectTinted(ImGuiTestContext* ctx, std::string_view what, auto holds) {
+    ctx->MouseMoveToPos(ImVec2(5.f, 5.f));
+    const ImRect      both(kGpuPos, kCpuPos + kChartSize);
+    const auto        image   = test::ImGuiTestApp::captureSettledPixels(*ctx, both);
+    const std::size_t with    = tintedPixels(image, 0);
+    const std::size_t without = tintedPixels(image, static_cast<int>(kCpuPos.x - kGpuPos.x));
+    const bool        held    = holds(with, without);
+    if (!held) {
+        test::ImGuiTestApp::captureScreenshot(*ctx, both);
+    }
+    expect(held) << std::format("{}: tinted pixels {} with, {} without", what, with, without);
 }
 
 // {lowest, highest}: Viridis' dark violet and yellow
@@ -148,10 +161,7 @@ std::pair<std::size_t, std::size_t> colormapEnds(const test::ImGuiTestApp::Captu
     std::pair<std::size_t, std::size_t> ends{0UZ, 0UZ};
     for (int y = 0; y < image.height; ++y) {
         for (int column = 0; column < static_cast<int>(kChartSize.x); ++column) {
-            const unsigned int pixel = image.rgba[static_cast<std::size_t>(y * image.width + left + column)];
-            const int          red   = static_cast<int>(pixel & 0xFFU);
-            const int          green = static_cast<int>((pixel >> 8U) & 0xFFU);
-            const int          blue  = static_cast<int>((pixel >> 16U) & 0xFFU);
+            const auto [red, green, blue] = test::ImGuiTestApp::CapturedPixels::rgb(image.rgba[static_cast<std::size_t>(y * image.width + left + column)]);
             ends.first += red < 140 && blue > green + 30 && red > green ? 1UZ : 0UZ;
             ends.second += red > 200 && green > 170 && blue < 110 ? 1UZ : 0UZ;
         }
@@ -220,16 +230,8 @@ struct TestApp : public test::ImGuiTestApp {
         };
         band->TestFunc = [](ImGuiTestContext* ctx) {
             // ground truth by construction: the band y ± 1 around a flat line covers a large share of the plot, the line alone a thin row
-            "a signal's error surface is drawn under its line, also on the GPU line path"_test = [&] {
-                ctx->MouseMoveToPos(ImVec2(5.f, 5.f));
-                const auto image   = test::ImGuiTestApp::captureSettledPixels(*ctx, ImRect(kGpuPos, kCpuPos + kChartSize));
-                const auto banded  = tintedPixels(image, 0);
-                const auto bare    = tintedPixels(image, static_cast<int>(kCpuPos.x - kGpuPos.x));
-                const auto plotted = static_cast<std::size_t>(kChartSize.x * kChartSize.y);
-                if (banded < bare + plotted / 10UZ) {
-                    test::ImGuiTestApp::captureScreenshot(*ctx, ImRect(kGpuPos, kCpuPos + kChartSize));
-                }
-                expect(banded > bare + plotted / 10UZ) << std::format("tinted pixels: {} with the surface, {} without", banded, bare);
+            "a signal's error surface is drawn under its line, also on the GPU line path"_test = [&] { //
+                expectTinted(ctx, "the surface", [](std::size_t with, std::size_t without) { return with > without + kPlotPixels / 10UZ; });
             };
         };
 
@@ -240,13 +242,8 @@ struct TestApp : public test::ImGuiTestApp {
         };
         comboDense->TestFunc = [](ImGuiTestContext* ctx) {
             // ground truth by construction: 300 points over 640 px are about 2 px apart, closer than the bar caps: the surface
-            "combo draws the surface where the bars' caps would overlap"_test = [&] {
-                ctx->MouseMoveToPos(ImVec2(5.f, 5.f));
-                const auto image   = test::ImGuiTestApp::captureSettledPixels(*ctx, ImRect(kGpuPos, kCpuPos + kChartSize));
-                const auto combo   = tintedPixels(image, 0);
-                const auto bare    = tintedPixels(image, static_cast<int>(kCpuPos.x - kGpuPos.x));
-                const auto plotted = static_cast<std::size_t>(kChartSize.x * kChartSize.y);
-                expect(combo > bare + plotted / 10UZ) << std::format("tinted pixels: {} with combo, {} without", combo, bare);
+            "combo draws the surface where the bars' caps would overlap"_test = [&] { //
+                expectTinted(ctx, "combo", [](std::size_t with, std::size_t without) { return with > without + kPlotPixels / 10UZ; });
             };
         };
 
@@ -256,15 +253,10 @@ struct TestApp : public test::ImGuiTestApp {
             drawChart("SparseWithoutBand", kCpuPos, *gState->sparseWithoutBand);
         };
         comboSparse->TestFunc = [](ImGuiTestContext* ctx) {
-            // ground truth by construction: 10 points over 640 px are about 60 px apart: 10 bars across the plot's height, no surface
-            "combo draws bars where their caps do not overlap"_test = [&] {
-                ctx->MouseMoveToPos(ImVec2(5.f, 5.f));
-                const auto image   = test::ImGuiTestApp::captureSettledPixels(*ctx, ImRect(kGpuPos, kCpuPos + kChartSize));
-                const auto combo   = tintedPixels(image, 0);
-                const auto bare    = tintedPixels(image, static_cast<int>(kCpuPos.x - kGpuPos.x));
-                const auto plotted = static_cast<std::size_t>(kChartSize.x * kChartSize.y);
-                expect(combo > bare + 1000UZ) << std::format("bars: tinted pixels {} with combo, {} without", combo, bare);
-                expect(combo < bare + plotted / 10UZ) << std::format("no surface: tinted pixels {} with combo, {} without", combo, bare);
+            // ground truth by construction: 10 points over 640 px are about 60 px apart: 10 bars across the plot's height, each over
+            // 100 px long, and no surface
+            "combo draws bars where their caps do not overlap"_test = [&] { //
+                expectTinted(ctx, "combo", [](std::size_t with, std::size_t without) { return with > without + 10UZ * 100UZ && with < without + kPlotPixels / 10UZ; });
             };
         };
 
@@ -292,17 +284,9 @@ struct TestApp : public test::ImGuiTestApp {
             drawChart("WithoutBars", kCpuPos, *gState->withoutBars);
         };
         bars->TestFunc = [](ImGuiTestContext* ctx) {
-            // ground truth by construction: 50 points with σ_y = 0.2 and σ_x = 0.03 draw 100 bars beside the line alone
-            "a YYChart draws both signals' uncertainties as bars"_test = [&] {
-                ctx->MouseMoveToPos(ImVec2(5.f, 5.f));
-                const auto image   = test::ImGuiTestApp::captureSettledPixels(*ctx, ImRect(kGpuPos, kCpuPos + kChartSize));
-                const auto barred  = tintedPixels(image, 0);
-                const auto bare    = tintedPixels(image, static_cast<int>(kCpuPos.x - kGpuPos.x));
-                const bool visible = barred > bare + 1000UZ;
-                if (!visible) {
-                    test::ImGuiTestApp::captureScreenshot(*ctx, ImRect(kGpuPos, kCpuPos + kChartSize));
-                }
-                expect(visible) << std::format("tinted pixels: {} with bars, {} without", barred, bare);
+            // ground truth by construction: 50 points with σ_y = 0.2 and σ_x = 0.03 draw 100 bars beside the line alone, each over 10 px long
+            "a YYChart draws both signals' uncertainties as bars"_test = [&] { //
+                expectTinted(ctx, "bars", [](std::size_t with, std::size_t without) { return with > without + 100UZ * 10UZ; });
             };
         };
 
@@ -339,36 +323,31 @@ int main(int argc, char* argv[]) {
     state.gpu                  = makeChart("gpu", true);
     state.cpu                  = makeChart("cpu", false);
 
-    state.errorSink                 = std::make_shared<SignalSink>(SignalSink::Config{.kind = SignalKind::Streaming, .uniqueName = "error_band", .name = "error_band", .capacity = 1024UZ, .capacityFloor = 1024UZ, .doubleSamples = false, .withErrors = true});
+    const auto uncertainSink = [](std::string name, std::size_t capacity) { return std::make_shared<SignalSink>(SignalSink::Config{.kind = SignalKind::Streaming, .uniqueName = name, .name = name, .capacity = capacity, .capacityFloor = capacity, .doubleSamples = false, .withErrors = true}); };
+    const auto errorChart    = [](std::string name, std::string sinkName, charts::ErrorStyle style) {
+        auto chart               = makeChart(std::move(name), true);
+        chart->data_sinks.value  = {std::move(sinkName)};
+        chart->error_style.value = style;
+        return chart;
+    };
+    state.errorSink                 = uncertainSink("error_band", 1024UZ);
     state.errorSink->metadata.color = 0x00C000;
     for (std::size_t i = 0UZ; i < 300UZ; ++i) {
         state.errorSink->pushSample(1e-3 * static_cast<double>(i), 0.f, 1.f);
     }
-    std::ignore          = charts::SinkRegistry::instance().registerSink(state.errorSink);
-    const auto bandChart = [](std::string name, charts::ErrorStyle style) {
-        auto chart               = makeChart(std::move(name), true);
-        chart->data_sinks.value  = {"error_band"};
-        chart->error_style.value = style;
-        return chart;
-    };
-    state.withBand    = bandChart("with band", charts::ErrorStyle::surface);
-    state.withoutBand = bandChart("without band", charts::ErrorStyle::none);
-    state.comboDense  = bandChart("combo dense", charts::ErrorStyle::combo);
+    std::ignore       = charts::SinkRegistry::instance().registerSink(state.errorSink);
+    state.withBand    = errorChart("with band", "error_band", charts::ErrorStyle::surface);
+    state.withoutBand = errorChart("without band", "error_band", charts::ErrorStyle::none);
+    state.comboDense  = errorChart("combo dense", "error_band", charts::ErrorStyle::combo);
 
-    state.sparseErrorSink                 = std::make_shared<SignalSink>(SignalSink::Config{.kind = SignalKind::Streaming, .uniqueName = "error_sparse", .name = "error_sparse", .capacity = 64UZ, .capacityFloor = 64UZ, .doubleSamples = false, .withErrors = true});
+    state.sparseErrorSink                 = uncertainSink("error_sparse", 64UZ);
     state.sparseErrorSink->metadata.color = 0x00C000;
     for (std::size_t i = 0UZ; i < 10UZ; ++i) {
         state.sparseErrorSink->pushSample(1e-3 * static_cast<double>(i), 0.f, 1.f);
     }
-    std::ignore            = charts::SinkRegistry::instance().registerSink(state.sparseErrorSink);
-    const auto sparseChart = [](std::string name, charts::ErrorStyle style) {
-        auto chart               = makeChart(std::move(name), true);
-        chart->data_sinks.value  = {"error_sparse"};
-        chart->error_style.value = style;
-        return chart;
-    };
-    state.comboSparse       = sparseChart("combo sparse", charts::ErrorStyle::combo);
-    state.sparseWithoutBand = sparseChart("sparse without band", charts::ErrorStyle::none);
+    std::ignore             = charts::SinkRegistry::instance().registerSink(state.sparseErrorSink);
+    state.comboSparse       = errorChart("combo sparse", "error_sparse", charts::ErrorStyle::combo);
+    state.sparseWithoutBand = errorChart("sparse without band", "error_sparse", charts::ErrorStyle::none);
 
     state.surfaceSink = test::makeTestDataSetSink("surface", 16UZ);
     for (std::size_t row = 0UZ; row < 8UZ; ++row) {
@@ -394,9 +373,8 @@ int main(int argc, char* argv[]) {
     state.surface->data_sinks.value = {"surface"};
     state.surface->n_history.value  = 8U;
 
-    const auto uncertainSink           = [](std::string name) { return std::make_shared<SignalSink>(SignalSink::Config{.kind = SignalKind::Streaming, .uniqueName = name, .name = name, .capacity = 64UZ, .capacityFloor = 64UZ, .doubleSamples = false, .withErrors = true}); };
-    state.correlationX                 = uncertainSink("yy_x");
-    state.correlationY                 = uncertainSink("yy_y");
+    state.correlationX                 = uncertainSink("yy_x", 64UZ);
+    state.correlationY                 = uncertainSink("yy_y", 64UZ);
     state.correlationY->metadata.color = 0x00C000;
     for (std::size_t i = 0UZ; i < 50UZ; ++i) {
         const auto t = static_cast<float>(i);

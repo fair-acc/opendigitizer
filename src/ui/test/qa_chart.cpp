@@ -88,7 +88,7 @@ struct TestApp : public test::ImGuiTestApp {
                 ut::expect(sinkPtr != nullptr);
 
                 test::waitUntilAllSamplesDrawn(ctx, *gState->dashboard);
-                ut::expect(ut::eq(sinkPtr->size(), 2000UZ)) << "n_samples_max of SineClock in qa_chart.grc";
+                ut::expect(ut::eq(sinkPtr->sampleCount(), 2000UZ)) << "n_samples_max of SineClock in qa_chart.grc";
 
                 captureScreenshot(*ctx);
             };
@@ -162,7 +162,7 @@ struct TestApp : public test::ImGuiTestApp {
                 expect(gState->waitUntil(ctx, "the display shows it, right-aligned", [&] { return display->_drawnNumber == std::format("{:.1f}", dragged) && std::abs(display->_drawnRightGap) < 0.5f; })) << display->_drawnNumber;
                 expect(gState->waitUntil(ctx, "the time plot's sink receives it", [&] {
                     const DataGuard guard = sink->signalSink()->dataGuard();
-                    return sink->signalSink()->size() > 0UZ;
+                    return sink->signalSink()->sampleCount() > 0UZ;
                 }));
 
                 const auto [low, upper, marker] = *chart->drawnHandles();

@@ -21,7 +21,7 @@ constexpr std::uint32_t rgbToImGuiABGR(std::uint32_t rgb, std::uint8_t alpha = 0
 constexpr std::uint32_t float3ToRGB(const float (&rgb)[3]) { return (static_cast<std::uint32_t>(rgb[0] * 255.0f) << 16) | (static_cast<std::uint32_t>(rgb[1] * 255.0f) << 8) | static_cast<std::uint32_t>(rgb[2] * 255.0f); }
 
 constexpr std::uint32_t float4ToRGBA(ImVec4 float4) {
-    const auto saturate = [](float f) { return (f < 0.0f) ? 0.0f : (f > 1.0f) ? 1.0f : f; };
+    const auto saturate = [](float f) { return std::clamp(f, 0.0f, 1.0f); };
     auto       r        = static_cast<std::uint32_t>(saturate(float4.x) * 255.0f + 0.5f);
     auto       g        = static_cast<std::uint32_t>(saturate(float4.y) * 255.0f + 0.5f);
     auto       b        = static_cast<std::uint32_t>(saturate(float4.z) * 255.0f + 0.5f);
@@ -29,29 +29,15 @@ constexpr std::uint32_t float4ToRGBA(ImVec4 float4) {
     return (r << 24) | (g << 16) | (b << 8) | a;
 }
 
-inline ImVec4 lightenColorByReducingSaturation(const ImVec4& color, float percent) {
+inline ImVec4 scaledHsv(const ImVec4& color, float saturationScale, float valueScale) {
     float h;
     float s;
     float v;
     ImGui::ColorConvertRGBtoHSV(color.x, color.y, color.z, h, s, v);
-    s = std::max(0.0f, s * percent);
     float r;
     float g;
     float b;
-    ImGui::ColorConvertHSVtoRGB(h, s, v, r, g, b);
-    return {r, g, b, color.w};
-}
-
-inline ImVec4 darkenColorByReducingValue(const ImVec4& color, float percent) {
-    float h;
-    float s;
-    float v;
-    ImGui::ColorConvertRGBtoHSV(color.x, color.y, color.z, h, s, v);
-    v = std::max(0.0f, v * percent);
-    float r;
-    float g;
-    float b;
-    ImGui::ColorConvertHSVtoRGB(h, s, v, r, g, b);
+    ImGui::ColorConvertHSVtoRGB(h, std::max(0.0f, s * saturationScale), std::max(0.0f, v * valueScale), r, g, b);
     return {r, g, b, color.w};
 }
 
@@ -372,6 +358,7 @@ struct LookAndFeel {
     float                  splitterRatioDeltaPerFrame              = .02f; // how much of (splitter / rest of screen) fraction to add
     float                  splitterRatioDeltaPerFrameSlow          = .01f;
     float                  keypadRounding                          = 6.f;
+    std::size_t            minVisibleLabelCharacters               = 4UZ;
     ImVec2                 keypadPortraitSize                      = {400.f, 600.f};
     ImVec2                 keypadLandscapeSize                     = {485.f, 400.f};
     float                  popupMenuButtonRounding                 = 6.f;

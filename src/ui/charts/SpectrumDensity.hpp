@@ -135,7 +135,7 @@ struct SpectrumDensity : gr::Block<SpectrumDensity, gr::Drawable<gr::UICategory:
 
     void enableAxisAutoFit(AxisKind axis, std::size_t axisIndex = 0UZ) {
         if (axis == AxisKind::Y) {
-            writeAutoScale(y_auto_scale, axisIndex, true);
+            writeAxisField(y_auto_scale, axisIndex, true);
             return;
         }
         Chart::enableAxisAutoFit(axis, axisIndex);

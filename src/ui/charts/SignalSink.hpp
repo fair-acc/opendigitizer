@@ -13,6 +13,7 @@
 #include <array>
 #include <atomic>
 #include <chrono>
+#include <concepts>
 #include <cstdint>
 #include <deque>
 #include <functional>
@@ -41,24 +42,16 @@ struct CapacityRequests {
     std::size_t                              minimum = 0UZ;
     std::unordered_map<std::string, Request> _requests{};
 
-    std::size_t request(std::string_view source, std::size_t capacity, clock::time_point expiry) {
-        _requests[std::string(source)] = Request{capacity, expiry};
-        return largest();
-    }
+    void request(std::string_view source, std::size_t capacity, clock::time_point expiry) { _requests[std::string(source)] = Request{capacity, expiry}; }
 
-    std::size_t expire(clock::time_point now) {
+    void expire(clock::time_point now) {
         std::erase_if(_requests, [now](const auto& entry) { return entry.second.expiry < now; });
-        return largest();
     }
 
     [[nodiscard]] bool empty() const noexcept { return _requests.empty(); }
 
-    [[nodiscard]] std::size_t largest() const noexcept {
-        std::size_t result = minimum;
-        for (const auto& [_, request] : _requests) {
-            result = std::max(result, request.capacity);
-        }
-        return result;
+    [[nodiscard]] std::size_t largest() const noexcept { //
+        return std::ranges::fold_left(_requests | std::views::values, minimum, [](std::size_t m, const auto& request) { return std::max(m, request.capacity); });
     }
 };
 
@@ -100,6 +93,22 @@ struct FrameView {
     }
 };
 
+template<typename V>
+void eraseAllButNewest(V& values, std::size_t count) {
+    values.erase(values.begin(), values.end() - static_cast<std::ptrdiff_t>(std::min(values.size(), count)));
+}
+
+/// appends to a history of `capacity`; once full, its oldest entry rotates to the back and takes `value`, reusing its buffers
+template<typename V, typename T>
+void pushRecycled(std::vector<V>& history, T&& value, std::size_t capacity) {
+    if (history.size() < capacity) {
+        history.push_back(std::forward<T>(value));
+        return;
+    }
+    std::ranges::rotate(history, std::next(history.begin()));
+    history.back() = std::forward<T>(value);
+}
+
 /// a streaming sink's held samples, oldest first; valid while holding the sink's dataGuard()
 struct SampleWindow {
     using Values = std::variant<std::span<const float>, std::span<const double>>;
@@ -118,6 +127,9 @@ struct SampleWindow {
     }
     [[nodiscard]] double yErrorAt(std::size_t i) const noexcept {
         return std::visit([i](auto errors) { return static_cast<double>(errors[i]); }, yError);
+    }
+    [[nodiscard]] static std::vector<double> doubles(const Values& values, std::size_t n) {
+        return std::visit([n](auto s) { return std::vector<double>(s.begin(), s.begin() + static_cast<std::ptrdiff_t>(std::min(n, s.size()))); }, values);
     }
 
     /// all when fewer than `count` are held
@@ -222,8 +234,7 @@ struct SignalSink {
 
     [[nodiscard]] DataGuard dataGuard() const { return DataGuard(_mutex); }
 
-    /// the streaming samples held
-    [[nodiscard]] std::size_t size() const noexcept { return _xValues.size(); }
+    [[nodiscard]] std::size_t sampleCount() const noexcept { return _xValues.size(); }
 
     [[nodiscard]] SampleWindow samples() const {
         const auto held   = [](const auto& values) -> SampleWindow::Values { return values.get_span(0); };
@@ -242,26 +253,28 @@ struct SignalSink {
     /// the held frame with generation `next`, else the oldest held after it; 0 = the newest.
     /// A DataSet sink's frames are its DataSets, counted from 1 like its tensor frames
     [[nodiscard]] FrameView frame(std::uint64_t next = 0U) const {
+        // the held frame of `generation`, the newest being `newest`, and that generation
+        const auto select = [next](const auto& held, std::uint64_t newest) {
+            const std::uint64_t oldest     = newest + 1U - held.size();
+            const std::uint64_t generation = next == 0U ? newest : std::clamp(next, oldest, newest);
+            return std::pair<decltype(*held.begin()), std::uint64_t>{*std::next(held.begin(), static_cast<std::ptrdiff_t>(generation - oldest)), generation};
+        };
         if (_kind == SignalKind::Dataset1D) {
             if (_dataSets.empty()) {
                 return {};
             }
-            const auto          newest     = static_cast<std::uint64_t>(_totalSampleCount);
-            const std::uint64_t oldest     = newest + 1U - _dataSets.size();
-            const std::uint64_t generation = next == 0U ? newest : std::clamp(next, oldest, newest);
-            return dataSetFrame(*std::next(_dataSets.begin(), static_cast<std::ptrdiff_t>(generation - oldest)), generation);
+            const auto [dataSet, generation] = select(_dataSets, static_cast<std::uint64_t>(_totalSampleCount));
+            return dataSetFrame(dataSet, generation);
         }
         return std::visit(
-            [this, next]<typename TFrames>(const TFrames& frames) -> FrameView {
+            [this, &select]<typename TFrames>(const TFrames& frames) -> FrameView {
                 if constexpr (std::is_same_v<TFrames, std::monostate>) {
                     return {};
                 } else {
                     if (frames.empty()) {
                         return {};
                     }
-                    const std::uint64_t oldest     = _frameGeneration + 1U - frames.size();
-                    const std::uint64_t generation = next == 0U ? _frameGeneration : std::clamp(next, oldest, _frameGeneration);
-                    const auto&         frame      = *std::next(frames.begin(), static_cast<std::ptrdiff_t>(generation - oldest));
+                    const auto [frame, generation] = select(frames, _frameGeneration);
                     if (frame.rank() != 2UZ) {
                         return {};
                     }
@@ -317,13 +330,13 @@ struct SignalSink {
     /// a named consumer's minimum history, held until `timeout` passes without a new request; takes the guard itself
     void requestCapacity(std::string_view source, std::size_t capacity, std::chrono::seconds timeout = std::chrono::seconds{60}, CapacityRequests::clock::time_point now = CapacityRequests::clock::now()) {
         std::lock_guard lock(_mutex);
-        std::ignore = _capacityRequests.request(source, capacity, now + timeout);
+        _capacityRequests.request(source, capacity, now + timeout);
         applyCapacity();
     }
 
     void expireCapacityRequests(CapacityRequests::clock::time_point now = CapacityRequests::clock::now()) {
         std::lock_guard lock(_mutex);
-        std::ignore = _capacityRequests.expire(now);
+        _capacityRequests.expire(now);
         applyCapacity();
     }
 
@@ -364,8 +377,8 @@ struct SignalSink {
             dropTagsBeforeOldestSample();
             break;
         case SignalKind::Dataset1D:
-            _dataSets.erase(_dataSets.begin(), _dataSets.end() - static_cast<std::ptrdiff_t>(std::min(_dataSets.size(), capacity)));
-            _dataSetErrors.erase(_dataSetErrors.begin(), _dataSetErrors.end() - static_cast<std::ptrdiff_t>(std::min(_dataSetErrors.size(), capacity)));
+            eraseAllButNewest(_dataSets, capacity);
+            eraseAllButNewest(_dataSetErrors, capacity);
             break;
         case SignalKind::Events: keepNewestEvents(capacity); break;
         default: break; // tensor frames: max_backlog decides
@@ -412,34 +425,19 @@ struct SignalSink {
         _eventGeneration.fetch_add(1U, std::memory_order_release);
     }
 
-    void keepNewestEvents(std::size_t count) { _events.erase(_events.begin(), _events.end() - static_cast<std::ptrdiff_t>(std::min(_events.size(), count))); }
+    void keepNewestEvents(std::size_t count) { eraseAllButNewest(_events, count); }
 
     void countSamples(std::size_t count) noexcept { _totalSampleCount += count; } // a tag sink's stream
 
-    /// a full history assigns the DataSet into its oldest entry's buffers: no allocation once the sizes repeat
-    void pushDataSet(const gr::DataSet<float>& dataSet) {
-        if (_dataSets.size() < _capacity) {
-            _dataSets.push_back(dataSet);
-        } else {
-            std::ranges::rotate(_dataSets, std::next(_dataSets.begin()));
-            _dataSets.back() = dataSet;
-        }
-        ++_totalSampleCount;
-    }
-
-    void pushDataSet(gr::DataSet<float>&& dataSet) {
-        if (_dataSets.size() >= _capacity) {
-            _dataSets.erase(_dataSets.begin());
-        }
-        _dataSets.push_back(std::move(dataSet));
+    template<typename TDataSet>
+    requires std::same_as<std::remove_cvref_t<TDataSet>, gr::DataSet<float>>
+    void pushDataSet(TDataSet&& dataSet) {
+        pushRecycled(_dataSets, std::forward<TDataSet>(dataSet), _capacity);
         ++_totalSampleCount;
     }
 
     void pushDataSet(gr::DataSet<float>&& dataSet, DataSetErrors&& errors) {
-        if (_dataSetErrors.size() >= _capacity) {
-            _dataSetErrors.erase(_dataSetErrors.begin());
-        }
-        _dataSetErrors.push_back(std::move(errors));
+        pushRecycled(_dataSetErrors, std::move(errors), _capacity);
         pushDataSet(std::move(dataSet));
     }
 
@@ -464,9 +462,7 @@ struct SignalSink {
             std::ranges::transform(std::span(frame.data(), frame.size()), recycled.data(), [](auto value) { return static_cast<V>(value); });
             held.push_back(std::move(recycled));
         }
-        while (held.size() > keep) {
-            held.pop_front();
-        }
+        eraseAllButNewest(held, keep);
         _frameGeneration += count;
         _totalSampleCount += count;
     }

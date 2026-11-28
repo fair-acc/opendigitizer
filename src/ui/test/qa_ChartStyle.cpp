@@ -64,11 +64,7 @@ TestState* gState = nullptr;
 
 constexpr ImVec4 kMagenta{1.f, 0.f, 1.f, 1.f};
 
-struct Rgb {
-    int r;
-    int g;
-    int b;
-};
+using Rgb = test::ImGuiTestApp::CapturedPixels::Rgb;
 
 struct Region {
     float x0;
@@ -85,21 +81,18 @@ constexpr Region kTopLeft{.14f, .03f, .40f, .18f};
 constexpr Region kTopRight{.55f, .03f, .85f, .18f};
 constexpr Region kLegendInside{.16f, .06f, .34f, .15f};
 
-bool isMagenta(Rgb c) { return c.r > 240 && c.g < 15 && c.b > 240; }
-bool isVoltageGreen(Rgb c) { return c.g > 100 && c.r < 80 && c.b < 80; }               // 0x00C000, also blended into the dark background
-bool isCurrentOrange(Rgb c) { return c.r > 150 && c.g > 20 && c.g < 110 && c.b < 50; } // 0xE04000
-bool isWhite(Rgb c) { return c.r > 200 && c.g > 200 && c.b > 200; }
-bool isGrey(Rgb c) { return std::abs(c.r - c.g) <= 2 && std::abs(c.g - c.b) <= 2; }
+bool isMagenta(Rgb c) { return c.red > 240 && c.green < 15 && c.blue > 240; }
+bool isVoltageGreen(Rgb c) { return c.green > 100 && c.red < 80 && c.blue < 80; }                   // 0x00C000, also blended into the dark background
+bool isCurrentOrange(Rgb c) { return c.red > 150 && c.green > 20 && c.green < 110 && c.blue < 50; } // 0xE04000
+bool isWhite(Rgb c) { return c.red > 200 && c.green > 200 && c.blue > 200; }
+bool isGrey(Rgb c) { return std::abs(c.red - c.green) <= 2 && std::abs(c.green - c.blue) <= 2; }
 
 struct Pixels {
     test::ImGuiTestApp::CapturedPixels _image;
 
     explicit Pixels(ImGuiTestContext* ctx) : _image(test::ImGuiTestApp::captureSettledPixels(*ctx, ImRect(kChartPos, kChartPos + kChartSize))) {}
 
-    [[nodiscard]] Rgb at(int x, int y) const {
-        const unsigned int pixel = _image.rgba[static_cast<std::size_t>(y * _image.width + x)];
-        return {static_cast<int>(pixel & 0xFFU), static_cast<int>((pixel >> 8U) & 0xFFU), static_cast<int>((pixel >> 16U) & 0xFFU)};
-    }
+    [[nodiscard]] Rgb at(int x, int y) const { return test::ImGuiTestApp::CapturedPixels::rgb(_image.rgba[static_cast<std::size_t>(y * _image.width + x)]); }
 
     [[nodiscard]] std::size_t count(Region region, auto predicate) const {
         std::size_t n = 0UZ;
@@ -121,19 +114,19 @@ struct Pixels {
         const std::vector<Rgb> pixels = greyLinePixels(region);
         double                 sum    = 0.0;
         for (const Rgb& c : pixels) {
-            sum += static_cast<double>(c.g);
+            sum += static_cast<double>(c.green);
         }
         return pixels.empty() ? 0.0 : sum / static_cast<double>(pixels.size());
     }
 
     [[nodiscard]] std::vector<Rgb> greyLinePixels(Region region) const {
         std::map<int, std::size_t> histogram;
-        std::ignore                 = count(region, [&](Rgb c) { return ++histogram[(c.r << 16) | (c.g << 8) | c.b] > 0UZ; });
+        std::ignore                 = count(region, [&](Rgb c) { return ++histogram[(c.red << 16) | (c.green << 8) | c.blue] > 0UZ; });
         const int        background = std::ranges::max_element(histogram, {}, [](const auto& entry) { return entry.second; })->first;
         const Rgb        bg{background >> 16, (background >> 8) & 0xFF, background & 0xFF};
         std::vector<Rgb> lines;
         std::ignore = count(region, [&](Rgb c) {
-            if (isGrey(c) && (std::abs(c.r - bg.r) > 4 || std::abs(c.g - bg.g) > 4 || std::abs(c.b - bg.b) > 4)) {
+            if (isGrey(c) && (std::abs(c.red - bg.red) > 4 || std::abs(c.green - bg.green) > 4 || std::abs(c.blue - bg.blue) > 4)) {
                 lines.push_back(c);
             }
             return false;

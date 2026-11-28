@@ -75,6 +75,16 @@ inline GLuint linkProgram(GLuint vs, GLuint fs) {
     return program;
 }
 
+/// bodies without the kGlslPrefix header; 0 on a compile or link failure
+inline GLuint buildProgram(const char* vertexBody, const char* fragmentBody) {
+    const GLuint vs      = compileShader(GL_VERTEX_SHADER, kGlslPrefix, vertexBody);
+    const GLuint fs      = compileShader(GL_FRAGMENT_SHADER, kGlslPrefix, fragmentBody);
+    const GLuint program = linkProgram(vs, fs);
+    glDeleteShader(vs);
+    glDeleteShader(fs);
+    return program;
+}
+
 inline GLuint attachFBO(GLuint tex) {
     GLuint fbo = 0;
     glGenFramebuffers(1, &fbo);

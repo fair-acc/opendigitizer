@@ -83,39 +83,24 @@ struct SinkRegistry {
     [[nodiscard]] std::shared_ptr<SignalSink> getSink(std::string_view uniqueName) const {
         std::lock_guard lock(_mutex);
 
-        auto it = _sinks.find(std::string(uniqueName));
-        if (it != _sinks.end()) {
-            return it->second;
-        }
-
-        return nullptr;
+        const auto it = _sinks.find(std::string(uniqueName));
+        return it != _sinks.end() ? it->second : nullptr;
     }
 
     template<typename Pred>
     [[nodiscard]] std::shared_ptr<SignalSink> findSink(Pred predicate) const {
         std::lock_guard lock(_mutex);
 
-        for (const auto& [_, sink] : _sinks) {
-            if (predicate(*sink)) {
-                return sink;
-            }
-        }
-
-        return nullptr;
+        const auto sinks = _sinks | std::views::values;
+        const auto found = std::ranges::find_if(sinks, [&predicate](const auto& sink) { return predicate(*sink); });
+        return found != sinks.end() ? *found : nullptr;
     }
 
     template<typename Pred>
     [[nodiscard]] std::vector<std::shared_ptr<SignalSink>> findSinks(Pred predicate) const {
         std::lock_guard lock(_mutex);
 
-        std::vector<std::shared_ptr<SignalSink>> result;
-        for (const auto& [_, sink] : _sinks) {
-            if (predicate(*sink)) {
-                result.push_back(sink);
-            }
-        }
-
-        return result;
+        return _sinks | std::views::values | std::views::filter([&predicate](const auto& sink) { return predicate(*sink); }) | std::ranges::to<std::vector>();
     }
 
     [[nodiscard]] std::size_t sinkCount() const {
@@ -129,10 +114,7 @@ struct SinkRegistry {
         {
             std::lock_guard lock(_mutex);
             listenersSnapshot = snapshotListeners();
-            sinksToNotify.reserve(_sinks.size());
-            for (auto& [_, sink] : _sinks) {
-                sinksToNotify.push_back(sink);
-            }
+            sinksToNotify     = _sinks | std::views::values | std::ranges::to<std::vector>();
             _sinks.clear();
         }
 
@@ -158,24 +140,14 @@ struct SinkRegistry {
         std::vector<std::shared_ptr<SignalSink>> sinksSnapshot;
         {
             std::lock_guard lock(_mutex);
-            sinksSnapshot.reserve(_sinks.size());
-            for (const auto& [_, sink] : _sinks) {
-                sinksSnapshot.push_back(sink);
-            }
+            sinksSnapshot = _sinks | std::views::values | std::ranges::to<std::vector>();
         }
         for (const auto& sink : sinksSnapshot) {
             fn(*sink);
         }
     }
 
-    [[nodiscard]] std::vector<Listener> snapshotListeners() const {
-        std::vector<Listener> snapshot;
-        snapshot.reserve(_listeners.size());
-        for (const auto& [_, listener] : _listeners) {
-            snapshot.push_back(listener);
-        }
-        return snapshot;
-    }
+    [[nodiscard]] std::vector<Listener> snapshotListeners() const { return _listeners | std::views::values | std::ranges::to<std::vector>(); }
 };
 
 } // namespace gr::od::charts

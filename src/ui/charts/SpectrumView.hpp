@@ -93,7 +93,6 @@ struct SpectrumView : gr::Block<SpectrumView, gr::Drawable<gr::UICategory::Conte
     std::size_t                                       _lastWaterfallSampleCount = std::numeric_limits<std::size_t>::max();
     std::array<float, 2UZ>                            _rowRatios                = {0.4f, 0.6f};
     std::array<std::string, 6UZ>                      _unitStore{};
-    std::string                                       _waterfallTimeUnit;
 
     std::optional<FrequencySpan> _lastRenderInfo;
     ImPlotCond                   _sharedXCond = ImPlotCond_Once; // computed once per frame, shared across both panes
@@ -220,7 +219,7 @@ struct SpectrumView : gr::Block<SpectrumView, gr::Drawable<gr::UICategory::Conte
 
         if (ImPlot::BeginPlot("##waterfall", ImVec2(0, 0), plotFlags | ImPlotFlags_NoLegend)) {
             setupSingleAxis(true, ImAxis_X1, paneSize, showGrid, LabelFormat::None, /*foreground=*/true, _sharedXCond);
-            setupTimeAxis(ImAxis_Y1, AxisScale::LinearReverse, showGrid, _waterfallTimeUnit);
+            setupTimeAxis(ImAxis_Y1, AxisScale::LinearReverse, showGrid);
 
             const auto renderInfo = _waterfall.pushNewSpectra(_signalSinks, _lastWaterfallSampleCount, logFreqRange(parseAxisConfig(this->ui_constraints.value, AxisKind::X)), static_cast<std::size_t>(n_history), colormap.value, [&] { return std::pair{_topPaneYMin, _topPaneYMax}; });
             if (renderInfo) {
@@ -237,9 +236,7 @@ struct SpectrumView : gr::Block<SpectrumView, gr::Drawable<gr::UICategory::Conte
             setupFinish();
 
             constexpr bool kNewestAtTop = true;
-            if (renderInfo) {
-                _waterfall.render(renderInfo->freqMin, renderInfo->freqMax, yLo, yHi, kNewestAtTop);
-            } else if (_waterfall.filledRows() > 0 && _lastRenderInfo) {
+            if (_lastRenderInfo && (renderInfo || _waterfall.filledRows() > 0)) {
                 _waterfall.render(_lastRenderInfo->freqMin, _lastRenderInfo->freqMax, yLo, yHi, kNewestAtTop);
             }
             drawFrequencyMarkers(1UZ);

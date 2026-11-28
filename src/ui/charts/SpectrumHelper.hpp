@@ -20,6 +20,7 @@
 #include <vector>
 
 #include <gnuradio-4.0/DataSet.hpp>
+#include <gnuradio-4.0/Logger.hpp>
 
 #include "../common/LookAndFeel.hpp"
 #include "../utils/ShaderHelper.hpp"
@@ -217,27 +218,15 @@ inline void buildLogBinnedRow(std::span<const float> freqs, std::span<const floa
         const auto col = std::min(static_cast<std::size_t>((std::log(freq) - logMin) / span * static_cast<double>(nCols)), nCols - 1);
         out[col]       = std::max(out[col], mags[k]);
     }
-    float carry     = 0.0f;
-    bool  seen      = false;
-    float firstVal  = 0.0f;
-    bool  haveFirst = false;
+    // empty columns take their left neighbour's value; leading ones the first finite value, all of them 0 when none is finite
+    const auto firstFinite = std::ranges::find_if(out, [](float v) { return std::isfinite(v); });
+    float      carry       = firstFinite == out.end() ? 0.0f : *firstFinite;
     for (float& v : out) {
         if (std::isfinite(v)) {
             carry = v;
-            seen  = true;
-            if (!haveFirst) {
-                firstVal  = v;
-                haveFirst = true;
-            }
-        } else if (seen) {
+        } else {
             v = carry;
         }
-    }
-    for (float& v : out) {
-        if (std::isfinite(v)) {
-            break;
-        }
-        v = haveFirst ? firstVal : 0.0f;
     }
 }
 
@@ -295,7 +284,7 @@ inline int formatTimeOfDay(double value, char* buff, int size, void* /*userData*
 }
 
 // ImPlotScale_Time is X-axis-only: time is Linear with a custom formatter on either axis
-inline void setupTimeAxis(ImAxis timeAxis, AxisScale scale, bool showGrid, std::string& unitStorage) {
+inline void setupTimeAxis(ImAxis timeAxis, AxisScale scale, bool showGrid) {
     ImPlotAxisFlags tFlags = (showGrid ? ImPlotAxisFlags_None : ImPlotAxisFlags_NoGridLines) | ImPlotAxisFlags_Foreground;
     ImPlot::SetupAxis(timeAxis, "", tFlags);
 
@@ -304,8 +293,8 @@ inline void setupTimeAxis(ImAxis timeAxis, AxisScale scale, bool showGrid, std::
         ImPlot::SetupAxisScale(timeAxis, ImPlotScale_Linear);
         return;
     }
-    unitStorage = "s";
-    ImPlot::SetupAxisFormat(timeAxis, axis::formatMetric, const_cast<void*>(static_cast<const void*>(unitStorage.c_str())));
+    static constexpr const char* kSeconds = "s"; // formatMetric only reads its unit
+    ImPlot::SetupAxisFormat(timeAxis, axis::formatMetric, const_cast<void*>(static_cast<const void*>(kSeconds)));
     switch (scale) {
     case AxisScale::Log10: ImPlot::SetupAxisScale(timeAxis, ImPlotScale_Log10); break;
     case AxisScale::SymLog: ImPlot::SetupAxisScale(timeAxis, ImPlotScale_SymLog); break;
@@ -334,15 +323,19 @@ template<typename T>
     return std::pair{lowest, highest};
 }
 
-inline void followColourScale(double& scaleMin, double& scaleMax, double frameMin, double frameMax, bool first) {
+inline void followColourScale(double& scaleMin, double& scaleMax, std::span<const float> values, bool first) {
+    const auto range = finiteRange(values);
+    if (!range || range->second <= range->first) {
+        return;
+    }
     if (first) {
-        scaleMin = frameMin;
-        scaleMax = frameMax;
+        scaleMin = range->first;
+        scaleMax = range->second;
         return;
     }
     constexpr double kAlpha = 0.05;
-    scaleMin += (frameMin - scaleMin) * kAlpha;
-    scaleMax += (frameMax - scaleMax) * kAlpha;
+    scaleMin += (range->first - scaleMin) * kAlpha;
+    scaleMax += (range->second - scaleMax) * kAlpha;
 }
 
 namespace gl = shader;
@@ -504,18 +497,14 @@ void main() {
     fragColor  = norm < 1.0 / 255.0 ? vec4(0.0) : texture(u_colormapLut, vec2(norm, 0.5));
 }
 )glsl";
-            const GLuint           vs          = gl::compileShader(GL_VERTEX_SHADER, gl::kGlslPrefix, kVertBody);
-            const GLuint           fs          = gl::compileShader(GL_FRAGMENT_SHADER, gl::kGlslPrefix, kColourBody);
-            _program                           = gl::linkProgram(vs, fs);
-            glDeleteShader(vs);
-            glDeleteShader(fs);
+            _program                           = gl::buildProgram(kVertBody, kColourBody);
             if (_program != 0U) {
                 _locCells     = glGetUniformLocation(_program, "u_cells");
                 _locLut       = glGetUniformLocation(_program, "u_colormapLut");
                 _locFullScale = glGetUniformLocation(_program, "u_fullScale");
                 glGenVertexArrays(1, &_emptyVAO);
             } else {
-                std::println(stderr, "[DensityHistogram] the colour-map shader did not build: no density image");
+                gr::log::warning("[DensityHistogram] the colour-map shader did not build: no density image");
             }
         }
         return _program != 0U;
@@ -741,13 +730,7 @@ struct WaterfallBuffer {
         return {tOldest, tNewest};
     }
 
-    void updateAutoScale(std::span<const float> yValues, std::size_t nBins) {
-        const auto range = finiteRange(yValues.first(std::min(nBins, yValues.size())));
-        if (!range || range->second <= range->first) {
-            return; // no finite range this frame: the previous colour scale stays
-        }
-        followColourScale(_scaleMin, _scaleMax, range->first, range->second, _filledRows == 0);
-    }
+    void updateAutoScale(std::span<const float> yValues, std::size_t nBins) { followColourScale(_scaleMin, _scaleMax, yValues.first(std::min(nBins, yValues.size())), _filledRows == 0); }
 
     void destroy() {
         _texture.reset();

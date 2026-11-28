@@ -17,13 +17,11 @@
 #include "blocks/ImControlToggle.hpp"
 #include "blocks/ImControlTrigger.hpp"
 #include "blocks/ImControlValue.hpp"
-
 #include "blocks/ImPropertyReadout.hpp"
 #include "blocks/LowPassFilter.hpp"
 #include "blocks/PianoControl.hpp"
 #include "blocks/SchedulerStateIndicator.hpp"
 #include "blocks/SineOscillator.hpp"
-
 #include "blocks/ValueSource.hpp"
 #include "charts/Charts.hpp"
 #include "components/ImGuiNotify.hpp"
@@ -46,6 +44,7 @@ void registerDashboardBlocks(gr::BlockRegistry& blockRegistry) {
     registerVideoBlocks(blockRegistry);
     registerLocalisationBlocks(blockRegistry);
     registerSinkBlocks(blockRegistry);
+    registerFrameSinkBlocks(blockRegistry);
     registerWithIdPrefix<ImControlNumber>(blockRegistry, kDigitizerUiIdPrefix);
     registerWithIdPrefix<ImControlToggle>(blockRegistry, kDigitizerUiIdPrefix);
     registerWithIdPrefix<ImControlTrigger>(blockRegistry, kDigitizerUiIdPrefix);

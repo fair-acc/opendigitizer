@@ -127,9 +127,7 @@ struct WaterfallPlot : gr::Block<WaterfallPlot, gr::Drawable<gr::UICategory::Con
         plotLegendEntries();
 
         const bool newestLeading = (timeScale == AxisScale::LinearReverse);
-        if (renderInfo) {
-            _waterfall.render(renderInfo->freqMin, renderInfo->freqMax, timeLo, timeHi, newestLeading, horizontal);
-        } else if (_waterfall.filledRows() > 0 && _lastRenderInfo) {
+        if (_lastRenderInfo && (renderInfo || _waterfall.filledRows() > 0)) {
             _waterfall.render(_lastRenderInfo->freqMin, _lastRenderInfo->freqMax, timeLo, timeHi, newestLeading, horizontal);
         }
         drawFrequencyMarkers(0UZ, horizontal ? ImAxis_Y1 : ImAxis_X1);
@@ -163,7 +161,7 @@ struct WaterfallPlot : gr::Block<WaterfallPlot, gr::Drawable<gr::UICategory::Con
         }
 
         // limits are set in draw() after the data push, so axis and image stay synchronised
-        setupTimeAxis(timeAxis, getAxisScale(AxisKind::Y).value_or(AxisScale::LinearReverse), showGrid, _unitStore[static_cast<std::size_t>(timeAxis)]);
+        setupTimeAxis(timeAxis, getAxisScale(AxisKind::Y).value_or(AxisScale::LinearReverse), showGrid);
     }
 };
 

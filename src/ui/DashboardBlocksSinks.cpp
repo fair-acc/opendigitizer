@@ -13,7 +13,6 @@ void registerSinkBlocks(gr::BlockRegistry& registry) {
     registerStreamSinks<std::complex<float>, std::complex<double>>(registry);
     registerPlotSinks<gr::property_map>(registry);
     registerWithIdPrefix<TagSink, std::uint8_t, float>(registry, kOpendigitizerIdPrefix);
-    registerFrameSinkBlocks(registry);
 }
 
 } // namespace gr::od

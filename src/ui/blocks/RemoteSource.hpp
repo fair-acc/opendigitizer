@@ -400,27 +400,21 @@ struct RemoteStreamSource : RemoteSourceBase, RemoteSourceCommon<RemoteStreamSou
                                                                             acq.channelNames.size(), acq.channelUnits.size(), acq.channelQuantities.size(), acq.channelRangeMin.size(), acq.channelRangeMax.size())));
         } else {
             if (signal_name != acq.channelNames[0] || signal_unit != acq.channelUnits[0] || signal_quantity != acq.channelQuantities[0] || signal_min != acq.channelRangeMin[0] || signal_max != acq.channelRangeMax[0]) {
+                const auto apply = [this](const gr::property_map& setting) {
+                    if (const gr::property_map failed = this->settings().set(setting); !failed.empty()) {
+                        this->emitErrorMessage("updateSettingsFromAcquisition(..)", gr::Error(std::format("settings could not be applied: {}", gr::join(failed))));
+                    }
+                };
                 if (!acq.channelNames[0].empty()) {
-                    if (const gr::property_map failed = this->settings().set({{"signal_name", acq.channelNames[0]}}); !failed.empty()) {
-                        this->emitErrorMessage("updateSettingsFromAcquisition(..)", gr::Error(std::format("settings could not be applied: {}", gr::join(failed))));
-                    }
+                    apply({{"signal_name", acq.channelNames[0]}});
                 }
-
                 if (!acq.channelUnits[0].empty()) {
-                    if (const gr::property_map failed = this->settings().set({{"signal_unit", acq.channelUnits[0]}}); !failed.empty()) {
-                        this->emitErrorMessage("updateSettingsFromAcquisition(..)", gr::Error(std::format("settings could not be applied: {}", gr::join(failed))));
-                    }
+                    apply({{"signal_unit", acq.channelUnits[0]}});
                 }
-
                 if (!acq.channelQuantities[0].empty()) {
-                    if (const gr::property_map failed = this->settings().set({{"signal_quantity", acq.channelQuantities[0]}}); !failed.empty()) {
-                        this->emitErrorMessage("updateSettingsFromAcquisition(..)", gr::Error(std::format("settings could not be applied: {}", gr::join(failed))));
-                    }
+                    apply({{"signal_quantity", acq.channelQuantities[0]}});
                 }
-
-                if (const gr::property_map failed = this->settings().set({{"signal_min", acq.channelRangeMin[0]}, {"signal_max", acq.channelRangeMax[0]}}); !failed.empty()) {
-                    this->emitErrorMessage("updateSettingsFromAcquisition(..)", gr::Error(std::format("settings could not be applied: {}", gr::join(failed))));
-                }
+                apply({{"signal_min", acq.channelRangeMin[0]}, {"signal_max", acq.channelRangeMax[0]}});
             }
         }
     }
@@ -468,10 +462,7 @@ struct RemoteStreamSource : RemoteSourceBase, RemoteSourceCommon<RemoteStreamSou
                     std::ranges::transform(inValues, outIt, [](const auto& v) { return gr::UncertainValue{v, typename T::value_type(0)}; });
                 } else {
                     auto inErrors = std::span{d.acq.channelErrors.elements()}.subspan(d.read, inValues.size());
-                    std::ranges::transform(std::views::zip(inValues, inErrors), outIt, [](const auto& ve) {
-                        const auto& [v, e] = ve;
-                        return gr::UncertainValue{v, e};
-                    });
+                    std::ranges::transform(inValues, inErrors, outIt, [](auto v, auto e) { return gr::UncertainValue{v, e}; });
                 }
             } else {
                 std::ranges::transform(inValues, outIt, [](float v) { return static_cast<T>(v); });
@@ -601,10 +592,8 @@ struct RemoteDataSetSource : RemoteSourceBase, RemoteSourceCommon<RemoteDataSetS
         std::lock_guard           lock(this->_queue->mutex);
         const auto                n       = std::min(this->_queue->data.size(), output.size());
         std::span<gr::DataSet<T>> outSpan = output;
-        for (auto i = 0UZ; i < n; ++i) {
-            outSpan[i] = std::move(this->_queue->data.front());
-            this->_queue->data.pop_front();
-        }
+        std::ranges::move(this->_queue->data | std::views::take(n), outSpan.begin());
+        this->_queue->data.erase(this->_queue->data.begin(), this->_queue->data.begin() + static_cast<std::ptrdiff_t>(n));
         output.publish(n);
         return n == 0UZ ? gr::work::Status::INSUFFICIENT_INPUT_ITEMS : gr::work::Status::OK;
     }
