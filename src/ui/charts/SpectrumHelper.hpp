@@ -331,6 +331,16 @@ template<typename T>
     return resized;
 }
 
+/// a dB spectrum has -inf where the magnitude is 0, which would drag a colour scale with it
+[[nodiscard]] inline std::optional<std::pair<double, double>> finiteRange(std::ranges::forward_range auto&& values) {
+    auto finite = values | std::views::transform([](auto value) { return static_cast<double>(value); }) | std::views::filter([](double value) { return std::isfinite(value); });
+    if (std::ranges::empty(finite)) {
+        return std::nullopt;
+    }
+    const auto [lowest, highest] = std::ranges::minmax(finite);
+    return std::pair{lowest, highest};
+}
+
 inline void followColourScale(double& scaleMin, double& scaleMax, double frameMin, double frameMax, bool first) {
     if (first) {
         scaleMin = frameMin;
@@ -739,21 +749,11 @@ struct WaterfallBuffer {
     }
 
     void updateAutoScale(std::span<const float> yValues, std::size_t nBins) {
-        // non-finite bins ignored: a dB spectrum has -inf where the magnitude is ~0 (e.g. empty bands of a wideband FFT),
-        // which would drag scaleMin to -inf and collapse the whole colour mapping
-        double fMin = std::numeric_limits<double>::infinity();
-        double fMax = -std::numeric_limits<double>::infinity();
-        for (const float y : yValues | std::views::take(static_cast<std::ptrdiff_t>(nBins))) {
-            if (!std::isfinite(y)) {
-                continue;
-            }
-            fMin = std::min(fMin, static_cast<double>(y));
-            fMax = std::max(fMax, static_cast<double>(y));
+        const auto range = finiteRange(yValues.first(std::min(nBins, yValues.size())));
+        if (!range || range->second <= range->first) {
+            return; // no finite range this frame: the previous colour scale stays
         }
-        if (fMax <= fMin) {
-            return; // no finite range this frame -> keep the previous colour scale
-        }
-        followColourScale(_scaleMin, _scaleMax, fMin, fMax, _filledRows == 0);
+        followColourScale(_scaleMin, _scaleMax, range->first, range->second, _filledRows == 0);
     }
 
     void destroy() {

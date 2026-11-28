@@ -106,16 +106,15 @@ struct TestApp : public test::ImGuiTestApp {
                     }
                 }
                 expect(gState->waitUntil(ctx, "all camera charts show a frame", [] {
-                    return std::ranges::all_of(std::array{"Camera RGB", "Camera Luma", "Camera Luma CPU", "Tiles", "Overlay", "Overlay CPU"}, [](const char* name) {
+                    return std::ranges::all_of(std::array{"Camera RGB", "Camera Luma", "Tiles", "Overlay", "Overlay Max"}, [](const char* name) {
                         const auto* chart = chartNamed(name);
                         return chart != nullptr && std::ranges::all_of(chart->layers(), [](const auto& layer) { return layer.shown > 0U && layer.rows == 48UZ; }) && !chart->layers().empty();
                     });
                 }));
                 const auto* rgb  = chartNamed("Camera RGB");
                 const auto* luma = chartNamed("Camera Luma");
-                const auto* cpu  = chartNamed("Camera Luma CPU");
-                expect(rgb != nullptr && luma != nullptr && cpu != nullptr) << fatal;
-                expect(rgb->rendersOnGpu() && luma->rendersOnGpu() && !cpu->rendersOnGpu());
+                expect(rgb != nullptr && luma != nullptr) << fatal;
+                expect(rgb->layers().front().uploaded && luma->layers().front().uploaded) << "each frame is a texture";
                 captureScreenshot(*ctx);
             };
 
@@ -152,9 +151,9 @@ struct TestApp : public test::ImGuiTestApp {
                 expect(gt(transparent, 0) && lt(transparent, static_cast<std::ptrdiff_t>(luma.rgba.size()))) << "pixels below the range are transparent, others not";
             };
 
-            "the CPU fallback leaves an overlay's out-of-range cells transparent"_test = [ctx] {
-                const auto* chart = chartNamed("Overlay CPU");
-                expect(chart != nullptr && !chart->rendersOnGpu()) << fatal;
+            "an overlay's out-of-range cells show the layer below"_test = [ctx] {
+                const auto* chart = chartNamed("Overlay Max");
+                expect(chart != nullptr && std::ranges::all_of(chart->layers(), &charts::ImageLayer::uploaded)) << "both layers are textures" << fatal;
                 const auto&          luma        = chart->layers()[1];
                 const CapturedPixels screen      = capturePixels(*ctx, ImRect({0.f, 0.f}, ImGui::GetIO().DisplaySize));
                 std::size_t          transparent = 0UZ, grey = 0UZ;
@@ -167,7 +166,7 @@ struct TestApp : public test::ImGuiTestApp {
                         const ImVec2       at      = chart->screenPosition(static_cast<double>(c) + 0.5, static_cast<double>(r) + 0.5);
                         const unsigned int p       = screen.rgba[static_cast<std::size_t>(at.y) * static_cast<std::size_t>(screen.width) + static_cast<std::size_t>(at.x)];
                         const auto         channel = [p](unsigned int shift) { return static_cast<int>((p >> shift) & 0xFFU); };
-                        grey += std::abs(channel(0U) - channel(8U)) < 16 && std::abs(channel(8U) - channel(16U)) < 16 ? 1UZ : 0UZ; // the grey luma heatmap below, not the Hot colormap
+                        grey += std::abs(channel(0U) - channel(8U)) < 16 && std::abs(channel(8U) - channel(16U)) < 16 ? 1UZ : 0UZ; // the grey test card below, not the Hot colormap
                     }
                 }
                 expect(gt(transparent, 0UZ) && ge(grey * 10UZ, transparent * 9UZ)) << std::format("{} of {} cells above layer_max show the layer below", grey, transparent);

@@ -62,24 +62,16 @@ dashboard:
       sources:
         - lumaSink
       rect: [1, 0, 1, 1]
-    - name: Camera Luma CPU
-      type: opendigitizer::charts::ImageChart
-      parameters:
-        gpu_acceleration: false
-      sources:
-        - lumaSink
-      rect: [2, 0, 1, 1]
-    - name: Overlay CPU
+    - name: Overlay Max
       type: opendigitizer::charts::ImageChart
       parameters:
         composition: overlay
-        gpu_acceleration: false
         layer_max: [.nan, 0.6]
         layer_colormaps: [Hot]
       sources:
         - rgbSink
         - lumaSink
-      rect: [3, 0, 1, 1]
+      rect: [2, 0, 2, 1]
     - name: Tiles
       type: opendigitizer::charts::ImageChart
       sources:

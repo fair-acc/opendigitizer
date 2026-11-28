@@ -1106,6 +1106,20 @@ int main() {
         expect(!axis::capsOverlap(0.0, 0.0, 1UZ, 5.0)) << "a single point: a bar";
     };
 
+    // ground truth by construction: of {-inf, 3, NaN, -2, +inf} the finite values span -2 to 3
+    "a colour scale follows the finite values only"_test = [] {
+        constexpr float kInf  = std::numeric_limits<float>::infinity();
+        const auto      range = finiteRange(std::array{-kInf, 3.f, std::numeric_limits<float>::quiet_NaN(), -2.f, kInf});
+        expect(range.has_value() >> fatal);
+        expect(eq(range->first, -2.0) && eq(range->second, 3.0));
+        expect(!finiteRange(std::array{-kInf, kInf}).has_value()) << "none finite";
+
+        SurfaceBuffer surface; // a dB spectrum with an empty bin: the first frame sets the scale to its finite span
+        surface.init(3UZ, 2UZ);
+        surface.updateAutoScale(std::array{-kInf, -60.f, -40.f}, 3UZ);
+        expect(eq(surface._scaleMin, -60.0) && eq(surface._scaleMax, -40.0)) << "not -inf";
+    };
+
     "capacity request expiry reduces capacity"_test = [] {
         auto sink = makeTestStreamingSink("expiry_test", 1000);
 
@@ -1247,10 +1261,9 @@ int main() {
         framesThrough(0U, {{3UZ}}, [](const auto& sink) { expect(eq(sink.signalSink()->frame().generation, 0U)) << "a rank-1 tensor is no image"; });
     };
 
-    "the image chart counts the frames between two shown ones and decimates its CPU fallback within budget"_test = [] {
+    "the image chart counts the frames between two shown ones"_test = [] {
         expect(eq(skippedBetween(0U, 7U), 0U)) << "none before the first frame";
         expect(eq(skippedBetween(3U, 4U), 0U) && eq(skippedBetween(3U, 9U), 5U) && eq(skippedBetween(9U, 9U), 0U));
-        expect(eq(cpuDecimationStep(48UZ, 64UZ, 4096UZ), 1UZ) && eq(cpuDecimationStep(1200UZ, 1920UZ, 4096UZ), 24UZ) && eq(cpuDecimationStep(10UZ, 10UZ, 0UZ), 10UZ));
     };
 
     "Arithmetic applies each operation and keeps the previous one for an unknown symbol"_test = [] {

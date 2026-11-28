@@ -40,7 +40,9 @@ struct TestState {
     std::unique_ptr<XYChart>    comboSparse;
     std::unique_ptr<XYChart>    sparseWithoutBand;
 
-    // a correlation of two uncertain signals, drawn with and without its error bars
+    std::shared_ptr<SignalSink>          surfaceSink;
+    std::unique_ptr<charts::SurfacePlot> surface;
+
     std::shared_ptr<SignalSink>      correlationX;
     std::shared_ptr<SignalSink>      correlationY;
     std::unique_ptr<charts::YYChart> withBars;
@@ -141,8 +143,24 @@ std::size_t tintedPixels(const test::ImGuiTestApp::CapturedPixels& image, int le
     return tinted;
 }
 
-// ground truth by construction: a constant spectrum at 5 in rows of 1 unit from yMax = 10 hits row 5 of every column; with
-// peak normalisation that cell is at full scale (the colormap's last entry) and every other cell is empty (transparent)
+// {lowest, highest}: Viridis' dark violet and yellow
+std::pair<std::size_t, std::size_t> colormapEnds(const test::ImGuiTestApp::CapturedPixels& image, int left) {
+    std::pair<std::size_t, std::size_t> ends{0UZ, 0UZ};
+    for (int y = 0; y < image.height; ++y) {
+        for (int column = 0; column < static_cast<int>(kChartSize.x); ++column) {
+            const unsigned int pixel = image.rgba[static_cast<std::size_t>(y * image.width + left + column)];
+            const int          red   = static_cast<int>(pixel & 0xFFU);
+            const int          green = static_cast<int>((pixel >> 8U) & 0xFFU);
+            const int          blue  = static_cast<int>((pixel >> 16U) & 0xFFU);
+            ends.first += red < 140 && blue > green + 30 && red > green ? 1UZ : 0UZ;
+            ends.second += red > 200 && green > 170 && blue < 110 ? 1UZ : 0UZ;
+        }
+    }
+    return ends;
+}
+
+// ground truth by construction: a constant spectrum at 5 in rows of 1 unit from yMax = 10 hits row 5 of every column;
+// with peak normalisation that cell is at full scale (the colormap's last entry) and every other cell is empty (transparent)
 void colourDensityOnce() {
     if (!gState->densityPixels.empty()) {
         return;
@@ -250,6 +268,24 @@ struct TestApp : public test::ImGuiTestApp {
             };
         };
 
+        ImGuiTest* surface = IM_REGISTER_TEST(engine(), "gpurenderer", "surface_mesh");
+        surface->GuiFunc   = [](ImGuiTestContext*) { drawChart("Surface", kGpuPos, *gState->surface); };
+        surface->TestFunc  = [](ImGuiTestContext* ctx) {
+            // ground truth by construction: spectra ramping from 0 to 1 span the whole colormap;
+            // about 2100 and 900 pixels at its ends on radeonsi and llvmpipe alike
+            "a SurfacePlot draws its spectra as a mesh in the colormap's colours"_test = [&] {
+                ctx->MouseMoveToPos(ImVec2(5.f, 5.f));
+                test::waitUntil(ctx, "the surface renderer is initialised", [] { return gState->surface->_gpuRenderer._initAttempted; });
+                expect(gState->surface->_gpuRenderer.available()) << "the surface shader builds" << fatal;
+                const auto image       = test::ImGuiTestApp::captureSettledPixels(*ctx, ImRect(kGpuPos, kGpuPos + kChartSize));
+                const auto [low, high] = colormapEnds(image, 0);
+                if (low < 300UZ || high < 300UZ) {
+                    test::ImGuiTestApp::captureScreenshot(*ctx, ImRect(kGpuPos, kGpuPos + kChartSize));
+                }
+                expect(low > 300UZ && high > 300UZ) << std::format("pixels in the colormap's lowest colour: {}, highest: {}", low, high);
+            };
+        };
+
         ImGuiTest* bars = IM_REGISTER_TEST(engine(), "gpurenderer", "correlation_error_bars");
         bars->GuiFunc   = [](ImGuiTestContext*) {
             drawChart("WithBars", kGpuPos, *gState->withBars);
@@ -334,6 +370,30 @@ int main(int argc, char* argv[]) {
     state.comboSparse       = sparseChart("combo sparse", charts::ErrorStyle::combo);
     state.sparseWithoutBand = sparseChart("sparse without band", charts::ErrorStyle::none);
 
+    state.surfaceSink = test::makeTestDataSetSink("surface", 16UZ);
+    for (std::size_t row = 0UZ; row < 8UZ; ++row) {
+        gr::DataSet<float> spectrum;
+        spectrum.timestamp  = static_cast<std::int64_t>(row) * 1'000'000'000;
+        spectrum.axis_names = {"frequency"};
+        spectrum.axis_units = {"Hz"};
+        spectrum.axis_values.resize(1UZ);
+        spectrum.extents           = {64};
+        spectrum.signal_names      = {"surface"};
+        spectrum.signal_quantities = {"magnitude"};
+        spectrum.signal_units      = {""};
+        spectrum.signal_values.resize(64UZ);
+        for (std::size_t bin = 0UZ; bin < 64UZ; ++bin) {
+            spectrum.axis_values[0].push_back(static_cast<float>(bin));
+            spectrum.signal_values[bin] = static_cast<float>(bin) / 63.f;
+        }
+        state.surfaceSink->pushDataSet(std::move(spectrum));
+    }
+    std::ignore                     = charts::SinkRegistry::instance().registerSink(state.surfaceSink);
+    state.surface                   = std::make_unique<charts::SurfacePlot>();
+    state.surface->chart_name.value = "surface";
+    state.surface->data_sinks.value = {"surface"};
+    state.surface->n_history.value  = 8U;
+
     const auto uncertainSink           = [](std::string name) { return std::make_shared<SignalSink>(SignalSink::Config{.kind = SignalKind::Streaming, .uniqueName = name, .name = name, .capacity = 64UZ, .capacityFloor = 64UZ, .doubleSamples = false, .withErrors = true}); };
     state.correlationX                 = uncertainSink("yy_x");
     state.correlationY                 = uncertainSink("yy_y");
@@ -364,12 +424,14 @@ int main(int argc, char* argv[]) {
     state.comboDense.reset();
     state.comboSparse.reset();
     state.sparseWithoutBand.reset();
+    state.surface.reset();
     state.withBars.reset();
     state.withoutBars.reset();
     std::ignore = charts::SinkRegistry::instance().unregisterSink("yy_x");
     std::ignore = charts::SinkRegistry::instance().unregisterSink("yy_y");
     std::ignore = charts::SinkRegistry::instance().unregisterSink("error_band");
     std::ignore = charts::SinkRegistry::instance().unregisterSink("error_sparse");
+    std::ignore = charts::SinkRegistry::instance().unregisterSink("surface");
     std::ignore = charts::SinkRegistry::instance().unregisterSink("gpu_line");
     gState      = nullptr;
     return result ? 0 : 1;
