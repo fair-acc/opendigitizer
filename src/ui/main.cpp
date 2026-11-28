@@ -135,6 +135,7 @@ int main(int argc, char** argv) {
     initialise();
 
     registerAppBlocks(*grGlobalBlockRegistry());
+    startWebGpuRuntime(); // the first dashboard waits for it (App::drawPage)
 
     gr::globalSchedulerRegistry().insert<gr::scheduler::Simple<gr::scheduler::ExecutionPolicy::singleThreadedBlocking>>();
     gr::globalSchedulerRegistry().insert<gr::scheduler::Simple<gr::scheduler::ExecutionPolicy::singleThreaded>>();

@@ -1,7 +1,7 @@
 // Every built-in sample dashboard loads in the WASM UI: all its blocks exist in the browser build's registry (the
 // native registry can hold names the browser build lacks). The UI publishes each load result as odDashboard.current.
 
-import { launchBrowser, openPage, startServer } from "./harness.mjs";
+import { kTestHooks, launchBrowser, openPage, startServer } from "./gr4Harness.mjs";
 import { existsSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -26,13 +26,13 @@ const dashboards = readdirSync(sampleDirectory)
   .sort();
 
 const failures = [];
-const server = await startServer(path.resolve(webDirectory));
+const server = await startServer([path.resolve(webDirectory)]);
 const browser = await launchBrowser(["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream", "--autoplay-policy=no-user-gesture-required"]);
 try {
   for (const name of dashboards) {
-    const page = await openPage(browser, `${server.origin}/index.html#dashboard=${name}`);
+    const page = await openPage(browser, `${server.origin}/index.html#dashboard=${name}`, { initScript: kTestHooks });
     try {
-      const result = await page.waitFor(`globalThis.odDashboard?.current`, `the load result of ${name}`, 120_000);
+      const result = await page.waitFor(`globalThis.odDashboard?.current`, { what: `the load result of ${name}`, timeoutMs: 120_000 });
       const loaded = result.loaded === true;
       console.log(`  ${loaded ? "ok  " : "FAIL"}  ${name}${loaded ? "" : `: ${result.error}`}`);
       if (!loaded) {
@@ -42,7 +42,7 @@ try {
       failures.push(`${name}: ${error}`);
       console.error(`page console of ${name} (last 20 lines):\n${page.consoleLines.slice(-20).join("\n")}`);
     } finally {
-      page.close();
+      await page.close();
     }
   }
 } finally {

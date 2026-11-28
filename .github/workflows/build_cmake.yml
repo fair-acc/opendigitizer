@@ -101,6 +101,13 @@ jobs:
             --dir /tmp/gr4-pkgs
           sudo apt install /tmp/gr4-pkgs/*.deb -y || true
 
+      # the browser tests import GR4's harness (devtools/browser) at the pin; CMake looks for it in .gr4-devtools
+      - name: GR4 browser harness
+        uses: ./.github/actions/gr4-devtools
+        with:
+          ref: ${{ env.GR4_DEVTOOLS_REF }}
+          harness-only: "true"
+
       - name: Configure CMake
         shell: bash
         run: |

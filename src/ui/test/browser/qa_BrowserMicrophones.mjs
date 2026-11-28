@@ -1,7 +1,7 @@
 // The browser XtraLocalisationStereo dashboard in headless Chrome with its fake microphones: the input list and the pair B
 // picker offer the browser's audio inputs as 'label [deviceId]', which BrowserMicrophonePairs reports as available_devices.
 
-import { launchBrowser, openPage, startServer } from "./harness.mjs";
+import { kTestHooks, launchBrowser, openPage, startServer } from "./gr4Harness.mjs";
 import { existsSync } from "node:fs";
 import path from "node:path";
 
@@ -23,17 +23,17 @@ const expect = (condition, description) => {
   }
 };
 
-const server = await startServer(path.resolve(webDirectory));
+const server = await startServer([path.resolve(webDirectory)]);
 const browser = await launchBrowser(["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream", "--autoplay-policy=no-user-gesture-required"]);
 try {
-  const page = (globalThis.lastPage = await openPage(browser, `${server.origin}/index.html#dashboard=XtraLocalisationStereo`));
+  const page = (globalThis.lastPage = await openPage(browser, `${server.origin}/index.html#dashboard=XtraLocalisationStereo`, { initScript: kTestHooks }));
   console.log(`opened ${server.origin}/index.html#dashboard=XtraLocalisationStereo`);
-  const input = await page.waitFor(`globalThis.odDevices?.input?.length > 0 && globalThis.odDevices.input`, "the browser's audio inputs in the input list", 60_000);
+  const input = await page.waitFor(`globalThis.odDevices?.input?.length > 0 && globalThis.odDevices.input`, { what: "the browser's audio inputs in the input list", timeoutMs: 60_000 });
   expect(input.every((d) => /^.+ \[.+\]$/.test(d)), `listed as 'label [deviceId]' (got ${input.join(", ")})`);
   expect(input.some((d) => d.startsWith("Fake")), "Chrome's fake microphones among them");
-  const pairB = await page.waitFor(`globalThis.odDevices?.pairB?.length > 0 && globalThis.odDevices.pairB`, "the same inputs in the pair B picker", 30_000);
+  const pairB = await page.waitFor(`globalThis.odDevices?.pairB?.length > 0 && globalThis.odDevices.pairB`, { what: "the same inputs in the pair B picker", timeoutMs: 30_000 });
   expect(pairB.length === input.length, `pair B offers the same ${input.length} inputs (got ${pairB.length})`);
-  page.close();
+  await page.close();
 } catch (error) {
   failures.push(String(error));
   console.error(error);

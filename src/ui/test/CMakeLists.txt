@@ -219,12 +219,41 @@ find_program(
         chromium
         chromium-browser
         google-chrome-stable)
+# GR4's headless-browser harness (devtools/browser of the pinned GR4): the fetched GR4's, or the checkout CI makes in
+# .gr4-devtools; the tests are skipped without it
+if(gnuradio4_SOURCE_DIR AND EXISTS "${gnuradio4_SOURCE_DIR}/devtools/browser/browser_harness.mjs")
+  set(_odGr4BrowserHarness "${gnuradio4_SOURCE_DIR}/devtools/browser")
+else()
+  set(_odGr4BrowserHarness "${CMAKE_SOURCE_DIR}/.gr4-devtools/devtools/browser")
+endif()
+set(OD_GR4_BROWSER_HARNESS
+    "${_odGr4BrowserHarness}"
+    CACHE PATH "GR4's devtools/browser, the harness of the browser tests")
+# the harness uses node's global WebSocket: node 22 or later (emsdk's default node is 20)
+set(_odBrowserTests OFF)
+if(OD_NODE AND OD_BROWSER)
+  execute_process(
+    COMMAND ${OD_NODE} --version
+    OUTPUT_VARIABLE _odNodeVersion
+    OUTPUT_STRIP_TRAILING_WHITESPACE)
+  string(
+    REGEX
+    REPLACE "^v([0-9]+).*"
+            "\\1"
+            _odNodeMajor
+            "${_odNodeVersion}")
+  if(_odNodeMajor GREATER_EQUAL 22)
+    set(_odBrowserTests ON)
+  else()
+    message(
+      WARNING "browser tests need node 22 or later; ${OD_NODE} is ${_odNodeVersion}: set OD_NODE to register them")
+  endif()
+endif()
 set(OD_WASM_WEB_DIR
     "${CMAKE_BINARY_DIR}/CMakeExternals/Build/ui-wasm/web"
     CACHE PATH "WASM UI build output for the browser tests")
 # an unoptimised (Debug) WASM UI is too slow in headless, software-rendered Chrome to load the localisation dashboards
-if(OD_NODE
-   AND OD_BROWSER
+if(_odBrowserTests
    AND NOT
        CMAKE_BUILD_TYPE
        STREQUAL
@@ -233,7 +262,9 @@ if(OD_NODE
                                               ${OD_WASM_WEB_DIR})
   set_tests_properties(
     qa_BrowserMicrophones
-    PROPERTIES LABELS
+    PROPERTIES ENVIRONMENT
+               "OD_GR4_BROWSER_HARNESS=${OD_GR4_BROWSER_HARNESS}"
+               LABELS
                browser
                TIMEOUT
                300
@@ -245,7 +276,9 @@ if(OD_NODE
            COMMAND ${OD_NODE} ${CMAKE_CURRENT_SOURCE_DIR}/browser/qa_BrowserSampleDashboards.mjs ${OD_WASM_WEB_DIR})
   set_tests_properties(
     qa_BrowserSampleDashboards
-    PROPERTIES LABELS
+    PROPERTIES ENVIRONMENT
+               "OD_GR4_BROWSER_HARNESS=${OD_GR4_BROWSER_HARNESS}"
+               LABELS
                browser
                TIMEOUT
                900
@@ -254,8 +287,27 @@ if(OD_NODE
                SKIP_RETURN_CODE
                77)
 endif()
-if(OD_NODE
-   AND OD_BROWSER
+# the WebGPU flavour of the WASM UI (preset wasm-webgpu), a Release build of its own; skipped without it
+set(OD_WASM_WEBGPU_WEB_DIR
+    "${CMAKE_SOURCE_DIR}/cmake-build-wasm-webgpu/web"
+    CACHE PATH "WebGPU WASM UI build output for the browser tests")
+if(_odBrowserTests)
+  add_test(NAME qa_BrowserWebGpu COMMAND ${OD_NODE} ${CMAKE_CURRENT_SOURCE_DIR}/browser/qa_BrowserWebGpu.mjs
+                                         ${OD_WASM_WEBGPU_WEB_DIR})
+  set_tests_properties(
+    qa_BrowserWebGpu
+    PROPERTIES ENVIRONMENT
+               "OD_GR4_BROWSER_HARNESS=${OD_GR4_BROWSER_HARNESS}"
+               LABELS
+               browser
+               TIMEOUT
+               300
+               RUN_SERIAL
+               TRUE
+               SKIP_RETURN_CODE
+               77)
+endif()
+if(_odBrowserTests
    AND NOT
        CMAKE_BUILD_TYPE
        STREQUAL
@@ -265,7 +317,9 @@ if(OD_NODE
                                          ${OD_WASM_WEB_DIR} $<TARGET_FILE:ex_test_card_y4m>)
   set_tests_properties(
     qa_BrowserCamera
-    PROPERTIES LABELS
+    PROPERTIES ENVIRONMENT
+               "OD_GR4_BROWSER_HARNESS=${OD_GR4_BROWSER_HARNESS}"
+               LABELS
                browser
                TIMEOUT
                600

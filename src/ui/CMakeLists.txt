@@ -131,6 +131,8 @@ cmrc_add_resource_library(
   assets/sampleDashboards/SpectrumRangeDemo.grc
   assets/sampleDashboards/StreamingStress.grc
   assets/sampleDashboards/UIControlledSines.grc
+  assets/sampleDashboards/WebGpuBenchmark.grc
+  assets/sampleDashboards/WebGpuDemo.grc
   assets/sampleDashboards/XtraCameraDemo.grc)
 if((NOT EMSCRIPTEN OR OD_WASM_STATIC_BLOCKLIBS)
    AND TARGET gnuradio4::GrAudioBlocksShared
@@ -294,6 +296,7 @@ add_library(
   common/LookAndFeel.hpp
   common/TouchHandler.hpp
   utils/Browser.hpp
+  utils/WebGpuRuntime.hpp
   utils/TransparentStringHash.hpp)
 target_include_directories(opendigitizer-ui-common PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>)
 target_link_libraries(
@@ -575,6 +578,11 @@ target_link_libraries(${target_name} PRIVATE ${target_name}lib opendigitizer-opt
 
 if(EMSCRIPTEN)
   target_link_options(${target_name} PRIVATE ${_od_emscripten_main_link_options})
+  # writes index.kernels.json, the WGSL pipelines of the device-capable blocks, then strips the name section only the
+  # translator reads; a no-op without GR_ENABLE_WEBGPU
+  if(COMMAND gr_translate_webgpu_kernels)
+    gr_translate_webgpu_kernels(${target_name} STRIP_NAMES)
+  endif()
 
   if(OD_WASM_STATIC_BLOCKLIBS)
     message(STATUS "OD_WASM_STATIC_BLOCKLIBS: linking Gr*Blocks into the main module (no SIDE_MODULE plugins)")
