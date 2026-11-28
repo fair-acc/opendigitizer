@@ -93,6 +93,16 @@ struct TestApp : public test::ImGuiTestApp {
                 captureScreenshot(*ctx);
             };
 
+            "a SpectrumView hides its top pane's frequency axis, which the waterfall below it shows"_test = [] {
+                // the panes, by their axes: the spectrum's Y1 is its magnitude, the waterfall shares its frequency range
+                const ImPlotPlot* spectrum = test::ImGuiTestApp::findPlot([](const ImPlotPlot& plot) { return plot.Axes[ImAxis_Y1].HasLabel() && std::string_view(plot.GetAxisLabel(plot.Axes[ImAxis_Y1])).starts_with("magnitude"); });
+                expect(spectrum != nullptr) << fatal << "the spectrum pane";
+                const ImPlotAxis& frequency = spectrum->Axes[ImAxis_X1];
+                expect(!frequency.HasTickLabels() && !frequency.HasLabel()) << "placement None by default";
+                const ImPlotPlot* waterfall = test::ImGuiTestApp::findPlot([&](const ImPlotPlot& plot) { return &plot != spectrum && plot.Axes[ImAxis_X1].Range.Min == frequency.Range.Min && plot.Axes[ImAxis_X1].Range.Max == frequency.Range.Max; });
+                expect(waterfall != nullptr && waterfall->Axes[ImAxis_X1].HasTickLabels()) << "the waterfall's linked frequency axis keeps its labels";
+            };
+
             "YYChart scatter draws one marker per sine-cosine sample"_test = [ctx] {
                 gState->dashboardPage.reset();
                 gState->reload(cmrc::ui_test_assets::get_filesystem(), "examples/qa_yy_scatter.grc");

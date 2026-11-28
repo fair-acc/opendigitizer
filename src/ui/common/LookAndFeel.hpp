@@ -177,6 +177,8 @@ struct ChartStyle {
     float  f0DashLength           = 6.f; // px, dash and gap of a dashed f0
     double markerInitialInset     = .05; // an unset range starts this fraction of the visible span inside its edges
     float  menuSpinnerSpacing     = 2.f; // between the spinner buttons and their drag field
+    float  canvasAxisLabelPadding = 2.f; // px between a canvas axis' tick and its label
+    float  canvasAxisColumnGap    = 6.f; // px between two canvas axes on one edge
     float  menuAxisLimitDragWidth = 70.f;
     float  menuAxisComboWidth     = 80.f;
     float  menuSettingWidgetWidth = 120.f;

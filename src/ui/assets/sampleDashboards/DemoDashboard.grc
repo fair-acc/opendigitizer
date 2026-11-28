@@ -343,6 +343,8 @@ dashboard:
           min: NaN # enables auto-range for first axis
           max: NaN # enables auto-range for first axis
           format: Default # options: Auto, Metric, MetricInline, Scientific, None, Default
+        - axis: Y # the second Y axis, the first on the right
+          placement: Canvas # options: Outside, Canvas (ticks and labels on the plot, no title), None
       sources:
         - sinesSink
         - sineSink1

@@ -120,7 +120,8 @@ struct YYChart : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui
         const auto dashCfg              = parseAxisConfig(this->ui_constraints.value, isX, index);
         const auto [minLimit, maxLimit] = isX ? axisLimits(x_auto_scale.value[index], x_min.value[index], x_max.value[index], std::nullopt) : axisLimits(y_auto_scale.value[index], y_min.value[index], y_max.value[index], std::nullopt);
         const auto cond                 = trackLimitsCond(isX, minLimit, maxLimit, index);
-        axis::setupAxis(axisId, category, LabelFormat::Auto, axisLabelWidthOrDefault(dashCfg, defaultAxisLabelWidthFor(axisId, size)), minLimit, maxLimit, nAxes, static_cast<AxisScale>(isX ? x_axis_scale.value : y_axis_scale.value), _unitStringStorage, showGrid, /*foreground=*/false, cond);
+
+        axis::setupAxis(axisId, category, LabelFormat::Auto, axisLabelWidthOrDefault(dashCfg, defaultAxisLabelWidthFor(axisId, size)), minLimit, maxLimit, nAxes, static_cast<AxisScale>(isX ? x_axis_scale.value : y_axis_scale.value), _unitStringStorage, showGrid, /*foreground=*/false, cond, nullptr, this->decorated(axisId, isX ? AxisKind::X : AxisKind::Y, index));
     }
 
     /// bars for every style but none: a surface needs x ordered, which a correlation's is not

@@ -157,7 +157,8 @@ struct WaterfallPlot : gr::Block<WaterfallPlot, gr::Drawable<gr::UICategory::Con
 
             auto [xQuantity, xUnit] = sinkAxisInfo(true);
             AxisCategory xCat{.quantity = xQuantity, .unit = xUnit};
-            axis::setupAxis(freqAxis, xCat, format, axisLabelWidthOrDefault(dashCfg, defaultAxisLabelWidthFor(freqAxis, plotSize)), minLimit, maxLimit, 1, scale, _unitStore, showGrid, /*foreground=*/true);
+
+            axis::setupAxis(freqAxis, xCat, format, axisLabelWidthOrDefault(dashCfg, defaultAxisLabelWidthFor(freqAxis, plotSize)), minLimit, maxLimit, 1, scale, _unitStore, showGrid, /*foreground=*/true, ImPlotCond_Always, nullptr, this->decorated(freqAxis, AxisKind::X));
         }
 
         // limits are set in draw() after the data push, so axis and image stay synchronised

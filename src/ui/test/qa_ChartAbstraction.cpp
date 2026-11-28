@@ -821,6 +821,27 @@ int main() {
         expect(!parseAxisConfig(constraints, AxisKind::Y, 2UZ));
     };
 
+    "Axis parsing reads the placement and the title: Outside and shown without them, a Canvas axis without labels is None"_test = [] {
+        gr::Tensor<gr::pmt::Value> axes(gr::extents_from, {4UZ});
+        axes[0] = gr::property_map{{"axis", "Y"}};
+        axes[1] = gr::property_map{{"axis", "Y"}, {"placement", "cAnVaS"}, {"show_title", false}};
+        axes[2] = gr::property_map{{"axis", "X"}, {"placement", "None"}};
+        axes[3] = gr::property_map{{"axis", "Y"}, {"placement", "Canvas"}, {"format", "None"}};
+        const gr::property_map constraints{{"axes", std::move(axes)}};
+        const auto             y1 = parseAxisConfig(constraints, AxisKind::Y);
+        const auto             y2 = parseAxisConfig(constraints, AxisKind::Y, 1UZ);
+        const auto             y3 = parseAxisConfig(constraints, AxisKind::Y, 2UZ);
+        const auto             x  = parseAxisConfig(constraints, AxisKind::X);
+
+        expect(y1 && y2 && y3 && x) << fatal;
+        expect(decorationOf(y1).placement == AxisPlacement::Outside && decorationOf(y1).showTitle);
+        expect(decorationOf(y2).placement == AxisPlacement::Canvas && !decorationOf(y2).showTitle);
+        expect(decorationOf(x).placement == AxisPlacement::None && decorationOf(x).showTitle);
+        expect(decorationOf(y3).placement == AxisPlacement::None) << "format None leaves nothing to draw on the canvas";
+        expect(decorationOf(std::nullopt).placement == AxisPlacement::Outside && decorationOf(std::nullopt).showTitle) << "no entry: the default";
+        expect(decorationOf(std::nullopt, {.placement = AxisPlacement::None}).placement == AxisPlacement::None) << "no entry: the fallback";
+    };
+
     "Axis parsing reads the SymLog linear threshold"_test = [] {
         gr::Tensor<gr::pmt::Value> axes(gr::extents_from, {2UZ});
         axes[0] = gr::property_map{{"axis", "Y"}, {"scale", "SymLog"}, {"linear_threshold", 0.001f}};

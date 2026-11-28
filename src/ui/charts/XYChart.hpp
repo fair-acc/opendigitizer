@@ -167,7 +167,8 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
                 const auto cond      = trackLimitsCond(isX, minLimit, maxLimit, i);
                 double&    threshold = _symLogLinearThresholds[static_cast<std::size_t>(axisId)];
                 threshold            = dashCfg ? static_cast<double>(dashCfg->linearThreshold) : std::numeric_limits<double>::quiet_NaN();
-                axis::setupAxis(axisId, categories[i], dashCfg ? dashCfg->format : LabelFormat::Auto, axisLabelWidthOrDefault(dashCfg, defaultAxisLabelWidthFor(axisId, plotSize)), minLimit, maxLimit, nAxes, scale, _unitStringStorage, showGrid, /*foreground=*/false, cond, &threshold);
+
+                axis::setupAxis(axisId, categories[i], dashCfg ? dashCfg->format : LabelFormat::Auto, axisLabelWidthOrDefault(dashCfg, defaultAxisLabelWidthFor(axisId, plotSize)), minLimit, maxLimit, nAxes, scale, _unitStringStorage, showGrid, /*foreground=*/false, cond, &threshold, this->decorated(axisId, isX ? AxisKind::X : AxisKind::Y, i));
                 if (ImPlotAxis& plotAxis = ImPlot::GetCurrentPlot()->Axes[axisId]; !isX && ImHasFlag(plotAxis.Flags, ImPlotAxisFlags_AutoFit)) { // Y fits only what X shows
                     plotAxis.Flags |= ImPlotAxisFlags_RangeFit;
                 }

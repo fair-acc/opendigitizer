@@ -154,7 +154,8 @@ struct SpectrumDensity : gr::Block<SpectrumDensity, gr::Drawable<gr::UICategory:
 
             auto [xQuantity, xUnit] = sinkAxisInfo(true);
             AxisCategory xCat{.quantity = xQuantity, .unit = xUnit};
-            axis::setupAxis(ImAxis_X1, xCat, format, axisLabelWidthOrDefault(dashCfg, defaultAxisLabelWidthFor(ImAxis_X1, plotSize)), minLimit, maxLimit, 1UZ, scale, _unitStore, showGrid, /*foreground=*/true);
+
+            axis::setupAxis(ImAxis_X1, xCat, format, axisLabelWidthOrDefault(dashCfg, defaultAxisLabelWidthFor(ImAxis_X1, plotSize)), minLimit, maxLimit, 1UZ, scale, _unitStore, showGrid, /*foreground=*/true, ImPlotCond_Always, nullptr, this->decorated(ImAxis_X1, AxisKind::X));
         }
 
         // always finite limits: the heatmap gives ImPlot's AutoFit no plottable data.
@@ -170,7 +171,8 @@ struct SpectrumDensity : gr::Block<SpectrumDensity, gr::Drawable<gr::UICategory:
             const auto limitCond = trackLimitsCond(false, minLimit, maxLimit);
 
             AxisCategory yCat{.quantity = yQuantity, .unit = yUnit};
-            axis::setupAxis(ImAxis_Y1, yCat, format, axisLabelWidthOrDefault(dashCfg, defaultAxisLabelWidthFor(ImAxis_Y1, plotSize)), minLimit, maxLimit, 1UZ, scale, _unitStore, showGrid, /*foreground=*/true, limitCond);
+
+            axis::setupAxis(ImAxis_Y1, yCat, format, axisLabelWidthOrDefault(dashCfg, defaultAxisLabelWidthFor(ImAxis_Y1, plotSize)), minLimit, maxLimit, 1UZ, scale, _unitStore, showGrid, /*foreground=*/true, limitCond, nullptr, this->decorated(ImAxis_Y1, AxisKind::Y));
         }
     }
 

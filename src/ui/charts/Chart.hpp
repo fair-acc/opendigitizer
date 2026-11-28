@@ -89,6 +89,10 @@ enum class LabelFormat {
     Default
 };
 
+/// where an axis draws its ticks, tick labels and title: outside the plot (ImPlot's default), on the plot area at its edge
+/// without the title (Canvas), or not at all (None), its range, zoom and grid kept
+enum class AxisPlacement { Outside = 0, Canvas, None };
+
 enum class HistoryUnit : int {
     seconds = 0, // time-based history depth (resolved via sample rate)
     samples = 1
@@ -123,6 +127,8 @@ struct AxisConfig {
     float                    max  = std::numeric_limits<float>::quiet_NaN();
     std::optional<AxisScale> scale;
     LabelFormat              format          = LabelFormat::Auto;
+    AxisPlacement            placement       = AxisPlacement::Outside;
+    bool                     showTitle       = true;
     float                    width           = std::numeric_limits<float>::quiet_NaN();
     float                    linearThreshold = std::numeric_limits<float>::quiet_NaN(); // SymLog: half-width of the linear band around zero, in axis units
     bool                     plotTags        = true;
@@ -206,6 +212,9 @@ struct LogFreqRange {
         if (const auto format = axisMap->get_if<std::string_view>("format")) {
             cfg.format = magic_enum::enum_cast<LabelFormat>(*format, magic_enum::case_insensitive).value_or(LabelFormat::Auto);
         }
+        if (const auto placement = axisMap->get_if<std::string_view>("placement")) {
+            cfg.placement = magic_enum::enum_cast<AxisPlacement>(*placement, magic_enum::case_insensitive).value_or(AxisPlacement::Outside);
+        }
         if (auto it = axisMap->find("width"); it != axisMap->end()) {
             if (auto v = gr::pmt::convert_safely<float>(it->second); v) {
                 cfg.width = *v;
@@ -216,13 +225,27 @@ struct LogFreqRange {
                 cfg.linearThreshold = *v;
             }
         }
-        cfg.plotTags = axisMap->value_or<bool>("plot_tags", true);
+        cfg.plotTags  = axisMap->value_or<bool>("plot_tags", true);
+        cfg.showTitle = axisMap->value_or<bool>("show_title", true);
         return cfg;
     }
     return std::nullopt;
 }
 
 [[nodiscard]] inline std::optional<AxisConfig> parseAxisConfig(const gr::property_map& constraints, bool isX, std::size_t index = 0) { return parseAxisConfig(constraints, isX ? AxisKind::X : AxisKind::Y, index); }
+
+struct AxisDecoration {
+    AxisPlacement placement = AxisPlacement::Outside;
+    bool          showTitle = true;
+};
+
+/// `cfg`'s decoration, `fallback` without an entry; an axis without labels (format None) has none on the canvas either
+[[nodiscard]] inline AxisDecoration decorationOf(const std::optional<AxisConfig>& cfg, AxisDecoration fallback = {}) noexcept {
+    if (!cfg) {
+        return fallback;
+    }
+    return {.placement = cfg->placement == AxisPlacement::Canvas && cfg->format == LabelFormat::None ? AxisPlacement::None : cfg->placement, .showTitle = cfg->showTitle};
+}
 
 enum class ConstrainedWhen : std::uint8_t { autoScaled, always };
 
@@ -508,7 +531,7 @@ inline void drawErrorBand(const ErrorBand& band, ErrorStyle style, ImVec4 colour
     return ticks;
 }
 
-inline void setupAxis(ImAxis axisId, const std::optional<AxisCategory>& category, LabelFormat format, float axisWidth, double minLimit, double maxLimit, std::size_t nTotalAxes, AxisScale scaleOverride, std::array<std::string, 6UZ>& unitStringStorage, bool showGrid = true, bool foreground = false, ImPlotCond limitsCond = ImPlotCond_Always, const double* symLogLinearThreshold = nullptr) {
+inline void setupAxis(ImAxis axisId, const std::optional<AxisCategory>& category, LabelFormat format, float axisWidth, double minLimit, double maxLimit, std::size_t nTotalAxes, AxisScale scaleOverride, std::array<std::string, 6UZ>& unitStringStorage, bool showGrid = true, bool foreground = false, ImPlotCond limitsCond = ImPlotCond_Always, const double* symLogLinearThreshold = nullptr, AxisDecoration decoration = {}) {
     if (!category.has_value()) {
         return;
     }
@@ -546,11 +569,15 @@ inline void setupAxis(ImAxis axisId, const std::optional<AxisCategory>& category
         pushedColor = true;
     }
 
+    const bool outside = decoration.placement == AxisPlacement::Outside;
     if (format == LabelFormat::None) {
         flags |= ImPlotAxisFlags_NoTickLabels;
     }
+    if (!outside) { // Canvas: drawCanvasAxes draws them on the plot area
+        flags |= ImPlotAxisFlags_NoTickLabels | ImPlotAxisFlags_NoTickMarks;
+    }
 
-    const std::string label = (scale == AxisScale::Time) || (format == LabelFormat::MetricInline) || (format == LabelFormat::None) ? "" : truncateLabel(category->buildLabel(), axisWidth);
+    const std::string label = (scale == AxisScale::Time) || (format == LabelFormat::MetricInline) || (format == LabelFormat::None) || !outside || !decoration.showTitle ? "" : truncateLabel(category->buildLabel(), axisWidth);
     ImPlot::SetupAxis(axisId, label.c_str(), flags);
 
     if (scale != AxisScale::Time) {
@@ -630,6 +657,58 @@ inline void setupAxis(ImAxis axisId, const std::optional<AxisCategory>& category
     if (pushedColor) {
         ImPlot::PopStyleColor(2);
     }
+}
+
+/// the ticks and tick labels of the axes placed on the Canvas, drawn on the plot area as ImPlot would draw them outside (its
+/// ticks, which it labels, its colours); the first such axis on a side sits at the plot's edge, each further one a column
+/// or row inward. Call while the plot is open, after the signals, so the labels lie on top of them.
+inline void drawCanvasAxes(const std::array<AxisPlacement, ImAxis_COUNT>& placements) {
+    ImPlotPlot&            plot     = *ImPlot::GetCurrentPlot();
+    const ImRect&          area     = plot.PlotRect;
+    ImDrawList&            drawList = *ImPlot::GetPlotDrawList();
+    const ImPlotStyle&     style    = ImPlot::GetStyle();
+    const ChartStyle&      chart    = LookAndFeel::instance().chartStyle;
+    std::array<float, 4UZ> insets{}; // per edge: bottom, top, left, right
+    ImPlot::PushPlotClipRect();
+    for (int id = 0; id < ImAxis_COUNT; ++id) {
+        const ImPlotAxis& axis = plot.Axes[id];
+        if (placements[static_cast<std::size_t>(id)] != AxisPlacement::Canvas || !axis.Enabled) {
+            continue;
+        }
+        const bool        isX      = isXAxis(id);
+        const bool        opposite = ImHasFlag(axis.Flags, ImPlotAxisFlags_Opposite);
+        const std::size_t along    = isX ? 0UZ : 1UZ; // the ticks' coordinate; ImPlot's tick style for this axis
+        const std::size_t across   = 1UZ - along;
+        const float       inward   = isX == opposite ? 1.f : -1.f; // from the edge into the plot: down from the top, right from the left
+        float&            inset    = insets[(isX ? 0UZ : 2UZ) + (opposite ? 1UZ : 0UZ)];
+        const float       edge     = (isX == opposite ? area.Min : area.Max)[across] + inward * inset;
+        const float       majorLen = style.MajorTickLen[along];
+        const float       offset   = majorLen + chart.canvasAxisLabelPadding;
+        float             extent   = 0.f; // the widest label across the edge
+        const auto&       ticker   = axis.Ticker;
+        for (int t = 0; t < ticker.TickCount(); ++t) {
+            const ImPlotTick& tick = ticker.Ticks[t];
+            ImVec2            at;
+            at[along]  = axis.PlotToPixels(tick.PlotPos);
+            at[across] = edge;
+            if (at[along] < area.Min[along] - 1.f || at[along] > area.Max[along] + 1.f) {
+                continue;
+            }
+            ImVec2 tip = at;
+            tip[across] += inward * (tick.Major ? majorLen : style.MinorTickLen[along]);
+            drawList.AddLine(at, tip, axis.ColorTick, tick.Major ? style.MajorTickSize[along] : style.MinorTickSize[along]);
+            if (!tick.ShowLabel) {
+                continue;
+            }
+            ImVec2 corner;
+            corner[along]  = at[along] - .5f * tick.LabelSize[along];
+            corner[across] = edge + inward * offset - (inward < 0.f ? tick.LabelSize[across] : 0.f);
+            drawList.AddText(corner, axis.ColorTxt, ticker.GetText(t));
+            extent = std::max(extent, tick.LabelSize[across]);
+        }
+        inset += offset + extent + chart.canvasAxisColumnGap;
+    }
+    ImPlot::PopPlotClipRect();
 }
 
 inline std::optional<std::size_t> findOrCreateCategory(std::array<std::optional<AxisCategory>, 3>& categories, std::string_view quantity, std::string_view unit, std::uint32_t color) {
@@ -1047,6 +1126,8 @@ inline constexpr const char* kCheckOff   = "\uf0c8"; // square
 inline constexpr const char* kHistory    = "\uf1da"; // clock-rotate-left
 inline constexpr const char* kArrow      = "\uf061"; // arrow-right
 inline constexpr const char* kFormat     = "\uf031"; // font
+inline constexpr const char* kPlacement  = "\uf337"; // left-right
+inline constexpr const char* kTitle      = "\uf1dc"; // heading
 
 /// leaves the cursor on the same line, beside the glyph
 inline void icon(const char* glyph) {
@@ -1330,19 +1411,22 @@ struct Chart {
     components::AutoHide                     _legendAutoHide;
     FrequencyMarkers                         _markers;
 
-    double                  _lastCapacityRefreshTime = 0.0;
-    double                  _pendingResizeTime       = 0.0;             // 0 = no pending resize
-    std::atomic<bool>       _renderResetPending{false};                 // GR4 runs reset() on a scheduler thread; GL and draw state belong to the render thread
-    HistoryUnit             _historyDisplayUnit = HistoryUnit::seconds; // UI-only, not persisted
-    std::optional<ImAxis>   _hoveredAxisForMenu;
-    std::array<int, 3UZ>    _fitOnceX            = {}; // per-axis: 0=idle, 2=auto-fit pending, 1=capture next frame
-    std::array<int, 3UZ>    _fitOnceY            = {};
-    std::array<double, 3UZ> _prevXMin            = {std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()};
-    std::array<double, 3UZ> _prevXMax            = {std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()};
-    std::array<double, 3UZ> _prevYMin            = {std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()};
-    std::array<double, 3UZ> _prevYMax            = {std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()};
-    std::array<bool, 3UZ>   _limitsForceAppliedX = {};
-    std::array<bool, 3UZ>   _limitsForceAppliedY = {};
+    double                                  _lastCapacityRefreshTime = 0.0;
+    double                                  _pendingResizeTime       = 0.0;             // 0 = no pending resize
+    std::atomic<bool>                       _renderResetPending{false};                 // GR4 runs reset() on a scheduler thread; GL and draw state belong to the render thread
+    HistoryUnit                             _historyDisplayUnit = HistoryUnit::seconds; // UI-only, not persisted
+    std::optional<ImAxis>                   _hoveredAxisForMenu;
+    std::array<AxisPlacement, ImAxis_COUNT> _axisPlacements{};         // of the plot being drawn, by its axes' setup; updateInteractions draws the Canvas ones
+    std::size_t                             _xDecorationEntryOffset{}; // SpectrumView's top pane reads its X axes' decoration from the next X entry
+    AxisDecoration                          _x1DecorationFallback{};   // X1's decoration without an entry
+    std::array<int, 3UZ>                    _fitOnceX            = {}; // per-axis: 0=idle, 2=auto-fit pending, 1=capture next frame
+    std::array<int, 3UZ>                    _fitOnceY            = {};
+    std::array<double, 3UZ>                 _prevXMin            = {std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()};
+    std::array<double, 3UZ>                 _prevXMax            = {std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()};
+    std::array<double, 3UZ>                 _prevYMin            = {std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()};
+    std::array<double, 3UZ>                 _prevYMax            = {std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()};
+    std::array<bool, 3UZ>                   _limitsForceAppliedX = {};
+    std::array<bool, 3UZ>                   _limitsForceAppliedY = {};
 
     template<typename Field>
     static bool readAutoScale(const Field& field, std::size_t idx) {
@@ -1666,7 +1750,7 @@ struct Chart {
         auto [quantity, unit] = self.sinkAxisInfo(isX);
         AxisCategory cat{.quantity = quantity, .unit = unit};
         auto         cond = condOverride.value_or(self.trackLimitsCond(isX, minLimit, maxLimit));
-        axis::setupAxis(axisId, cat, format, axisLabelWidthOrDefault(dashCfg, defaultAxisLabelWidthFor(axisId, plotSize)), minLimit, maxLimit, 1UZ, scale, self._unitStore, showGrid, foreground, cond);
+        axis::setupAxis(axisId, cat, format, axisLabelWidthOrDefault(dashCfg, defaultAxisLabelWidthFor(axisId, plotSize)), minLimit, maxLimit, 1UZ, scale, self._unitStore, showGrid, foreground, cond, nullptr, self.decorated(axisId, isX ? AxisKind::X : AxisKind::Y));
     }
 
     ImPlotCond trackLimitsCond(bool isX, double newMin, double newMax, std::size_t axisIdx = 0UZ) {
@@ -1989,6 +2073,14 @@ struct Chart {
                           self.setAxisFormat(AxisKind::X, LabelFormat::Auto, 0UZ);
                       }) {
             drawEnumCombo(menu_icons::kFormat, "format:", "##format", self.getAxisFormat(axis, axisIndex), [&](LabelFormat f) { self.setAxisFormat(axis, f, axisIndex); });
+        }
+        {
+            const AxisDecoration decoration = self.axisDecoration(axis, axisIndex);
+            drawEnumCombo(menu_icons::kPlacement, "placement:", "##placement", decoration.placement, [&](AxisPlacement p) { self.setAxisPlacement(axis, p, axisIndex); });
+            menu_icons::icon(menu_icons::kTitle);
+            if (bool showTitle = decoration.showTitle; checkbox("show title", &showTitle)) {
+                self.setAxisShowTitle(axis, showTitle, axisIndex);
+            }
         }
 
         if constexpr (requires {
@@ -2320,9 +2412,16 @@ struct Chart {
             axesVec = existing->owned();
         }
 
-        const std::string targetAxis   = kAxisNames[static_cast<std::size_t>(axis)];
-        bool              found        = false;
-        std::size_t       matchingAxes = 0UZ;
+        const std::string targetAxis = kAxisNames[static_cast<std::size_t>(axis)];
+        const auto        stored     = [&value] { // an enum by its name, as the .grc spells it
+            if constexpr (std::is_enum_v<E>) {
+                return gr::pmt::Value(std::pmr::string(gr::meta::enumName(value).value_or("")));
+            } else {
+                return gr::pmt::Value(value);
+            }
+        };
+        bool        found        = false;
+        std::size_t matchingAxes = 0UZ;
         for (auto& axisPmt : axesVec) {
             const auto axisMapView = axisPmt.get_if<gr::property_map>();
             if (!axisMapView) {
@@ -2334,7 +2433,7 @@ struct Chart {
                     continue;
                 }
                 gr::property_map axisMap = axisMapView->owned();
-                axisMap.insert_or_assign(key, std::pmr::string(gr::meta::enumName(value).value_or("")));
+                axisMap.insert_or_assign(key, stored());
                 axisPmt = gr::pmt::Value(std::move(axisMap));
                 found   = true;
                 break;
@@ -2349,7 +2448,7 @@ struct Chart {
 
             gr::property_map newAxis;
             newAxis.insert_or_assign("axis", targetAxis);
-            newAxis.insert_or_assign(key, std::pmr::string(gr::meta::enumName(value).value_or("")));
+            newAxis.insert_or_assign(key, stored());
             axesVec.push_back(std::move(newAxis));
         }
         constraints.insert_or_assign("axes", std::move(axesVec));
@@ -2367,8 +2466,40 @@ struct Chart {
         self.setAxisConstraintField(axis, axisIndex, "format", format);
     }
 
+    /// the `axes:` entry holding an axis' placement and title
+    template<typename Self>
+    [[nodiscard]] std::size_t decorationEntry(this const Self& self, AxisKind axis, std::size_t axisIndex) noexcept {
+        return axis == AxisKind::X ? axisIndex + self._xDecorationEntryOffset : axisIndex;
+    }
+
+    template<typename Self>
+    [[nodiscard]] AxisDecoration axisDecoration(this const Self& self, AxisKind axis, std::size_t axisIndex = 0UZ) noexcept {
+        const AxisDecoration fallback = axis == AxisKind::X && axisIndex == 0UZ ? self._x1DecorationFallback : AxisDecoration{};
+        return decorationOf(parseAxisConfig(self.ui_constraints.value, axis, self.decorationEntry(axis, axisIndex)), fallback);
+    }
+
+    /// `axisId`'s decoration for setupAxis, kept for updateInteractions, which draws the Canvas axes
+    template<typename Self>
+    AxisDecoration decorated(this Self& self, ImAxis axisId, AxisKind axis, std::size_t axisIndex = 0UZ) {
+        const AxisDecoration decoration                        = self.axisDecoration(axis, axisIndex);
+        self._axisPlacements[static_cast<std::size_t>(axisId)] = decoration.placement;
+        return decoration;
+    }
+
+    template<typename Self>
+    void setAxisPlacement(this Self& self, AxisKind axis, AxisPlacement placement, std::size_t axisIndex = 0UZ) {
+        self.setAxisConstraintField(axis, self.decorationEntry(axis, axisIndex), "placement", placement);
+    }
+
+    template<typename Self>
+    void setAxisShowTitle(this Self& self, AxisKind axis, bool showTitle, std::size_t axisIndex = 0UZ) {
+        self.setAxisConstraintField(axis, self.decorationEntry(axis, axisIndex), "show_title", showTitle);
+    }
+
     template<typename Self>
     void updateInteractions(this Self& self, ChartMode mode) {
+        axis::drawCanvasAxes(self._axisPlacements);
+        self._axisPlacements = {};
         if (mode == ChartMode::Layout) {
             return;
         }
@@ -2633,6 +2764,19 @@ struct Chart {
             self.drawHistoryDepthWidget();
         }
         ImGui::Separator();
+
+        for (int id = 0; id < ImAxis_COUNT; ++id) { // also reaches an axis whose placement leaves nothing outside to right-click
+            if (!ImPlot::GetCurrentPlot()->Axes[id].Enabled) {
+                continue;
+            }
+            const bool        isX   = isXAxis(id);
+            const std::size_t index = static_cast<std::size_t>(isX ? id - ImAxis_X1 : id - ImAxis_Y1);
+            const std::string name  = index == 0UZ ? std::format("{} axis", isX ? 'X' : 'Y') : std::format("{} axis {}", isX ? 'X' : 'Y', index + 1UZ);
+            if (menu_icons::beginMenuWithIcon(isX ? menu_icons::kXAxis : menu_icons::kYAxis, name.c_str())) {
+                self.drawAxisSubmenuContent(isX ? AxisKind::X : AxisKind::Y, index);
+                ImGui::EndMenu();
+            }
+        }
 
         self.drawSettingsSubmenu();
         self.drawAutoGeneratedSettings(/*visibleOnly=*/true);

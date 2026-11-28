@@ -159,6 +159,8 @@ struct SpectrumView : gr::Block<SpectrumView, gr::Drawable<gr::UICategory::Conte
         }
 
         ImPlot::PushStyleVar(ImPlotStyleVar_FitPadding, LookAndFeel::instance().chartStyle.spectrumFitPadding);
+        _xDecorationEntryOffset = 1UZ; // the top pane's frequency axis repeats the waterfall's below it: hidden unless a second X entry says otherwise
+        _x1DecorationFallback   = {.placement = AxisPlacement::None};
         if (ImPlot::BeginPlot("##spectrum", ImVec2(0, 0), plotFlags)) {
             setupSingleAxis(true, ImAxis_X1, paneSize, showGrid, LabelFormat::MetricInline, /*foreground=*/true, _sharedXCond);
             setupSingleAxis(false, ImAxis_Y1, paneSize, showGrid);
@@ -217,6 +219,8 @@ struct SpectrumView : gr::Block<SpectrumView, gr::Drawable<gr::UICategory::Conte
         ImPlot::PushStyleColor(ImPlotCol_AxisGrid, contrastingGridColor(colormap.value));
         ImPlot::PushStyleVar(ImPlotStyleVar_FitPadding, LookAndFeel::instance().chartStyle.spectrumFitPadding);
 
+        _xDecorationEntryOffset = 0UZ;
+        _x1DecorationFallback   = {};
         if (ImPlot::BeginPlot("##waterfall", ImVec2(0, 0), plotFlags | ImPlotFlags_NoLegend)) {
             setupSingleAxis(true, ImAxis_X1, paneSize, showGrid, LabelFormat::None, /*foreground=*/true, _sharedXCond);
             setupTimeAxis(ImAxis_Y1, AxisScale::LinearReverse, showGrid);

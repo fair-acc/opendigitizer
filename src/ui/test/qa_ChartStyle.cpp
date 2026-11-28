@@ -141,6 +141,11 @@ ChartStyle chartStyle(auto configure) {
     return style;
 }
 
+/// the plot of the chart with two Y axes, the only one that enables Y2
+const ImPlotPlot* twoAxesPlot() {
+    return test::ImGuiTestApp::findPlot([](const ImPlotPlot& plot) { return plot.Axes[ImAxis_Y2].Enabled; });
+}
+
 std::unique_ptr<Pixels> drawAndCapture(ImGuiTestContext* ctx, charts::XYChart& chart, Mode mode, const ChartStyle& style) {
     gState->drawn                             = std::addressof(chart);
     gState->mode                              = mode;
@@ -297,6 +302,78 @@ struct TestApp : public test::ImGuiTestApp {
                 expect(eq(chart.legendVisibility(), 1.f)) << "movement in the plot shows it";
                 ctx->MouseMoveToPos(ImVec2(5.f, 5.f));
                 look.autoHideLegends = false;
+            };
+
+            "the axis menu's placement and title choices are kept in the chart's axes entries, spelt as a .grc spells them"_test = [] {
+                charts::XYChart chart;
+                chart.setAxisPlacement(charts::AxisKind::Y, charts::AxisPlacement::Canvas, 1UZ);
+                chart.setAxisShowTitle(charts::AxisKind::Y, false, 1UZ);
+                chart.setAxisPlacement(charts::AxisKind::X, charts::AxisPlacement::None);
+                expect(chart.axisDecoration(charts::AxisKind::Y, 1UZ).placement == charts::AxisPlacement::Canvas);
+                expect(!chart.axisDecoration(charts::AxisKind::Y, 1UZ).showTitle);
+                expect(chart.axisDecoration(charts::AxisKind::Y).placement == charts::AxisPlacement::Outside && chart.axisDecoration(charts::AxisKind::Y).showTitle) << "the first Y entry only holds the second's place";
+                expect(chart.axisDecoration(charts::AxisKind::X).placement == charts::AxisPlacement::None);
+                const auto axes = chart.ui_constraints.value.get_if<gr::TensorView<gr::pmt::Value>>("axes");
+                expect(axes.has_value()) << fatal;
+                std::size_t nY = 0UZ;
+                for (const gr::pmt::Value& value : *axes) {
+                    const auto entry = value.get_if<gr::property_map>();
+                    if (!entry || entry->value_or<std::string_view>("axis", std::string_view{}) != std::string_view{"Y"}) {
+                        continue;
+                    }
+                    if (nY == 1UZ) {
+                        expect(eq(entry->value_or<std::string_view>("placement", std::string_view{}), std::string_view{"Canvas"})) << "the second Y entry holds the enum by its name";
+                        const auto showTitle = entry->get_if<bool>("show_title");
+                        expect(showTitle && !*showTitle) << "and the title as a boolean";
+                    }
+                    ++nY;
+                }
+                expect(eq(nY, 2UZ)) << "a placeholder and the second Y entry";
+            };
+
+            "a second Y axis on the canvas draws its labels on the plot, None draws none, and either leaves the plot the axis' room"_test = [&] {
+                auto&      chart     = *state.twoAxes;
+                const auto drawnWith = [&](charts::AxisPlacement placement) {
+                    chart.setAxisPlacement(charts::AxisKind::Y, placement, 1UZ);
+                    auto              pixels = drawAndCapture(ctx, chart, Mode::Interaction, {});
+                    const ImPlotPlot* plot   = twoAxesPlot();
+                    return std::pair{std::move(pixels), plot != nullptr ? plot->PlotRect.GetWidth() : 0.f};
+                };
+                const auto [outside, outsideWidth] = drawnWith(charts::AxisPlacement::Outside);
+                const auto [canvas, canvasWidth]   = drawnWith(charts::AxisPlacement::Canvas);
+                const auto [none, noneWidth]       = drawnWith(charts::AxisPlacement::None);
+                chart.setAxisPlacement(charts::AxisKind::Y, charts::AxisPlacement::Outside, 1UZ);
+
+                // outside, the axis takes at least its title's room: a text line and ImPlot's label padding
+                expect(canvasWidth >= outsideWidth + ImGui::GetTextLineHeight() + ImPlot::GetStyle().LabelPadding.x) << std::format("the plot is {} px wide with the axis outside, {} on the canvas", outsideWidth, canvasWidth);
+                expect(approx(noneWidth, canvasWidth, 1.f)) << std::format("{} px without the axis", noneWidth);
+                // ground truth by construction: Canvas and None draw the same plot and traces, so only the labels tell them apart; a
+                // label inks at least a digit's stroke, a text line high
+                constexpr Region kInsideRight{.85f, .05f, .99f, .85f};
+                const auto       onCanvas = canvas->count(kInsideRight, isCurrentOrange);
+                const auto       bare     = none->count(kInsideRight, isCurrentOrange);
+                expect(onCanvas > bare + static_cast<std::size_t>(ImGui::GetTextLineHeight())) << std::format("{} current-coloured pixels inside the right edge on the canvas, {} without the axis", onCanvas, bare);
+            };
+
+            "show_title false keeps an axis' ticks and labels outside and drops its title"_test = [&] {
+                auto&             chart       = *state.twoAxes;
+                const auto        titled      = drawAndCapture(ctx, chart, Mode::Interaction, {});
+                const ImPlotPlot* plot        = twoAxesPlot();
+                const bool        hadTitle    = plot != nullptr && plot->Axes[ImAxis_Y2].HasLabel();
+                const float       titledWidth = plot != nullptr ? plot->PlotRect.GetWidth() : 0.f;
+                chart.setAxisShowTitle(charts::AxisKind::Y, false, 1UZ);
+                const auto untitled       = drawAndCapture(ctx, chart, Mode::Interaction, {});
+                plot                      = twoAxesPlot();
+                const bool  hasTitle      = plot != nullptr && plot->Axes[ImAxis_Y2].HasLabel();
+                const bool  hasLabels     = plot != nullptr && plot->Axes[ImAxis_Y2].HasTickLabels();
+                const float untitledWidth = plot != nullptr ? plot->PlotRect.GetWidth() : 0.f;
+                const auto  labelCount    = plot != nullptr ? static_cast<std::size_t>(std::ranges::count_if(plot->Axes[ImAxis_Y2].Ticker.Ticks, &ImPlotTick::ShowLabel)) : 0UZ;
+                chart.setAxisShowTitle(charts::AxisKind::Y, true, 1UZ);
+
+                expect(hadTitle && !hasTitle) << "the title goes";
+                expect(hasLabels) << "the tick labels stay";
+                expect(untitledWidth >= titledWidth + ImGui::GetTextLineHeight()) << std::format("the title's text line goes to the plot: {} px wide, {} with the title", untitledWidth, titledWidth);
+                expect(untitled->count(kRightAxis, isCurrentOrange) > labelCount * static_cast<std::size_t>(ImGui::GetTextLineHeight())) << "the labels outside, in the signal's colour, each at least a digit's stroke";
             };
 
             "an axis colour draws the tick labels, axis label and ticks in that colour"_test = [&] {
