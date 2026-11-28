@@ -12,8 +12,8 @@
 #include "../common/TouchHandler.hpp"
 #include "../common/ViewMode.hpp"
 #include "../components/ImGuiNotify.hpp"
+#include "../utils/ShaderHelper.hpp"
 
-#include <SDL3/SDL_opengl.h>
 #include <gnuradio-4.0/meta/reflection.hpp>
 #include <magic_enum.hpp>
 #include <magic_enum_utility.hpp>
@@ -61,7 +61,7 @@ inline void textFitted(std::string_view text, ImFont* font, float minSize, float
     ImGui::RenderTextEllipsis(ImGui::GetWindowDrawList(), min, max, max.x, text.data(), text.data() + text.size(), &textSize);
 }
 
-inline bool loadTextureFromFile(const char* filename, GLuint* outTexture, ImVec2& textureSize) {
+inline bool loadTextureFromFile(const char* filename, shader::Texture2D& outTexture, ImVec2& textureSize) {
     int imageWidth  = 0;
     int imageHeight = 0;
 
@@ -72,27 +72,12 @@ inline bool loadTextureFromFile(const char* filename, GLuint* outTexture, ImVec2
     if (imageData == nullptr) {
         return false;
     }
-
-    GLuint imageTexture;
-    glGenTextures(1, &imageTexture);
-    glBindTexture(GL_TEXTURE_2D, imageTexture);
-
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE); // WebGL requires clamping for non-power-of-two textures
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-
-#if defined(GL_UNPACK_ROW_LENGTH) && !defined(__EMSCRIPTEN__)
-    glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
-#endif
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, imageWidth, imageHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, imageData);
+    const bool uploaded = outTexture.upload(static_cast<std::size_t>(imageWidth), static_cast<std::size_t>(imageHeight), imageData);
     stbi_image_free(imageData);
 
-    *outTexture   = imageTexture;
     textureSize.x = static_cast<float>(imageWidth);
     textureSize.y = static_cast<float>(imageHeight);
-
-    return true;
+    return uploaded;
 }
 } // namespace detail
 
@@ -106,15 +91,15 @@ struct AppHeader {
     AutoHide menuAutoHide;
     AutoHide devMenuAutoHide;
 
-    ImVec2 logoSize{0.f, 0.f};
-    GLuint imgFairLogo     = 0;
-    GLuint imgFairLogoDark = 0;
+    ImVec2            logoSize{0.f, 0.f};
+    shader::Texture2D imgFairLogo{shader::Texture2D::Options{.minFilter = GL_LINEAR, .magFilter = GL_LINEAR}};
+    shader::Texture2D imgFairLogoDark{shader::Texture2D::Options{.minFilter = GL_LINEAR, .magFilter = GL_LINEAR}};
 
     void loadAssets() {
-        [[maybe_unused]] bool ret = detail::loadTextureFromFile("assets/fair-logo/FAIR_Logo_rgb_72dpi.png", &imgFairLogo, logoSize);
+        [[maybe_unused]] bool ret = detail::loadTextureFromFile("assets/fair-logo/FAIR_Logo_rgb_72dpi.png", imgFairLogo, logoSize);
         IM_ASSERT(ret);
 
-        ret = detail::loadTextureFromFile("assets/fair-logo/FAIR_Logo_rgb_72dpi_dark.png", &imgFairLogoDark, logoSize);
+        ret = detail::loadTextureFromFile("assets/fair-logo/FAIR_Logo_rgb_72dpi_dark.png", imgFairLogoDark, logoSize);
         IM_ASSERT(ret);
     }
 
@@ -210,7 +195,7 @@ struct AppHeader {
             imw::StyleColor hoveredStyle(ImGuiCol_ButtonHovered, palette.appHeaderFAIRLogoButtonHovered);
             imw::StyleColor activeStyle(ImGuiCol_ButtonActive, palette.appHeaderFAIRLogoButtonActive);
             imw::StyleVar   noPadding(ImGuiStyleVar_FramePadding, ImVec2{});
-            const auto      imgLogo = static_cast<ImTextureID>(style == LookAndFeel::Style::Light ? imgFairLogo : imgFairLogoDark);
+            const auto      imgLogo = (style == LookAndFeel::Style::Light ? imgFairLogo : imgFairLogoDark).id();
             ImGui::ImageButton("logo", imgLogo, localLogoSize);
         }
 

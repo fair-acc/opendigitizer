@@ -37,16 +37,15 @@ struct WaterfallPlot : gr::Block<WaterfallPlot, gr::Drawable<gr::UICategory::Con
     A<bool, "show legend", gr::Visible>                    show_legend = false;
     A<bool, "show grid", gr::Visible>                      show_grid   = true;
 
-    A<gr::Size_t, "history depth", gr::Visible, gr::Limits<16U, 4096U>>                                                                         n_history        = 256U;
-    A<ImPlotColormap_, "colormap", gr::Visible>                                                                                                 colormap         = ImPlotColormap_Viridis;
-    A<bool, "GPU acceleration", gr::Doc<"use GPU texture for rendering (falls back to CPU if unavailable)">>                                    gpu_acceleration = true;
-    A<WaterfallOrientation, "orientation", gr::Visible, gr::Doc<"scroll axis: Vertical (time on Y) or Horizontal (time on X, frequency on Y)">> orientation      = WaterfallOrientation::Vertical;
-    A<bool, "X auto-scale">                                                                                                                     x_auto_scale     = true;
-    A<bool, "Y auto-scale">                                                                                                                     y_auto_scale     = true;
-    A<double, "X-axis min">                                                                                                                     x_min            = std::numeric_limits<double>::lowest();
-    A<double, "X-axis max">                                                                                                                     x_max            = std::numeric_limits<double>::max();
-    A<double, "Y-axis min">                                                                                                                     y_min            = std::numeric_limits<double>::lowest();
-    A<double, "Y-axis max">                                                                                                                     y_max            = std::numeric_limits<double>::max();
+    A<gr::Size_t, "history depth", gr::Visible, gr::Limits<16U, 4096U>>                                                                         n_history    = 256U;
+    A<ImPlotColormap_, "colormap", gr::Visible>                                                                                                 colormap     = ImPlotColormap_Viridis;
+    A<WaterfallOrientation, "orientation", gr::Visible, gr::Doc<"scroll axis: Vertical (time on Y) or Horizontal (time on X, frequency on Y)">> orientation  = WaterfallOrientation::Vertical;
+    A<bool, "X auto-scale">                                                                                                                     x_auto_scale = true;
+    A<bool, "Y auto-scale">                                                                                                                     y_auto_scale = true;
+    A<double, "X-axis min">                                                                                                                     x_min        = std::numeric_limits<double>::lowest();
+    A<double, "X-axis max">                                                                                                                     x_max        = std::numeric_limits<double>::max();
+    A<double, "Y-axis min">                                                                                                                     y_min        = std::numeric_limits<double>::lowest();
+    A<double, "Y-axis max">                                                                                                                     y_max        = std::numeric_limits<double>::max();
 
     RangeStyleSetting      range_style     = RangeStyle::hidden;
     RangeMinSetting        range_min       = std::numeric_limits<double>::quiet_NaN();
@@ -64,7 +63,7 @@ struct WaterfallPlot : gr::Block<WaterfallPlot, gr::Drawable<gr::UICategory::Con
     RangeLabelsSetting     show_range_labels = true;
     F0LabelsSetting        show_f0_labels    = true;
 
-    GR_MAKE_REFLECTABLE(WaterfallPlot, chart_name, chart_title, data_sinks, show_legend, show_grid, n_history, colormap, gpu_acceleration, orientation, x_auto_scale, y_auto_scale, x_min, x_max, y_min, y_max, range_style, range_min, range_max, range_min_width, range_color, range_min_targets, range_max_targets, f0_style, f0, f0_color, f0_targets, follow_inputs, snap_to_bins, show_range_labels, show_f0_labels);
+    GR_MAKE_REFLECTABLE(WaterfallPlot, chart_name, chart_title, data_sinks, show_legend, show_grid, n_history, colormap, orientation, x_auto_scale, y_auto_scale, x_min, x_max, y_min, y_max, range_style, range_min, range_max, range_min_width, range_color, range_min_targets, range_max_targets, f0_style, f0, f0_color, f0_targets, follow_inputs, snap_to_bins, show_range_labels, show_f0_labels);
 
     WaterfallBuffer              _waterfall;
     std::array<std::string, 6>   _unitStore{};
@@ -89,8 +88,6 @@ struct WaterfallPlot : gr::Block<WaterfallPlot, gr::Drawable<gr::UICategory::Con
     gr::work::Status draw(const gr::property_map& config = {}) {
         [[maybe_unused]] auto [plotFlags, plotSize, showLegend, chartMode, showGrid, chartStyle] = prepareDrawPrologue(config);
 
-        _waterfall.setPreferGpu(gpu_acceleration);
-
         // the UI writes n_history directly, bypassing settingsChanged
         if (_pendingResizeTime == 0.0 && _waterfall.width() > 0) {
             _waterfall.resizeHistory(static_cast<std::size_t>(n_history));
@@ -110,7 +107,7 @@ struct WaterfallPlot : gr::Block<WaterfallPlot, gr::Drawable<gr::UICategory::Con
 
         setupAxes(plotSize, showGrid);
 
-        const auto renderInfo = _waterfall.pushNewSpectra(_signalSinks, _lastPushedSampleCount, logFreqRange(parseAxisConfig(this->ui_constraints.value, AxisKind::X)), static_cast<std::size_t>(n_history), gpu_acceleration, colormap.value, [&] { return effectiveColourRange(this->ui_constraints.value, _waterfall.scaleMin(), _waterfall.scaleMax()); });
+        const auto renderInfo = _waterfall.pushNewSpectra(_signalSinks, _lastPushedSampleCount, logFreqRange(parseAxisConfig(this->ui_constraints.value, AxisKind::X)), static_cast<std::size_t>(n_history), colormap.value, [&] { return effectiveColourRange(this->ui_constraints.value, _waterfall.scaleMin(), _waterfall.scaleMax()); });
         if (renderInfo) {
             _lastRenderInfo = renderInfo;
         }

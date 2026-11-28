@@ -185,12 +185,12 @@ struct SurfaceGpuRenderer {
         float gridColor[4]{1.f, 1.f, 1.f, 0.3f};
     };
 
-    GLuint         _program            = 0;
-    GLuint         _vao                = 0;
-    GLuint         _vbo                = 0;
-    GLuint         _ibo                = 0;
-    GLuint         _colormapLutTexture = 0;
-    ImPlotColormap _activeColormap     = -1;
+    GLuint         _program = 0;
+    GLuint         _vao     = 0;
+    GLuint         _vbo     = 0;
+    GLuint         _ibo     = 0;
+    gl::Texture2D  _colormapLutTexture{gl::Texture2D::Options{.minFilter = GL_LINEAR, .magFilter = GL_LINEAR}};
+    ImPlotColormap _activeColormap = -1;
 
     GLint _locAxisMin          = -1;
     GLint _locAxisMax          = -1;
@@ -418,19 +418,12 @@ void main() {
     }
 
     void updateColormapLut(ImPlotColormap colormap) {
-        if (_activeColormap == colormap && _colormapLutTexture != 0) {
+        if (_activeColormap == colormap && _colormapLutTexture) {
             return;
         }
         _activeColormap = colormap;
-        auto lut        = buildColormapLut(colormap);
-
-        if (!_colormapLutTexture) {
-            gl::createRGBA8Texture(_colormapLutTexture, static_cast<GLsizei>(kColormapSize), 1);
-        }
-        glBindTexture(GL_TEXTURE_2D, _colormapLutTexture);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, static_cast<GLsizei>(kColormapSize), 1, GL_RGBA, GL_UNSIGNED_BYTE, lut.data());
+        const auto lut  = buildColormapLut(colormap);
+        std::ignore     = _colormapLutTexture.upload(kColormapSize, 1UZ, lut.data());
     }
 
     void captureGridFromTickers(const ImPlot3DPlot* plot, bool showGrid, bool showMinorGrid, const float gridColor[4]) {
@@ -569,7 +562,7 @@ void main() {
         glUniform2fv(self->_locColormapRange, 1, f.colormapRange);
 
         glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, self->_colormapLutTexture);
+        glBindTexture(GL_TEXTURE_2D, self->_colormapLutTexture.handle());
         glUniform1i(self->_locColormapLut, 0);
 
         glUniform2fv(self->_locGridOrigin, 1, f.gridOrigin);
@@ -609,10 +602,7 @@ void main() {
             glDeleteBuffers(1, &_ibo);
             _ibo = 0;
         }
-        if (_colormapLutTexture) {
-            glDeleteTextures(1, &_colormapLutTexture);
-            _colormapLutTexture = 0;
-        }
+        _colormapLutTexture.reset();
         _indexCount     = 0;
         _initAttempted  = false;
         _gpuAvailable   = false;

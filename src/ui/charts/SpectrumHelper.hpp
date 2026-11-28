@@ -354,24 +354,6 @@ inline void followColourScale(double& scaleMin, double& scaleMax, double frameMi
 
 namespace gl = shader;
 
-template<typename TexId = ImTextureID>
-[[nodiscard]] TexId toTextureId(GLuint id) {
-    if constexpr (std::is_pointer_v<TexId>) {
-        return reinterpret_cast<TexId>(static_cast<std::uintptr_t>(id));
-    } else {
-        return static_cast<TexId>(id);
-    }
-}
-
-template<typename TFn>
-void withTextureBound(GLuint texture, TFn&& fn) {
-    GLint previous = 0;
-    glGetIntegerv(GL_TEXTURE_BINDING_2D, &previous);
-    glBindTexture(GL_TEXTURE_2D, texture);
-    fn();
-    glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(previous));
-}
-
 /// a frequency-vs-amplitude histogram of successive spectrum lines with exponential decay, colour-mapped into an RGBA8 texture for ImPlot::PlotImage.
 /// The GPU path (GLES3 / WebGL2) draws two fullscreen-triangle passes:
 /// pass 1 decays the previous histogram and accumulates the new spectrum (ping-pong R32F FBOs),
@@ -411,7 +393,7 @@ struct DensityHistogram {
 
     std::vector<float>                  _cpuHistogram;
     std::vector<uint32_t>               _cpuPixels;
-    GLuint                              _cpuTexture        = 0;
+    gl::Texture2D                       _cpuTexture;
     ImPlotColormap                      _cpuActiveColormap = -1;
     std::array<uint32_t, kColormapSize> _cpuColormapLut{};
     bool                                _cpuNeedsRecolour = false;
@@ -562,10 +544,7 @@ void main() {
         _cpuHistogram.clear();
         _cpuPixels.clear();
         _cpuActiveColormap = -1;
-        if (_cpuTexture) {
-            glDeleteTextures(1, &_cpuTexture);
-            _cpuTexture = 0;
-        }
+        _cpuTexture.reset();
     }
 
     void destroyAllResources() {
@@ -745,25 +724,13 @@ void main() {
         _cpuHistogram.assign(nCells, 0.f);
         _cpuPixels.assign(nCells, 0U);
 
-        if (_cpuTexture) {
-            glDeleteTextures(1, &_cpuTexture);
-        }
-        glGenTextures(1, &_cpuTexture);
-        glBindTexture(GL_TEXTURE_2D, _cpuTexture);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, static_cast<GLsizei>(_specBins), static_cast<GLsizei>(_ampBins), 0, GL_RGBA, GL_UNSIGNED_BYTE, _cpuPixels.data());
+        std::ignore = _cpuTexture.upload(_specBins, _ampBins, _cpuPixels.data());
     }
 
     void cpuReset() {
         std::ranges::fill(_cpuHistogram, 0.f);
         std::ranges::fill(_cpuPixels, uint32_t(0));
-        if (_cpuTexture && _specBins > 0 && _ampBins > 0) {
-            glBindTexture(GL_TEXTURE_2D, _cpuTexture);
-            glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, static_cast<GLsizei>(_specBins), static_cast<GLsizei>(_ampBins), GL_RGBA, GL_UNSIGNED_BYTE, _cpuPixels.data());
-        }
+        _cpuTexture.uploadRows(0UZ, _ampBins, _cpuPixels.data());
     }
 
     void cpuUpdate(std::span<const float> yValues, std::size_t nBins, std::size_t ampBins, double decayTau, double yMin, double yMax, ImPlotColormap colormap) {
@@ -805,8 +772,7 @@ void main() {
         const float maxDensity = std::max(*std::ranges::max_element(_cpuHistogram), 1.f);
         std::ranges::transform(_cpuHistogram, _cpuPixels.begin(), [&](float density) { return densityColour(density, maxDensity, _cpuColormapLut); });
 
-        glBindTexture(GL_TEXTURE_2D, _cpuTexture);
-        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, static_cast<GLsizei>(_specBins), static_cast<GLsizei>(_ampBins), GL_RGBA, GL_UNSIGNED_BYTE, _cpuPixels.data());
+        _cpuTexture.uploadRows(0UZ, _ampBins, _cpuPixels.data());
         _cpuNeedsRecolour = false;
     }
 
@@ -858,14 +824,13 @@ void main() {
     }
 
     void plot(double freqMin, double freqMax, double yMin, double yMax) {
-        GLuint tex = _gpuAvailable ? _colormapTexture : _cpuTexture;
-        if (!tex) {
+        if (_gpuAvailable ? _colormapTexture == 0U : !_cpuTexture) {
             return;
         }
         if (!_gpuAvailable && _cpuNeedsRecolour) {
             cpuRecolour();
         }
-        ImPlot::PlotImage("##density", toTextureId(tex), ImPlotPoint(freqMin, yMin), ImPlotPoint(freqMax, yMax));
+        ImPlot::PlotImage("##density", _gpuAvailable ? gl::toTextureId(_colormapTexture) : _cpuTexture.id(), ImPlotPoint(freqMin, yMin), ImPlotPoint(freqMax, yMax));
     }
 };
 
@@ -884,8 +849,8 @@ struct WaterfallBuffer {
     std::size_t _filledRows = 0;
 
     std::vector<uint32_t> _pixels;
-    std::vector<double>   _timestamps; // UTC seconds per row (parallel ring buffer)
-    GLuint                _texture = 0;
+    std::vector<double>   _timestamps;                                          // UTC seconds per row (parallel ring buffer)
+    gl::Texture2D         _texture{gl::Texture2D::Options{.wrapT = GL_REPEAT}}; // time wraps: the write row scrolls
 
     ImPlotColormap                      _activeColormap = -1;
     std::array<uint32_t, kColormapSize> _colormapLut{};
@@ -893,12 +858,7 @@ struct WaterfallBuffer {
     double _scaleMin = 0.0;
     double _scaleMax = 0.0;
 
-    bool                       _preferGpu = true;
-    std::vector<float>         _rawMagnitudes; // CPU path: raw magnitude ring buffer
-    mutable std::vector<float> _linearized;    // CPU path: scratch for rendering
-    double                     _effectiveScaleMin = 0.0;
-    double                     _effectiveScaleMax = 0.0;
-    std::vector<float>         _logBinnedRow;
+    std::vector<float> _logBinnedRow;
 
     WaterfallBuffer() = default;
 
@@ -907,7 +867,7 @@ struct WaterfallBuffer {
     WaterfallBuffer(const WaterfallBuffer&)            = delete;
     WaterfallBuffer& operator=(const WaterfallBuffer&) = delete;
 
-    void init(std::size_t width, std::size_t height, bool preferGpu = true) {
+    void init(std::size_t width, std::size_t height) {
         destroy();
         _width      = width;
         _height     = height;
@@ -915,34 +875,23 @@ struct WaterfallBuffer {
         _filledRows = 0;
         _scaleMin   = 0.0;
         _scaleMax   = 0.0;
-        _preferGpu  = preferGpu;
 
         _timestamps.assign(_height, 0.0);
 
-        // always the GPU texture: PlotImage maps it in screen space, so it renders correctly on log-frequency axes,
-        // whereas PlotHeatmap places cells in linear data space and mis-positions log-binned columns.
-        // The renderCpu/PlotHeatmap path below is only the fallback for when no GL texture can be allocated.
-        glGenTextures(1, &_texture);
-        if (_texture != 0U) {
-            _pixels.assign(_width * _height, 0U);
-            glBindTexture(GL_TEXTURE_2D, _texture);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, static_cast<GLsizei>(_width), static_cast<GLsizei>(_height), 0, GL_RGBA, GL_UNSIGNED_BYTE, _pixels.data());
-        } else {
-            _rawMagnitudes.assign(_width * _height, 0.0f);
+        // PlotImage maps the texture in screen space; PlotHeatmap's linear cells misplace log-binned columns
+        _pixels.assign(_width * _height, 0U);
+        if (!_texture.upload(_width, _height, _pixels.data())) {
+            _pixels.clear(); // no GL context: nothing is drawn
         }
     }
 
     template<typename TColourRange>
-    [[nodiscard]] std::optional<FrequencySpan> pushNewSpectra(const std::vector<std::shared_ptr<SignalSink>>& sinks, std::size_t& lastPushedSampleCount, const std::optional<LogFreqRange>& logRange, std::size_t nHistory, bool preferGpu, ImPlotColormap colormap, TColourRange&& colourRange) {
+    [[nodiscard]] std::optional<FrequencySpan> pushNewSpectra(const std::vector<std::shared_ptr<SignalSink>>& sinks, std::size_t& lastPushedSampleCount, const std::optional<LogFreqRange>& logRange, std::size_t nHistory, ImPlotColormap colormap, TColourRange&& colourRange) {
         std::optional<FrequencySpan> pushed;
         auto                         pushSpectrum = [&](const SpectrumFrame& f) {
             const std::size_t width = logRange ? kLogSpectrumColumns : f.nBins;
             if (_width != width) {
-                init(width, nHistory, preferGpu);
+                init(width, nHistory);
             }
 
             updateAutoScale(f.yValues, f.nBins);
@@ -964,44 +913,23 @@ struct WaterfallBuffer {
         return pushed;
     }
 
-    void setPreferGpu(bool preferGpu) {
-        if (_preferGpu == preferGpu) {
-            return;
-        }
-        auto w = _width;
-        auto h = _height;
-        init(w, h, preferGpu);
-    }
-
     void pushRow(std::span<const float> magnitudes, std::size_t count, double scaleMin, double scaleMax, double timestampSec, ImPlotColormap colormap) {
-        if (_width == 0 || _height == 0) {
+        if (_width == 0 || _height == 0 || !_texture) {
             return;
         }
 
-        _effectiveScaleMin = scaleMin;
-        _effectiveScaleMax = scaleMax;
-
-        auto n = std::min(count, _width);
-
-        if (_texture) {
-            if (_activeColormap != colormap || (_colormapLut[0] == 0 && _colormapLut[1] == 0)) {
-                _colormapLut = buildColormapLut(colormap);
-            }
-
-            uint32_t* row = _pixels.data() + _writeRow * _width;
-            for (std::size_t i = 0; i < n; ++i) {
-                row[i] = colormapLookup(static_cast<double>(magnitudes[i]), scaleMin, scaleMax, _colormapLut);
-            }
-            std::fill_n(row + n, _width - n, uint32_t(0));
-
-            withTextureBound(_texture, [&] { glTexSubImage2D(GL_TEXTURE_2D, 0, 0, static_cast<GLint>(_writeRow), static_cast<GLsizei>(_width), 1, GL_RGBA, GL_UNSIGNED_BYTE, row); });
-        } else {
-            float* row = _rawMagnitudes.data() + _writeRow * _width;
-            for (std::size_t i = 0; i < n; ++i) {
-                row[i] = magnitudes[i];
-            }
-            std::fill_n(row + n, _width - n, 0.0f);
+        const auto n = std::min(count, _width);
+        if (_activeColormap != colormap || (_colormapLut[0] == 0 && _colormapLut[1] == 0)) {
+            _colormapLut = buildColormapLut(colormap);
         }
+
+        uint32_t* row = _pixels.data() + _writeRow * _width;
+        for (std::size_t i = 0; i < n; ++i) {
+            row[i] = colormapLookup(static_cast<double>(magnitudes[i]), scaleMin, scaleMax, _colormapLut);
+        }
+        std::fill_n(row + n, _width - n, uint32_t(0));
+
+        _texture.uploadRows(_writeRow, 1UZ, row);
 
         _activeColormap        = colormap;
         _timestamps[_writeRow] = timestampSec;
@@ -1013,11 +941,7 @@ struct WaterfallBuffer {
 
     // `horizontal` transposes the display: frequency on Y, time on X (default: frequency on X, time on Y).
     void render(double freqMin, double freqMax, double timeLo, double timeHi, bool newestLeading = true, bool horizontal = false) const {
-        if (_filledRows == 0) {
-            return;
-        }
-        if (!_texture) {
-            renderCpu(freqMin, freqMax, timeLo, timeHi, newestLeading, horizontal);
+        if (_filledRows == 0 || !_texture) {
             return;
         }
 
@@ -1038,46 +962,14 @@ struct WaterfallBuffer {
             const ImVec2 botRight = ImPlot::PlotToPixels(timeHi, freqMin);
             const ImVec2 botLeft  = ImPlot::PlotToPixels(timeLo, freqMin);
             ImPlot::PushPlotClipRect();
-            drawList->AddImageQuad(toTextureId(_texture), topLeft, topRight, botRight, botLeft, ImVec2(1.f, vLeft), ImVec2(1.f, vRight), ImVec2(0.f, vRight), ImVec2(0.f, vLeft));
+            drawList->AddImageQuad(_texture.id(), topLeft, topRight, botRight, botLeft, ImVec2(1.f, vLeft), ImVec2(1.f, vRight), ImVec2(0.f, vRight), ImVec2(0.f, vLeft));
             ImPlot::PopPlotClipRect();
         } else {
             // uv0 maps to (bmin.x, bmax.y) = screen top-left = plot timeHi; newest at top when newestLeading
             const float vTop    = newestLeading ? vNewest : vOldest;
             const float vBottom = newestLeading ? vOldest : vNewest;
-            ImPlot::PlotImage("##waterfall", toTextureId(_texture), ImPlotPoint(freqMin, timeLo), ImPlotPoint(freqMax, timeHi), ImVec2(0.0f, vTop), ImVec2(1.0f, vBottom));
+            ImPlot::PlotImage("##waterfall", _texture.id(), ImPlotPoint(freqMin, timeLo), ImPlotPoint(freqMax, timeHi), ImVec2(0.0f, vTop), ImVec2(1.0f, vBottom));
         }
-    }
-
-    void renderCpu(double freqMin, double freqMax, double timeLo, double timeHi, bool newestLeading, bool horizontal = false) const {
-        if (horizontal) {
-            renderCpuHorizontal(freqMin, freqMax, timeLo, timeHi, newestLeading);
-            return;
-        }
-        _linearized.resize(_filledRows * _width);
-        for (std::size_t i = 0; i < _filledRows; ++i) {
-            std::size_t srcRow = newestLeading ? (_writeRow + _height - 1 - i) % _height : (_writeRow + _height - _filledRows + i) % _height;
-            std::copy_n(_rawMagnitudes.data() + srcRow * _width, _width, _linearized.data() + i * _width);
-        }
-
-        ImPlot::PushColormap(_activeColormap);
-        ImPlot::PlotHeatmap("##waterfall", _linearized.data(), static_cast<int>(_filledRows), static_cast<int>(_width), _effectiveScaleMin, _effectiveScaleMax, nullptr, ImPlotPoint(freqMin, timeLo), ImPlotPoint(freqMax, timeHi));
-        ImPlot::PopColormap();
-    }
-
-    // transposed CPU fallback: rows = frequency (Y), cols = time (X)
-    void renderCpuHorizontal(double freqMin, double freqMax, double timeLo, double timeHi, bool newestLeading) const {
-        _linearized.resize(_width * _filledRows);
-        for (std::size_t r = 0; r < _width; ++r) {
-            const std::size_t freqCol = _width - 1 - r;
-            for (std::size_t c = 0; c < _filledRows; ++c) {
-                const std::size_t order          = newestLeading ? c : (_filledRows - 1 - c); // col 0 = left = oldest when newest trails right
-                const std::size_t srcRow         = (_writeRow + _height - _filledRows + order) % _height;
-                _linearized[r * _filledRows + c] = _rawMagnitudes[srcRow * _width + freqCol];
-            }
-        }
-        ImPlot::PushColormap(_activeColormap);
-        ImPlot::PlotHeatmap("##waterfall", _linearized.data(), static_cast<int>(_width), static_cast<int>(_filledRows), _effectiveScaleMin, _effectiveScaleMax, nullptr, ImPlotPoint(timeLo, freqMin), ImPlotPoint(timeHi, freqMax));
-        ImPlot::PopColormap();
     }
 
     void resizeHistory(std::size_t newHeight) {
@@ -1087,10 +979,8 @@ struct WaterfallBuffer {
 
         const std::size_t rowsToCopy = std::min(_filledRows, newHeight);
         if (_texture) {
-            _pixels = resizeRing(_pixels, _width, _height, _writeRow, rowsToCopy, newHeight);
-            withTextureBound(_texture, [&] { glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, static_cast<GLsizei>(_width), static_cast<GLsizei>(newHeight), 0, GL_RGBA, GL_UNSIGNED_BYTE, _pixels.data()); });
-        } else {
-            _rawMagnitudes = resizeRing(_rawMagnitudes, _width, _height, _writeRow, rowsToCopy, newHeight);
+            _pixels     = resizeRing(_pixels, _width, _height, _writeRow, rowsToCopy, newHeight);
+            std::ignore = _texture.upload(_width, newHeight, _pixels.data());
         }
         _timestamps = resizeRing(_timestamps, 1UZ, _height, _writeRow, rowsToCopy, newHeight);
         _height     = newHeight;
@@ -1099,20 +989,14 @@ struct WaterfallBuffer {
     }
 
     void clear() {
-        if (_texture) {
-            std::ranges::fill(_pixels, uint32_t(0));
-        } else {
-            std::ranges::fill(_rawMagnitudes, 0.0f);
-        }
+        std::ranges::fill(_pixels, uint32_t(0));
         std::ranges::fill(_timestamps, 0.0);
         _writeRow   = 0;
         _filledRows = 0;
         _scaleMin   = 0.0;
         _scaleMax   = 0.0;
 
-        if (_texture && _width > 0 && _height > 0) {
-            withTextureBound(_texture, [&] { glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, static_cast<GLsizei>(_width), static_cast<GLsizei>(_height), GL_RGBA, GL_UNSIGNED_BYTE, _pixels.data()); });
-        }
+        _texture.uploadRows(0UZ, _height, _pixels.data());
     }
 
     [[nodiscard]] std::pair<double, double> rawTimeBounds() const {
@@ -1146,13 +1030,8 @@ struct WaterfallBuffer {
     }
 
     void destroy() {
-        if (_texture) {
-            glDeleteTextures(1, &_texture);
-            _texture = 0;
-        }
+        _texture.reset();
         _pixels.clear();
-        _rawMagnitudes.clear();
-        _linearized.clear();
         _timestamps.clear();
         _width      = 0;
         _height     = 0;

@@ -3,7 +3,7 @@
 
 #include <SDL3/SDL.h>
 #ifndef GL_GLEXT_PROTOTYPES
-#define GL_GLEXT_PROTOTYPES // required by ImguiXKCD.hpp for GL 2.0+ function prototypes
+#define GL_GLEXT_PROTOTYPES // GL 2.0+ prototypes for the GL code of later headers: SDL_opengl.h is included once
 #endif
 #include <SDL3/SDL_opengl.h>
 #include <SDL3/SDL_video.h>
@@ -19,7 +19,6 @@
 #include "Events.hpp"
 #include "TouchHandler.hpp"
 
-#define IMGUI_XKCD_IMPLEMENTATION
 #include "ImguiXKCD.hpp"
 
 #include <format>
@@ -135,7 +134,6 @@ inline bool initImGui(const std::string& glslVersion) {
         SDL_Quit();
         return false;
     }
-    xkcd::init();
     gImGuiSDL3Initialised = true;
     return true;
 }
@@ -279,10 +277,10 @@ inline bool teardownSDL() {
     if (gGLContext == nullptr) {
         return false;
     }
-    xkcd::shutdown();
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplSDL3_Shutdown();
     ImPlot3D::DestroyContext();
+    ImPlot::DestroyContext();
     ImGui::DestroyContext();
     if (bool state = SDL_GL_DestroyContext(gGLContext); !state) {
         std::println("[Main] teardownSDL failed: '{}'", SDL_GetError());

@@ -31,59 +31,12 @@
 
 namespace gr::od::charts {
 
-/// RGBA8 texture holding the latest frame; GL_RGBA bytes are R,G,B,A, i.e. 0xAABBGGRR on little-endian hosts
-struct ImageTexture {
-    GLuint      _id      = 0U;
-    std::size_t _rows    = 0UZ;
-    std::size_t _columns = 0UZ;
-    bool        _failed  = false;
-
-    ImageTexture() = default;
-    ImageTexture(ImageTexture&& other) noexcept : _id(std::exchange(other._id, 0U)), _rows(other._rows), _columns(other._columns), _failed(other._failed) {}
-    ImageTexture& operator=(ImageTexture&& other) noexcept {
-        std::swap(_id, other._id);
-        std::swap(_rows, other._rows);
-        std::swap(_columns, other._columns);
-        std::swap(_failed, other._failed);
-        return *this;
-    }
-    ~ImageTexture() {
-        if (_id != 0U) {
-            glDeleteTextures(1, &_id);
-        }
-    }
-
-    [[nodiscard]] bool upload(std::span<const std::uint32_t> pixels, std::size_t rows, std::size_t columns) {
-        if (_id == 0U && !_failed) {
-            glGenTextures(1, &_id);
-            _failed = _id == 0U;
-        }
-        if (_id == 0U) {
-            return false;
-        }
-        withTextureBound(_id, [&] {
-            if (rows != _rows || columns != _columns) {
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-                glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, static_cast<GLsizei>(columns), static_cast<GLsizei>(rows), 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
-                _rows    = rows;
-                _columns = columns;
-            } else {
-                glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, static_cast<GLsizei>(columns), static_cast<GLsizei>(rows), GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
-            }
-        });
-        return true;
-    }
-};
-
 enum class ImageComposition { tile, overlay };
 
 struct ImageLayer {
-    ImageTexture               texture;
-    std::vector<std::uint32_t> rgba;   // texture upload buffer, alpha 0 outside the layer's transparency range
-    std::vector<double>        scalar; // CPU fallback, decimated, rows flipped for PlotHeatmap
+    gl::Texture2D              texture{gl::Texture2D::Options{.minFilter = GL_LINEAR}}; // RGBA8, the latest frame
+    std::vector<std::uint32_t> rgba;                                                    // texture upload buffer, alpha 0 outside the layer's transparency range
+    std::vector<double>        scalar;                                                  // CPU fallback, decimated, rows flipped for PlotHeatmap
     std::size_t                rows = 0UZ, columns = 0UZ, scalarRows = 0UZ, scalarColumns = 0UZ;
     std::pair<double, double>  zRange{0.0, 1.0};
     std::pair<double, double>  valueRange{0.0, 1.0}; // of the last frame, for the shared tile scale
@@ -281,7 +234,7 @@ Frames a sink received but the chart never showed are counted and indicated.)"">
                 }
             },
             frame.pixels);
-        layer.onGpu = gpu_acceleration && layer.texture.upload(layer.rgba, layer.rows, layer.columns);
+        layer.onGpu = gpu_acceleration && layer.texture.upload(layer.columns, layer.rows, layer.rgba.data());
     }
 
     static void updateRates(ImageLayer& layer, std::uint64_t generation) {
@@ -377,7 +330,7 @@ Frames a sink received but the chart never showed are counted and indicated.)"">
         const ImPlotPoint bottomRight(origin.x + static_cast<double>(sizeReference.columns), origin.y + static_cast<double>(sizeReference.rows));
         const std::string id = std::format("##frame{}", index);
         if (layer.onGpu) {
-            ImPlot::PlotImage(id.c_str(), toTextureId(layer.texture._id), topLeft, bottomRight, ImVec2(0.f, 1.f), ImVec2(1.f, 0.f)); // PlotImage puts uv0 at (x min, y max)
+            ImPlot::PlotImage(id.c_str(), layer.texture.id(), topLeft, bottomRight, ImVec2(0.f, 1.f), ImVec2(1.f, 0.f)); // PlotImage puts uv0 at (x min, y max)
             return;
         }
         if (const auto [cutLo, cutHi] = transparencyRange(index); std::isfinite(cutLo) || std::isfinite(cutHi)) {

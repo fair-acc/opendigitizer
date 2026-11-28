@@ -69,11 +69,6 @@ inline void shutdownCloseWindow(ImGuiApp*) { sdl::teardownSDL(); }
 inline void shutdownBackends(ImGuiApp*) { sdl::teardownSDL(); }
 
 inline bool readFlippedFramebuffer(ImGuiApp* /*app*/, ImGuiViewport* /*viewport*/, int x, int y, int w, int h, unsigned int* pixels, void* /*userData*/) {
-#ifdef __linux__
-    // workaround: the compositor needs a moment to flush for an accurate capture
-    std::this_thread::sleep_for(std::chrono::milliseconds(1));
-#endif
-
     // OpenGL reads from the bottom-left corner; need to flip
     int yFlipped = static_cast<int>(ImGui::GetIO().DisplaySize.y) - (y + h);
     glPixelStorei(GL_PACK_ALIGNMENT, 1);

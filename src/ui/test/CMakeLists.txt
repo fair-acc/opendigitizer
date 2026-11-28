@@ -40,6 +40,11 @@ target_link_libraries(qa_TouchHandler PRIVATE ut opendigitizer-uilib opendigitiz
 target_include_directories(qa_TouchHandler PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/..)
 add_test(NAME qa_TouchHandler COMMAND qa_TouchHandler)
 
+add_executable(qa_ImguiXKCD qa_ImguiXKCD.cpp)
+target_link_libraries(qa_ImguiXKCD PRIVATE ut opendigitizer-uilib opendigitizer-options)
+target_include_directories(qa_ImguiXKCD PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/..)
+add_test(NAME qa_ImguiXKCD COMMAND qa_ImguiXKCD)
+
 add_executable(qa_DataTypeStyle qa_DataTypeStyle.cpp)
 target_link_libraries(qa_DataTypeStyle PRIVATE ut opendigitizer::dashboard opendigitizer-options)
 add_test(NAME qa_DataTypeStyle COMMAND qa_DataTypeStyle)

@@ -55,9 +55,9 @@ struct SpectrumView : gr::Block<SpectrumView, gr::Drawable<gr::UICategory::Conte
     A<gr::Size_t, "histogram decay tau", gr::Doc<"histogram decay in frames (0 = infinite)">> histogram_decay_tau_frames = 100U;
     A<bool, "show current overlay", gr::Visible>                                              show_current_overlay       = true;
 
-    A<gr::Size_t, "history depth", gr::Visible, gr::Limits<16U, 4096U>>                                      n_history        = 256U;
-    A<ImPlotColormap_, "colormap", gr::Visible>                                                              colormap         = ImPlotColormap_Viridis;
-    A<bool, "GPU acceleration", gr::Doc<"use GPU texture for rendering (falls back to CPU if unavailable)">> gpu_acceleration = true;
+    A<gr::Size_t, "history depth", gr::Visible, gr::Limits<16U, 4096U>>                                         n_history        = 256U;
+    A<ImPlotColormap_, "colormap", gr::Visible>                                                                 colormap         = ImPlotColormap_Viridis;
+    A<bool, "GPU acceleration", gr::Doc<"density histogram on the GPU (falls back to the CPU if unavailable)">> gpu_acceleration = true;
 
     A<float, "top pane ratio", gr::Limits<0.2f, 0.8f>, gr::Doc<"fraction of height for top pane">> top_pane_ratio = 0.4f;
 
@@ -117,7 +117,6 @@ struct SpectrumView : gr::Block<SpectrumView, gr::Drawable<gr::UICategory::Conte
     gr::work::Status draw(const gr::property_map& config = {}) {
         [[maybe_unused]] auto [plotFlags, plotSize, showLegend, chartMode, showGrid, chartStyle] = prepareDrawPrologue(config);
 
-        _waterfall.setPreferGpu(gpu_acceleration);
         if (_pendingResizeTime == 0.0 && _waterfall.width() > 0) {
             _waterfall.resizeHistory(static_cast<std::size_t>(n_history));
         }
@@ -223,7 +222,7 @@ struct SpectrumView : gr::Block<SpectrumView, gr::Drawable<gr::UICategory::Conte
             setupSingleAxis(true, ImAxis_X1, paneSize, showGrid, LabelFormat::None, /*foreground=*/true, _sharedXCond);
             setupTimeAxis(ImAxis_Y1, AxisScale::LinearReverse, showGrid, _waterfallTimeUnit);
 
-            const auto renderInfo = _waterfall.pushNewSpectra(_signalSinks, _lastWaterfallSampleCount, logFreqRange(parseAxisConfig(this->ui_constraints.value, AxisKind::X)), static_cast<std::size_t>(n_history), gpu_acceleration, colormap.value, [&] { return std::pair{_topPaneYMin, _topPaneYMax}; });
+            const auto renderInfo = _waterfall.pushNewSpectra(_signalSinks, _lastWaterfallSampleCount, logFreqRange(parseAxisConfig(this->ui_constraints.value, AxisKind::X)), static_cast<std::size_t>(n_history), colormap.value, [&] { return std::pair{_topPaneYMin, _topPaneYMax}; });
             if (renderInfo) {
                 _lastRenderInfo = renderInfo;
             }
