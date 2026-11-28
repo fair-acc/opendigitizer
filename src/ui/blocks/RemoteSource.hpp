@@ -2,6 +2,7 @@
 #define OPENDIGITIZER_REMOTESOURCE_HPP
 
 #include <algorithm>
+#include <charconv>
 #include <format>
 #include <mutex>
 #include <shared_mutex>
@@ -11,6 +12,7 @@
 
 #include <gnuradio-4.0/Block.hpp>
 #include <gnuradio-4.0/DataSet.hpp>
+#include <gnuradio-4.0/algorithm/dataset/DataSetHelper.hpp>
 
 #include <daq_api.hpp>
 
@@ -469,7 +471,7 @@ struct RemoteStreamSource : RemoteSourceBase, RemoteSourceCommon<RemoteStreamSou
                 };
                 if (timestamp != 0) {
                     map.insert({gr::tag::kTriggerTime, {static_cast<std::uint64_t>(timestamp)}});
-                    const auto now     = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now().time_since_epoch());
+                    const auto now     = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch());
                     auto       latency = now - std::chrono::nanoseconds(timestamp);
                     map.insert({"REMOTE_SOURCE_LATENCY", static_cast<int64_t>(latency.count())});
                 }
@@ -502,7 +504,8 @@ struct RemoteStreamSource : RemoteSourceBase, RemoteSourceCommon<RemoteStreamSou
         long           skippedUpdates     = 0;
         constexpr auto kSkipWarningPrefix = "Warning: skipped ";
         if (rep.error.starts_with(kSkipWarningPrefix)) {
-            skippedUpdates = std::stol(rep.error.substr(std::string_view(kSkipWarningPrefix).size()));
+            const std::string_view count = std::string_view(rep.error).substr(std::string_view(kSkipWarningPrefix).size());
+            std::from_chars(count.data(), count.data() + count.size(), skippedUpdates);
         } else if (!rep.error.empty()) {
             gr::emit<gr::message::Command::Notify>(this->msgOut, gr::Error(std::format("Error in subscription:{}. Re-subscribing {}", rep.error, remote_uri)), {.endpoint = "subscription", .serviceName = this->unique_name});
             uint64_t nowTimeoutNs = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count()) //
@@ -601,7 +604,8 @@ struct RemoteDataSetSource : RemoteSourceBase, RemoteSourceCommon<RemoteDataSetS
         long           skippedSamples     = 0;
         constexpr auto kSkipWarningPrefix = "Warning: skipped ";
         if (rep.error.starts_with(kSkipWarningPrefix)) {
-            skippedSamples = std::stol(rep.error.substr(std::string_view(kSkipWarningPrefix).size()));
+            const std::string_view count = std::string_view(rep.error).substr(std::string_view(kSkipWarningPrefix).size());
+            std::from_chars(count.data(), count.data() + count.size(), skippedSamples);
         } else if (!rep.error.empty()) {
             emit<gr::message::Command::Notify>(this->msgOut, gr::Error(std::format("Error in subscription: {}. Re-subscribing {}\n", rep.error, remote_uri)), {.endpoint = "subscription", .serviceName = this->unique_name});
             uint64_t nowTimeoutNs = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count()) //
@@ -627,58 +631,16 @@ struct RemoteDataSetSource : RemoteSourceBase, RemoteSourceCommon<RemoteDataSetS
                 return {};
             }
 
-            gr::DataSet<T> ds;
-
-            ds.timestamp = acq.acqLocalTimeStamp.value(); // UTC timestamp [ns]
-
-            ds.extents = {static_cast<int32_t>(nSamples)};
-            ds.layout  = gr::LayoutRight{};
-
-            ds.axis_names = {"x-axis"};
-            ds.axis_units = {"a.u."};
-            if (nSamples == acq.channelTimeSinceRefTrigger.size()) {
-                ds.axis_values.resize(1UZ);
-                ds.axis_values[0UZ].resize(nSamples);
-                std::ranges::copy(acq.channelTimeSinceRefTrigger | std::views::transform(floatToDatasetTypeConvert), std::ranges::begin(ds.axisValues(0UZ)));
-            } else {
-                this->emitErrorMessage("subscriptionCallback(..)",                                                               //
-                    gr::Error(std::format("Inconsistent data from '{}': channelTimeSinceRefTrigger size ({}) !=  nSamples ({})", //
-                        remote_uri, acq.channelTimeSinceRefTrigger.size(), nSamples)));
-            }
-
-            if (nSignals == acq.channelNames.size() && nSignals == acq.channelQuantities.size() && nSignals == acq.channelUnits.size()) {
-                ds.signal_names.assign(acq.channelNames.begin(), acq.channelNames.end());
-                ds.signal_units.assign(acq.channelUnits.begin(), acq.channelUnits.end());
-                ds.signal_quantities.assign(acq.channelQuantities.begin(), acq.channelQuantities.end());
-            } else {
-                this->emitErrorMessage("subscriptionCallback(..)",                                                                                                          //
-                    gr::Error(std::format("Inconsistent data from '{}': channelNames size ({}) or channelQuantities size ({}) or channelUnits size ({}) !=  nSignals ({})", //
-                        remote_uri, acq.channelNames.size(), acq.channelQuantities.size(), acq.channelUnits.size(), nSignals)));                                            //
-            }
-
-            if (nSignals == acq.channelRangeMin.size() && nSignals == acq.channelRangeMax.size()) {
-                ds.signal_ranges.resize(nSignals);
-                for (std::size_t i = 0; i < nSignals; i++) {
-                    ds.signal_ranges[i] = {floatToDatasetTypeConvert(acq.channelRangeMin[i]), floatToDatasetTypeConvert(acq.channelRangeMax[i])};
+            gr::DataSet<T> ds = toDataSet(acq, static_cast<std::uint64_t>(skippedSamples));
+            if constexpr (gr::UncertainValueLike<T>) {
+                if (acq.channelValues.elements().size() != acq.channelErrors.elements().size()) {
+                    this->emitErrorMessage("subscriptionCallback(..)",                                                                                       //
+                        gr::Error(std::format("Inconsistent data from '{}': Sample type is UncertainValue but channelValues size ({}) != signalErrors ({})", //
+                            remote_uri, acq.channelValues.elements().size(), acq.channelErrors.elements().size())));                                         //
                 }
-            } else {
-                this->emitErrorMessage("subscriptionCallback(..)",                                                                                 //
-                    gr::Error(std::format("Inconsistent data from '{}': channelRangeMin size ({}) or channelRangeMax size ({}) !=  nSignals ({})", //
-                        remote_uri, acq.channelRangeMin.size(), acq.channelRangeMax.size(), nSignals)));                                           //
             }
-
-            copySignalValues(ds, acq, nSignals, nSamples);
-
-            ds.meta_information.push_back({{"subscription-updates-skipped", static_cast<uint64_t>(skippedSamples)}});
-            ds.timing_events.resize(1UZ);
-
-            for (const auto& [idx, yaml] : std::views::zip(acq.triggerIndices.value(), acq.triggerYamlPropertyMaps.value())) {
-                const auto yamlMap = gr::pmt::yaml::deserialize(yaml);
-                if (yamlMap) {
-                    const gr::property_map& rootMap = yamlMap.value();
-                    ds.timing_events[0].emplace_back(static_cast<std::ptrdiff_t>(idx), rootMap);
-                } else {
-                }
+            if (const auto consistent = gr::dataset::checkConsistency(ds, remote_uri); !consistent) {
+                this->emitErrorMessage("subscriptionCallback(..)", consistent.error());
             }
 
             std::lock_guard lock(queue->mutex);
@@ -692,36 +654,62 @@ struct RemoteDataSetSource : RemoteSourceBase, RemoteSourceCommon<RemoteDataSetS
         return {};
     }
 
-    void copySignalValues(gr::DataSet<T>& ds, const opendigitizer::acq::Acquisition& acq, std::size_t nSignals, std::size_t nSamples) {
-        ds.signal_values.resize(nSignals * nSamples);
-        if constexpr (gr::UncertainValueLike<T>) {
-            const bool dataOk = acq.channelValues.elements().size() == acq.channelErrors.elements().size();
-            if (!dataOk) {
-                this->emitErrorMessage("subscriptionCallback(..)",                                                                                       //
-                    gr::Error(std::format("Inconsistent data from '{}': Sample type is UncertainValue but channelValues size ({}) != signalErrors ({})", //
-                        remote_uri, acq.channelValues.elements().size(), acq.channelErrors.elements().size())));                                         //
+    /// one DataSet of every channel of `acq`; fields whose sizes do not fit the channels stay empty (checkConsistency names them), and missing uncertainties are 0.
+    /// Each trigger is a timing event of every signal.
+    [[nodiscard]] static gr::DataSet<T> toDataSet(const opendigitizer::acq::Acquisition& acq, std::uint64_t skippedSamples) {
+        const auto     nSignals = static_cast<std::size_t>(acq.channelValues.n(0));
+        const auto     nSamples = static_cast<std::size_t>(acq.channelValues.n(1));
+        gr::DataSet<T> ds;
+        ds.timestamp  = acq.acqLocalTimeStamp.value(); // UTC timestamp [ns]
+        ds.extents    = {static_cast<int32_t>(nSamples)};
+        ds.layout     = gr::LayoutRight{};
+        ds.axis_names = {"x-axis"};
+        ds.axis_units = {"a.u."};
+        if (nSamples == acq.channelTimeSinceRefTrigger.size()) {
+            ds.axis_values.resize(1UZ);
+            ds.axis_values[0UZ].resize(nSamples);
+            std::ranges::copy(acq.channelTimeSinceRefTrigger | std::views::transform(floatToDatasetTypeConvert), std::ranges::begin(ds.axisValues(0UZ)));
+        }
+        if (nSignals == acq.channelNames.size() && nSignals == acq.channelQuantities.size() && nSignals == acq.channelUnits.size()) {
+            ds.signal_names.assign(acq.channelNames.begin(), acq.channelNames.end());
+            ds.signal_units.assign(acq.channelUnits.begin(), acq.channelUnits.end());
+            ds.signal_quantities.assign(acq.channelQuantities.begin(), acq.channelQuantities.end());
+        }
+        if (nSignals == acq.channelRangeMin.size() && nSignals == acq.channelRangeMax.size()) {
+            ds.signal_ranges.resize(nSignals);
+            for (std::size_t i = 0; i < nSignals; i++) {
+                ds.signal_ranges[i] = {floatToDatasetTypeConvert(acq.channelRangeMin[i]), floatToDatasetTypeConvert(acq.channelRangeMax[i])};
+            }
+        }
+        copySignalValues(ds, acq, nSignals * nSamples);
+        ds.meta_information.assign(nSignals, gr::property_map{{"subscription-updates-skipped", skippedSamples}});
+        ds.timing_events.resize(nSignals);
+        for (const auto& [idx, yaml] : std::views::zip(acq.triggerIndices.value(), acq.triggerYamlPropertyMaps.value())) {
+            if (const auto tag = gr::pmt::yaml::deserialize(yaml)) {
+                for (auto& events : ds.timing_events) {
+                    events.emplace_back(static_cast<std::ptrdiff_t>(idx), tag.value());
+                }
+            }
+        }
+        return ds;
+    }
 
-                for (std::size_t i = 0; i < nSignals; i++) {
-                    auto outValues = ds.signalValues(i);
-                    auto inValues  = std::span{std::next(std::cbegin(acq.channelValues.elements()), static_cast<std::ptrdiff_t>(i * nSamples)), nSamples};
-                    std::ranges::transform(inValues, outValues.begin(), [](const auto& v) { return gr::UncertainValue{static_cast<typename T::value_type>(v), typename T::value_type(0)}; });
-                }
+    /// written directly: a DataSet without signal names has no signalValues(i)
+    static void copySignalValues(gr::DataSet<T>& ds, const opendigitizer::acq::Acquisition& acq, std::size_t nValues) {
+        const auto& elements = acq.channelValues.elements();
+        const auto  values   = std::span(elements).first(std::min(nValues, elements.size()));
+        ds.signal_values.resize(nValues);
+        if constexpr (gr::UncertainValueLike<T>) {
+            using V             = typename T::value_type;
+            const auto& errors  = acq.channelErrors.elements();
+            const bool  withErr = errors.size() == elements.size();
+            if (withErr) {
+                std::ranges::transform(values, errors, ds.signal_values.begin(), [](float v, float e) { return T{static_cast<V>(v), static_cast<V>(e)}; });
             } else {
-                for (std::size_t i = 0; i < nSignals; i++) {
-                    auto outValues = ds.signalValues(i);
-                    auto inValues  = std::span{std::next(std::cbegin(acq.channelValues.elements()), static_cast<std::ptrdiff_t>(i * nSamples)), nSamples};
-                    auto inErrors  = std::span{std::next(std::cbegin(acq.channelErrors.elements()), static_cast<std::ptrdiff_t>(i * nSamples)), nSamples};
-                    std::ranges::transform(std::views::zip(inValues, inErrors), outValues.begin(), [](const auto& ve) {
-                        const auto& [v, e] = ve;
-                        return gr::UncertainValue{static_cast<typename T::value_type>(v), static_cast<typename T::value_type>(e)};
-                    });
-                }
+                std::ranges::transform(values, ds.signal_values.begin(), [](float v) { return T{static_cast<V>(v), V(0)}; });
             }
         } else {
-            auto signalValues = acq.channelValues.elements() | std::views::transform(floatToDatasetTypeConvert);
-            for (std::size_t i = 0; i < nSignals; i++) {
-                std::ranges::copy_n(std::next(signalValues.begin(), static_cast<std::ptrdiff_t>(i * nSamples)), static_cast<std::ptrdiff_t>(nSamples), ds.signalValues(i).begin());
-            }
+            std::ranges::transform(values, ds.signal_values.begin(), floatToDatasetTypeConvert);
         }
     }
 };

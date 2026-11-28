@@ -2,6 +2,7 @@
 #include "TestSinks.hpp"
 #include "blocks/Arithmetic.hpp"
 #include "blocks/ImPlotSink.hpp"
+#include "blocks/RemoteSource.hpp"
 #include "blocks/TagSink.hpp"
 #include "blocks/ToUncertainValue.hpp"
 #include "charts/ImageChart.hpp"
@@ -1118,6 +1119,37 @@ int main() {
         surface.init(3UZ, 2UZ);
         surface.updateAutoScale(std::array{-kInf, -60.f, -40.f}, 3UZ);
         expect(eq(surface._scaleMin, -60.0) && eq(surface._scaleMax, -40.0)) << "not -inf";
+    };
+
+    // ground truth by construction: two channels of three samples, with names, ranges and one trigger at sample 1
+    "a remote acquisition becomes one consistent DataSet, its trigger an event of every signal"_test = [] {
+        opendigitizer::acq::Acquisition acq;
+        acq.channelNames               = std::vector<std::string>{"a", "b"};
+        acq.channelQuantities          = std::vector<std::string>{"voltage", "current"};
+        acq.channelUnits               = std::vector<std::string>{"V", "A"};
+        acq.channelRangeMin            = std::vector<float>{-1.f, -2.f};
+        acq.channelRangeMax            = std::vector<float>{1.f, 2.f};
+        acq.channelTimeSinceRefTrigger = std::vector<float>{0.f, 1.f, 2.f};
+        acq.channelValues              = opencmw::MultiArray<float, 2>({1.f, 2.f, 3.f, 4.f, 5.f, 6.f}, std::array<uint32_t, 2>{2U, 3U});
+        acq.triggerIndices             = std::vector<int64_t>{1};
+        acq.triggerYamlPropertyMaps    = std::vector<std::string>{"trigger_name: CMD_X\n"};
+
+        const auto ds = RemoteDataSetSource<float>::toDataSet(acq, 7U);
+        expect(gr::dataset::checkConsistency(ds).has_value()) << "as GR4 checks a DataSet";
+        expect(eq(ds.meta_information.size(), 2UZ) && eq(ds.timing_events.size(), 2UZ)) << "one entry per signal";
+        expect(eq(ds.timing_events[1].size(), 1UZ) && eq(ds.timing_events[1][0].first, 1)) << "the trigger at sample 1 of the second signal too";
+        expect(eq(ds.signalValues(1)[2], 6.f));
+
+        acq.channelNames   = std::vector<std::string>{"a"};
+        const auto unnamed = RemoteDataSetSource<float>::toDataSet(acq, 0U); // a DataSet without signal names has no signalValues(i): must not throw
+        expect(!gr::dataset::checkConsistency(unnamed).has_value()) << "a channel without a name is reported";
+        expect(eq(unnamed.signal_values.size(), 6UZ) && eq(unnamed.signal_values[5], 6.f)) << "the values arrive all the same";
+
+        const auto noErrors = RemoteDataSetSource<gr::UncertainValue<float>>::toDataSet(acq, 0U);
+        expect(eq(noErrors.signal_values[5].value, 6.f) && eq(noErrors.signal_values[5].uncertainty, 0.f)) << "no channel errors: σ = 0";
+        acq.channelErrors    = opencmw::MultiArray<float, 2>({.1f, .2f, .3f, .4f, .5f, .6f}, std::array<uint32_t, 2>{2U, 3U});
+        const auto withError = RemoteDataSetSource<gr::UncertainValue<float>>::toDataSet(acq, 0U);
+        expect(eq(withError.signal_values[5].value, 6.f) && eq(withError.signal_values[5].uncertainty, .6f)) << "each value with its channel error";
     };
 
     "capacity request expiry reduces capacity"_test = [] {
