@@ -334,7 +334,7 @@ std::expected<void, gr::Error> Dashboard::doLoad(const gr::property_map& dashboa
         }
     }
 
-    const auto plots = getOptionalProperty<Tensor<pmt::Value>>(dashboard, "plots");
+    const auto plots = gr::getProperty<Tensor<pmt::Value>>(dashboard, "plots");
     if (!plots) {
         return std::unexpected(plots.error());
     }
@@ -345,8 +345,8 @@ std::expected<void, gr::Error> Dashboard::doLoad(const gr::property_map& dashboa
         }
         const property_map plotMap = *plotPmt.get_if<property_map>();
 
-        const auto name        = getOptionalProperty<std::string>(plotMap, "name");
-        const auto plotSources = getOptionalProperty<Tensor<pmt::Value>>(plotMap, "sources");
+        const auto name        = gr::getProperty<std::string>(plotMap, "name");
+        const auto plotSources = gr::getProperty<Tensor<pmt::Value>>(plotMap, "sources");
         if (!name || !plotSources) {
             return std::unexpected(name ? plotSources.error() : name.error());
         }
@@ -354,7 +354,7 @@ std::expected<void, gr::Error> Dashboard::doLoad(const gr::property_map& dashboa
             if (!plotMap.contains(key)) {
                 return std::nullopt;
             }
-            return getOptionalProperty<T>(plotMap, key);
+            return gr::getProperty<T>(plotMap, key);
         };
         auto rect = optional.operator()<Tensor<std::int64_t>>("rect");
         if (!rect) {

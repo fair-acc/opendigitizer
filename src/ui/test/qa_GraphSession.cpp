@@ -166,7 +166,7 @@ struct UiSide {
         if (!found) {
             return std::nullopt;
         }
-        const auto value = getOptionalProperty<bool>(found.block->blockSettings, "disconnect_on_done");
+        const auto value = gr::getProperty<bool>(found.block->blockSettings, "disconnect_on_done");
         return value ? std::optional<bool>(*value) : std::nullopt;
     }
 };

@@ -30,10 +30,10 @@ namespace {
 
 template<typename T>
 T getAndConvertNumber(const gr::property_map& map, std::string_view key, T fallback) {
-    return getOptionalProperty<T, true>(map, key).value_or(fallback);
+    return gr::getProperty<T>(map, key).value_or(fallback);
 }
 
-auto tryGetTensor(const auto& map, std::string_view key) { return getOptionalProperty<gr::Tensor<gr::pmt::Value>>(map, key); }
+auto tryGetTensor(const auto& map, std::string_view key) { return gr::getProperty<gr::Tensor<gr::pmt::Value>>(map, key); }
 
 template<typename T>
 using StringMap = std::unordered_map<std::string, T, TransparentStringHash, std::equal_to<>>;

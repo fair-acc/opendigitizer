@@ -1,4 +1,5 @@
 #include <gnuradio-4.0/Graph_yaml_importer.hpp>
+#include <gnuradio-4.0/PmtTypeHelpers.hpp>
 #include <gnuradio-4.0/YamlPmt.hpp>
 #include <gnuradio-4.0/electrical/PowerEstimators.hpp>
 #include <gnuradio-4.0/filter/time_domain_filter.hpp>
@@ -33,7 +34,7 @@ gr::property_map grcBlockParameters(const std::filesystem::path& grcFile, std::s
     }
     for (const gr::pmt::Value& block : blocksView->owned()) {
         const auto grcBlock = block.get_if<gr::property_map>();
-        if (grcBlock && gr::detail::getProperty<std::string>(*grcBlock, "parameters", "name") == blockName) {
+        if (grcBlock && gr::getProperty<std::string>(*grcBlock, "parameters", "name") == blockName) {
             return grcBlock->value_or<gr::property_map>("parameters", gr::property_map{});
         }
     }

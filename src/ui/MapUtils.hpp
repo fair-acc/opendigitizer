@@ -74,76 +74,9 @@ inline void printMap(const gr::property_map& map, std::size_t maxLevel = -1UZ, s
     }
 }
 
-template<typename T, bool allowConversion = false>
-inline std::expected<T, gr::Error> getOptionalProperty(const gr::property_map& map, std::string_view propertyName) {
-    auto it = map.find(propertyName);
-    if (it == map.cend()) {
-        return std::unexpected(gr::Error(std::format("Missing field {} in YAML object", propertyName)));
-    }
-
-    if constexpr (std::same_as<T, std::string>) {
-        if (!it->second.is_string()) {
-            return std::unexpected(gr::Error(std::format("Field {} has incorrect type; expected {}", propertyName, gr::meta::type_name<T>())));
-        }
-        return it->second.value_or(std::string{});
-    } else if constexpr (std::same_as<T, std::size_t>) {
-        if (const auto* p = it->second.get_if<gr::Size_t>()) {
-            return static_cast<std::size_t>(*p);
-        }
-        if (auto converted = gr::pmt::convert_safely<gr::Size_t>(it->second); converted) {
-            return static_cast<std::size_t>(*converted);
-        }
-    } else if constexpr (std::same_as<T, std::pmr::string>) {
-        if (!it->second.is_string()) {
-            return std::unexpected(gr::Error(std::format("Field {} has incorrect type; expected {}", propertyName, gr::meta::type_name<T>())));
-        }
-        return std::pmr::string(it->second.value_or(std::string_view{}));
-    } else if constexpr (gr::TensorLike<T>) {
-        const gr::pmt::Value val = it->second;
-        if (const auto tv = val.get_if<gr::TensorView<typename T::value_type>>()) {
-            return tv->owned();
-        }
-    } else if constexpr (!allowConversion) {
-        if constexpr (gr::TensorLike<T> && !gr::TensorViewLike<T>) {
-            const gr::pmt::Value value = it->second;
-            if (const auto tensor = value.get_if<gr::TensorView<typename T::value_type>>()) {
-                return tensor->owned(value.resource());
-            }
-        } else {
-            static_assert(requires(const gr::pmt::Value& value) { value.template get_if<T>(); }, "Unsupported property type");
-            if (const auto p = it->second.get_if<T>()) {
-                return *p;
-            }
-        }
-    } else {
-        if (auto converted = gr::pmt::convert_safely<T>(it->second); converted) {
-            return *converted;
-        }
-    }
-
-    return std::unexpected(gr::Error(std::format("Field {} has incorrect type; expected {}", propertyName, gr::meta::type_name<T>())));
-}
-
-template<typename T, bool allowConversion = false>
-inline std::expected<T, gr::Error> getOptionalProperty(const gr::property_map& map, std::string_view propertyName, auto... propertySubNames)
-requires(sizeof...(propertySubNames) > 0)
-{
-    static_assert((std::is_convertible_v<decltype(propertySubNames), std::string_view> && ...));
-    if (auto innerMap = map.get_if<gr::property_map>(propertyName); innerMap) {
-        return getOptionalProperty<T, allowConversion>(*innerMap, propertySubNames...);
-    }
-    return std::unexpected(gr::Error(std::format("Field {} in YAML object is either missing or has an incorrect type (expected gr::property_map)", propertyName)));
-}
-
-template<typename T, typename... Keys>
-T getProperty(const gr::property_map& data, const Keys&... keys) {
-    static_assert((std::is_convertible_v<Keys, std::string_view> && ...));
-    return getOptionalProperty<T>(data, keys...).value_or(T{});
-}
-
 template<typename FieldType, typename... Keys>
 void updateFieldFrom(FieldType& field, const auto& data, const FieldType& defaultValue, const Keys&... keys) { //
-    field = getOptionalProperty<FieldType>(data, keys...).value_or(defaultValue);
+    field = gr::getProperty<FieldType>(data, keys...).value_or(defaultValue);
 }
 
 #endif

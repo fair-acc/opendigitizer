@@ -192,13 +192,13 @@ struct TestApp : public test::ImGuiTestApp {
                     using Tensor = gr::Tensor<gr::pmt::Value>;
                     const gr::property_map child{{"unique_name", "test-block"}};
                     const gr::property_map data{{"graph", gr::property_map{{"blocks", Tensor(gr::data_from, {gr::pmt::Value(child)})}}}};
-                    const auto             children = getOptionalProperty<Tensor>(data, "graph", "blocks");
+                    const auto             children = gr::getProperty<Tensor>(data, "graph", "blocks");
                     expect(children.has_value()) << fatal;
                     expect(eq(children->size(), 1UZ)) << fatal;
                     const auto block = (*children)[0].get_if<gr::property_map>();
                     expect(block.has_value()) << fatal;
-                    expect(eq(getProperty<std::string>(*block, "unique_name"), std::string("test-block")));
-                    expect(!getOptionalProperty<Tensor>(gr::property_map{{"blocks", "not a tensor"}}, "blocks"));
+                    expect(eq(gr::getProperty<std::string>(*block, "unique_name").value_or(std::string{}), std::string("test-block")));
+                    expect(!gr::getProperty<Tensor>(gr::property_map{{"blocks", "not a tensor"}}, "blocks"));
                 };
                 "registry type decoding"_test = [] {
                     UiGraphModel model;
