@@ -1052,6 +1052,40 @@ int main() {
         expect(eq(grid.fullScale(DensityNormalisation::maximum), 1.f));
     };
 
+    // ground truth by construction: three points fit ten pixel columns, so the band is y ± σ at each point
+    "an error band follows each point while there are no more points than pixel columns"_test = [] {
+        const std::array      x{0.0, 1.0, 2.0};
+        const std::array      y{0.0, 1.0, 2.0};
+        const std::array      sigma{0.5, 1.0, 0.5};
+        const axis::ErrorBand band = axis::errorBand(x, y, sigma, 10UZ);
+        expect(band.perPoint);
+        expect(band.x == std::vector{0.0, 1.0, 2.0});
+        expect(band.lower == std::vector{-0.5, 0.0, 1.5});
+        expect(band.upper == std::vector{0.5, 2.0, 2.5});
+    };
+
+    // ground truth by hand: six points in two columns of three;
+    // column 0: y − σ = {-1, 4, -1}, y + σ = {1, 6, 3};
+    // column 1: y − σ = {2, 2, -1}, y + σ = {2, 2, 5}
+    "a decimated error band keeps each pixel column's lowest y - sigma and highest y + sigma"_test = [] {
+        const std::array      x{0.0, 1.0, 2.0, 3.0, 4.0, 5.0};
+        const std::array      y{0.0, 5.0, 1.0, 2.0, 2.0, 2.0};
+        const std::array      sigma{1.0, 1.0, 2.0, 0.0, 0.0, 3.0};
+        const axis::ErrorBand band = axis::errorBand(x, y, sigma, 2UZ);
+        expect(!band.perPoint) << "decimated: no bars";
+        expect(band.x == std::vector{0.0, 3.0}) << "at each column's first point";
+        expect(band.lower == std::vector{-1.0, -1.0});
+        expect(band.upper == std::vector{6.0, 5.0});
+    };
+
+    // ground truth, arithmetic: 101 points over 400 px are 4 px apart, closer than 5 px caps; 51 points are 8 px apart
+    "combo draws bars while their caps do not overlap, else the surface"_test = [] {
+        expect(axis::capsOverlap(0.0, 400.0, 101UZ, 5.0)) << "4 px apart: the surface";
+        expect(!axis::capsOverlap(0.0, 400.0, 51UZ, 5.0)) << "8 px apart: bars";
+        expect(axis::capsOverlap(400.0, 0.0, 101UZ, 5.0)) << "descending x alike";
+        expect(!axis::capsOverlap(0.0, 0.0, 1UZ, 5.0)) << "a single point: a bar";
+    };
+
     "capacity request expiry reduces capacity"_test = [] {
         auto sink = makeTestStreamingSink("expiry_test", 1000);
 

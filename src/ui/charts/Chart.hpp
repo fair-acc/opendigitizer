@@ -50,6 +50,9 @@ enum class XAxisMode : std::uint8_t { UtcTime, RelativeTime, SampleIndex };
 
 enum class RangeStyle : std::uint8_t { hidden, lines, shaded, both };
 enum class MarkerStyle : std::uint8_t { hidden, solid, dashed };
+enum class ErrorStyle : std::uint8_t { none, bars, surface, combo }; // as ChartFX names them
+
+using ErrorStyleSetting = gr::Annotated<ErrorStyle, "error style", gr::Visible, gr::Doc<"a signal's uncertainty: combo (bars while their caps do not overlap, else the surface y ± σ), bars, surface, or none (the line only); a signal without uncertainties is a line">>;
 
 using RangeStyleSetting      = gr::Annotated<RangeStyle, "range style", gr::Visible, gr::Doc<"frequency range: hidden, lines, shaded or both">>;
 using RangeMinSetting        = gr::Annotated<double, "range min", gr::Unit<"Hz">, gr::Doc<"input: the range's lower edge; NaN: the visible span, inset">>;
@@ -419,6 +422,81 @@ inline void reduceToColumns(std::vector<double>& x, std::vector<double>& y, std:
     }
     x.resize(kept);
     y.resize(kept);
+}
+
+/// the band y ± σ a chart draws: one entry per point while there are no more points than pixel `columns`,
+/// else one per column, its lowest y − σ and highest y + σ at its first point's x, so no excursion disappears
+struct ErrorBand {
+    std::vector<double> x;
+    std::vector<double> lower;
+    std::vector<double> upper;
+    bool                perPoint = true; // false: one entry per pixel column
+};
+
+[[nodiscard]] inline ErrorBand errorBand(std::span<const double> x, std::span<const double> y, std::span<const double> sigma, std::size_t columns) {
+    const std::size_t n        = std::min({x.size(), y.size(), sigma.size()});
+    const bool        perPoint = columns == 0UZ || n <= columns;
+    const std::size_t step     = perPoint ? 1UZ : (n + columns - 1UZ) / columns;
+    ErrorBand         band{.x = {}, .lower = {}, .upper = {}, .perPoint = perPoint};
+    for (std::size_t from = 0UZ; from < n; from += step) {
+        double lower = std::numeric_limits<double>::infinity();
+        double upper = -std::numeric_limits<double>::infinity();
+        for (std::size_t i = from; i < std::min(from + step, n); ++i) {
+            lower = std::min(lower, y[i] - sigma[i]);
+            upper = std::max(upper, y[i] + sigma[i]);
+        }
+        band.x.push_back(x[from]);
+        band.lower.push_back(lower);
+        band.upper.push_back(upper);
+    }
+    return band;
+}
+
+[[nodiscard]] constexpr bool capsOverlap(double firstPixel, double lastPixel, std::size_t n, double capWidthPixels) noexcept { //
+    return n >= 2UZ && std::abs(lastPixel - firstPixel) / static_cast<double>(n - 1UZ) < capWidthPixels;
+}
+
+struct ErrorDrawing {
+    bool surface = false;
+    bool bars    = false;
+};
+
+/// needs a current ImPlot plot: combo compares the caps with the points' pixel spacing
+[[nodiscard]] inline ErrorDrawing errorDrawing(const ErrorBand& band, ErrorStyle style) {
+    switch (style) {
+    case ErrorStyle::none: return {.surface = false, .bars = false};
+    case ErrorStyle::bars: return {.surface = false, .bars = true};
+    case ErrorStyle::surface: return {.surface = true, .bars = false};
+    case ErrorStyle::combo: break;
+    }
+    const bool overlap = !band.x.empty() && capsOverlap(static_cast<double>(ImPlot::PlotToPixels(band.x.front(), 0.0).x), static_cast<double>(ImPlot::PlotToPixels(band.x.back(), 0.0).x), band.x.size(), static_cast<double>(ImPlot::GetStyle().ErrorBarSize));
+    return {.surface = overlap, .bars = !overlap};
+}
+
+/// bars of a decimated band span their pixel column
+inline void drawErrorBand(const ErrorBand& band, ErrorStyle style, ImVec4 colour, float lineWidth, std::string_view uniqueName) {
+    const auto&        look    = LookAndFeel::instance().chartStyle;
+    const int          count   = static_cast<int>(band.x.size());
+    const ErrorDrawing drawing = errorDrawing(band, style);
+    if (count == 0) {
+        return;
+    }
+    if (drawing.surface) {
+        ImPlot::SetNextFillStyle(colour, look.errorSurfaceAlpha);
+        ImPlot::PlotShaded(std::format("##{}_error_surface", uniqueName).c_str(), band.x.data(), band.lower.data(), band.upper.data(), count);
+    }
+    if (drawing.bars) {
+        std::vector<double> centre(band.x.size());
+        std::vector<double> halfWidth(band.x.size());
+        for (std::size_t i = 0UZ; i < band.x.size(); ++i) { // libc++ has no views::zip_transform
+            centre[i]    = 0.5 * (band.lower[i] + band.upper[i]);
+            halfWidth[i] = 0.5 * (band.upper[i] - band.lower[i]);
+        }
+        ImVec4 barColour = colour;
+        barColour.w *= look.errorBarAlpha;
+        ImPlot::SetNextErrorBarStyle(barColour, IMPLOT_AUTO, lineWidth);
+        ImPlot::PlotErrorBars(std::format("##{}_error_bars", uniqueName).c_str(), band.x.data(), centre.data(), halfWidth.data(), count);
+    }
 }
 
 // 0 and ±c, ±10c, ±100c ... up to `maxMagnitude`: ImPlot's locator for a custom scale places linear ticks

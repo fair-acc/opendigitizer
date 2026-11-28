@@ -54,6 +54,7 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
         std::vector<double> y;
         std::size_t         sourceCount = 0UZ; // the samples the window was built from, before reduceToColumns
         double              lastRefresh = 0.0;
+        axis::ErrorBand     errors; // in the window's transformed x; empty without uncertainties
     };
 
     A<std::string, "chart name", gr::Visible>                                                                                                                                      chart_name;
@@ -78,8 +79,9 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
     A<float, "history seconds", gr::Unit<"s">, gr::Doc<"history depth in seconds at the first signal's sample rate, which then sets n_history; 0: n_history as given">>            history_seconds         = 0.0f;
     A<float, "update rate", gr::Unit<"Hz">, gr::Limits<0.f, 240.f>, gr::Doc<"streaming-trace redraw cadence; decouples the display from the mouse/redraw rate (0 = every frame)">> update_rate             = 25.0f;
     A<bool, "GPU acceleration", gr::Doc<"streaming traces drawn on the GPU, uploading only new samples; false: on the CPU">>                                                       gpu_acceleration        = true;
+    ErrorStyleSetting                                                                                                                                                              error_style             = ErrorStyle::combo;
 
-    GR_MAKE_REFLECTABLE(XYChart, chart_name, chart_title, data_sinks, x_axis_mode, show_legend, show_tags, tags_of_every_signal, show_grid, anti_aliasing, max_history_count, history_opacity_decay, history_vertical_offset, x_auto_scale, y_auto_scale, x_min, x_max, y_min, y_max, n_history, history_seconds, update_rate, gpu_acceleration);
+    GR_MAKE_REFLECTABLE(XYChart, chart_name, chart_title, data_sinks, x_axis_mode, show_legend, show_tags, tags_of_every_signal, show_grid, anti_aliasing, max_history_count, history_opacity_decay, history_vertical_offset, x_auto_scale, y_auto_scale, x_min, x_max, y_min, y_max, n_history, history_seconds, update_rate, gpu_acceleration, error_style);
 
     std::array<std::optional<AxisCategory>, 3UZ> _xCategories{};
     std::array<std::optional<AxisCategory>, 3UZ> _yCategories{};
@@ -277,6 +279,20 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
         const double    now             = ImGui::GetTime();
         const double    refreshInterval = update_rate.value > 0.f ? 1.0 / static_cast<double>(update_rate.value) : 0.0;
         const bool      refreshDue      = snap.sourceCount != dataCount || (now - snap.lastRefresh) >= refreshInterval;
+        const auto      columns         = static_cast<std::size_t>(std::max(ImPlot::GetPlotSize().x, 0.0f));
+        const bool      drawErrors      = error_style.value != ErrorStyle::none && sink.hasErrors();
+        if (drawErrors && (refreshDue || snap.errors.x.empty())) {
+            const SampleWindow window = sink.samples().newest(dataCount);
+            const double       shift  = xOffset(xAxisScale, window.x.front(), window.x.back());
+            const auto         index  = std::views::iota(0UZ, window.size());
+            const auto         x      = index | std::views::transform([&](std::size_t i) { return window.x[i] - shift; }) | std::ranges::to<std::vector>();
+            const auto         y      = index | std::views::transform([&](std::size_t i) { return window.yAt(i); }) | std::ranges::to<std::vector>();
+            const auto         sigma  = index | std::views::transform([&](std::size_t i) { return window.yErrorAt(i); }) | std::ranges::to<std::vector>();
+            snap.errors               = axis::errorBand(x, y, sigma, columns);
+        }
+        if (drawErrors) { // under the line, whichever path draws it
+            axis::drawErrorBand(snap.errors, error_style.value, sinkColor(sink.color()), seriesLineWidth(sink), sink.uniqueName());
+        }
         if (gpu_acceleration.value && _gpuLineProgram.available()) {
             auto lineIt = _gpuLines.find(sink.uniqueName());
             if (lineIt == _gpuLines.end()) {
@@ -304,7 +320,7 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
                 snap.x[i] = window.x[offset + i] - shift;
                 snap.y[i] = window.yAt(offset + i);
             }
-            axis::reduceToColumns(snap.x, snap.y, static_cast<std::size_t>(std::max(ImPlot::GetPlotSize().x, 0.0f)));
+            axis::reduceToColumns(snap.x, snap.y, columns);
             snap.sourceCount = dataCount;
             snap.lastRefresh = now;
         }
@@ -342,6 +358,9 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
 
             std::string label     = age == 0UZ ? baseLabel : std::format("##{}_hist_{}", sink.uniqueName(), i);
             int         dataCount = static_cast<int>(ds.axis_values[0].size());
+            if (age == 0UZ && error_style.value != ErrorStyle::none && sink.hasErrors()) {
+                drawDataSetErrors(sink, ds, sink.dataSetErrors()[offset + i], baseColor);
+            }
 
             const ImPlotGetter dataSetPoint = [](int idx, void* user_data) -> ImPlotPoint {
                 auto*       context = static_cast<DataSetPlotContext*>(user_data);
@@ -359,6 +378,28 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
             } else {
                 ImPlot::PlotLineG(label.c_str(), dataSetPoint, &ctx, dataCount);
             }
+        }
+    }
+
+    void drawDataSetErrors(const SignalSink& sink, const gr::DataSet<float>& dataSet, const DataSetErrors& errors, ImVec4 colour) const {
+        const std::size_t row    = sink.datasetRow(dataSet);
+        const std::size_t n      = dataSet.axis_values[0].size();
+        const auto        values = dataSet.signalValues(row);
+        if (values.size() < n || errors.signals.size() < (row + 1UZ) * n) {
+            return;
+        }
+        const auto toDoubles = [](auto range) { return range | std::views::transform([](float v) { return static_cast<double>(v); }) | std::ranges::to<std::vector>(); };
+        const auto x         = toDoubles(std::span(dataSet.axis_values[0]));
+        const auto y         = toDoubles(values.first(n));
+        const auto sigma     = toDoubles(std::span(errors.signals).subspan(row * n, n));
+        const auto band      = axis::errorBand(x, y, sigma, static_cast<std::size_t>(std::max(ImPlot::GetPlotSize().x, 0.0f)));
+        axis::drawErrorBand(band, error_style.value, colour, seriesLineWidth(sink), sink.uniqueName());
+        if (axis::errorDrawing(band, error_style.value).bars && band.perPoint && !errors.axes.empty() && errors.axes[0].size() == n) {
+            const auto xSigma    = toDoubles(std::span(errors.axes[0]));
+            ImVec4     barColour = colour;
+            barColour.w *= LookAndFeel::instance().chartStyle.errorBarAlpha;
+            ImPlot::SetNextErrorBarStyle(barColour, IMPLOT_AUTO, seriesLineWidth(sink));
+            ImPlot::PlotErrorBars(std::format("##{}_x_error_bars", sink.uniqueName()).c_str(), x.data(), y.data(), xSigma.data(), static_cast<int>(n), ImPlotErrorBarsFlags_Horizontal);
         }
     }
 };

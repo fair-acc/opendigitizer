@@ -51,8 +51,9 @@ struct YYChart : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui
     A<std::array<double, 3UZ>, "Y-axis max">                                          y_max         = std::array{std::numeric_limits<double>::max(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()};
     A<gr::Size_t, "history depth", gr::Unit<"samples">>                               n_history     = kDefaultHistorySize;
     A<bool, "scatter", gr::Doc<"markers instead of a line, the newest point larger">> scatter       = false;
+    ErrorStyleSetting                                                                 error_style   = ErrorStyle::combo;
 
-    GR_MAKE_REFLECTABLE(YYChart, chart_name, chart_title, data_sinks, show_legend, show_grid, anti_aliasing, x_axis_scale, y_axis_scale, x_auto_scale, y_auto_scale, x_min, x_max, y_min, y_max, n_history, scatter);
+    GR_MAKE_REFLECTABLE(YYChart, chart_name, chart_title, data_sinks, show_legend, show_grid, anti_aliasing, x_axis_scale, y_axis_scale, x_auto_scale, y_auto_scale, x_min, x_max, y_min, y_max, n_history, scatter, error_style);
 
     mutable std::array<std::string, 6UZ> _unitStringStorage{};
     std::size_t                          _drawnMarkers = 0UZ; // in the last draw
@@ -101,6 +102,30 @@ struct YYChart : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui
     }
 
     /// a line, or with `scatter` one marker per point and the newest point larger, under the same legend entry
+    /// a correlation's uncertainties as bars, for every style but none: the X signal's σ horizontal, the Y signal's vertical;
+    /// a surface needs x ordered, which a correlation's is not
+    void drawCorrelationErrors(const SampleWindow& x, const SampleWindow& y, ImVec4 colour, float lineWidth, std::string_view uniqueName) const {
+        const std::size_t n = std::min(x.size(), y.size());
+        if (error_style.value == ErrorStyle::none || n == 0UZ || (!x.hasErrors() && !y.hasErrors())) {
+            return;
+        }
+        const auto index     = std::views::iota(0UZ, n);
+        const auto xs        = index | std::views::transform([&x](std::size_t i) { return x.yAt(i); }) | std::ranges::to<std::vector>();
+        const auto ys        = index | std::views::transform([&y](std::size_t i) { return y.yAt(i); }) | std::ranges::to<std::vector>();
+        ImVec4     barColour = colour;
+        barColour.w *= LookAndFeel::instance().chartStyle.errorBarAlpha;
+        if (x.hasErrors()) {
+            const auto xSigma = index | std::views::transform([&x](std::size_t i) { return x.yErrorAt(i); }) | std::ranges::to<std::vector>();
+            ImPlot::SetNextErrorBarStyle(barColour, IMPLOT_AUTO, lineWidth);
+            ImPlot::PlotErrorBars(std::format("##{}_x_error_bars", uniqueName).c_str(), xs.data(), ys.data(), xSigma.data(), static_cast<int>(n), ImPlotErrorBarsFlags_Horizontal);
+        }
+        if (y.hasErrors()) {
+            const auto ySigma = index | std::views::transform([&y](std::size_t i) { return y.yErrorAt(i); }) | std::ranges::to<std::vector>();
+            ImPlot::SetNextErrorBarStyle(barColour, IMPLOT_AUTO, lineWidth);
+            ImPlot::PlotErrorBars(std::format("##{}_y_error_bars", uniqueName).c_str(), xs.data(), ys.data(), ySigma.data(), static_cast<int>(n));
+        }
+    }
+
     void plotSeries(const char* label, ImPlotGetter getter, void* data, std::size_t count, const ImVec4& colour, float lineWidth) {
         if (count == 0UZ) {
             return;
@@ -171,6 +196,14 @@ struct YYChart : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui
         };
         XYContext   ctx{sinkPtr->samples(), offset};
         std::string signalLabel = plotLabel(*sinkPtr);
+        if (error_style.value != ErrorStyle::none && ctx.window.hasErrors()) { // a time plot of one signal: as XYChart draws it
+            const SampleWindow shown = ctx.window.newest(dataCount);
+            const auto         index = std::views::iota(0UZ, shown.size());
+            const auto         x     = std::vector<double>(shown.x.begin(), shown.x.end());
+            const auto         y     = index | std::views::transform([&shown](std::size_t i) { return shown.yAt(i); }) | std::ranges::to<std::vector>();
+            const auto         sigma = index | std::views::transform([&shown](std::size_t i) { return shown.yErrorAt(i); }) | std::ranges::to<std::vector>();
+            axis::drawErrorBand(axis::errorBand(x, y, sigma, static_cast<std::size_t>(std::max(ImPlot::GetPlotSize().x, 0.0f))), error_style.value, sinkColor(sinkPtr->color()), seriesLineWidth(*sinkPtr), sinkPtr->uniqueName());
+        }
 
         plotSeries(
             signalLabel.c_str(),
@@ -247,6 +280,7 @@ struct YYChart : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui
         };
         CorrelationContext ctx{sinkXPtr->samples().newest(count), sinkYPtr->samples().newest(count)};
         std::string        yLegendLabel = plotLabel(*sinkYPtr);
+        drawCorrelationErrors(ctx.x, ctx.y, sinkColor(sinkYPtr->color()), seriesLineWidth(*sinkYPtr), sinkYPtr->uniqueName());
 
         plotSeries(
             yLegendLabel.c_str(),
@@ -375,6 +409,7 @@ struct YYChart : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui
 
             PlotContext ctx{sinkXPtr->samples().newest(count), sinkYPtr->samples().newest(count)};
             std::string yLabel = plotLabel(*sinkYPtr);
+            drawCorrelationErrors(ctx.x, ctx.y, sinkColor(sinkYPtr->color()), seriesLineWidth(*sinkYPtr), sinkYPtr->uniqueName());
             plotSeries(
                 yLabel.c_str(),
                 [](int idx, void* user_data) -> ImPlotPoint {
