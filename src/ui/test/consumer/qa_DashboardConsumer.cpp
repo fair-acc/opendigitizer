@@ -126,7 +126,7 @@ int main() {
     "a saved dashboard lists its flowgraph's plot sinks and keeps the layout it is given"_test = [&] {
         auto dashboard = std::make_unique<gr::od::Dashboard>(restClient, gr::od::DashboardDescription::createEmpty("serialise"));
         loadGrc(*dashboard, grc);
-        while (dashboard->session.graphModel.recursiveGatherPlotSinks().size() < 7UZ) {
+        while (dashboard->session.graphModel.recursiveGatherPlotSinks().size() < 8UZ) {
             dashboard->session.receiveMessages();
             std::this_thread::yield();
         }
@@ -145,7 +145,7 @@ int main() {
         for (const auto& source : field(section, "sources").value_or(gr::Tensor<gr::pmt::Value>{})) {
             sourceNames.insert(field(source.value_or(gr::property_map{}), "name").value_or(std::string{}));
         }
-        expect(sourceNames == std::set<std::string>{"sinesSink", "sineSink1", "sineSink2", "fftSink", "DipoleCurrentSink", "IntensitySink", "spectrumSink"});
+        expect(sourceNames == std::set<std::string>{"sinesSink", "sineSink1", "sineSink2", "fftSink", "DipoleCurrentSink", "IntensitySink", "spectrumSink", "filteredSink"});
         stopAndWait(*dashboard); // an undrained running dashboard fills its scheduler's message output
 
         auto reloaded = std::make_unique<gr::od::Dashboard>(restClient, gr::od::DashboardDescription::createEmpty("reloaded"));

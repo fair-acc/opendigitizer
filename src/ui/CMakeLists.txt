@@ -458,6 +458,7 @@ add_library(
   blocks/StridedWindow.hpp
   blocks/TagToSample.hpp
   blocks/TestSpectrumGenerator.hpp
+  blocks/ToUncertainValue.hpp
   blocks/ImControl.hpp
   blocks/ImControlCamera.hpp
   blocks/ImControlDevice.hpp

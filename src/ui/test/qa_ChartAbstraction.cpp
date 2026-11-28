@@ -3,6 +3,7 @@
 #include "blocks/Arithmetic.hpp"
 #include "blocks/ImPlotSink.hpp"
 #include "blocks/TagSink.hpp"
+#include "blocks/ToUncertainValue.hpp"
 #include "charts/ImageChart.hpp"
 #include "charts/RDSView.hpp"
 #include "charts/SpectrumHelper.hpp"
@@ -31,11 +32,10 @@
 
 using namespace gr::od;
 
-// float → UncertainValue<float> with a fixed uncertainty: what a measurement feeds an UncertainValue sink
-struct ToUncertainValue : gr::Block<ToUncertainValue> {
+struct FixedUncertainty : gr::Block<FixedUncertainty> {
     gr::PortIn<float>                      in;
     gr::PortOut<gr::UncertainValue<float>> out;
-    GR_MAKE_REFLECTABLE(ToUncertainValue, in, out);
+    GR_MAKE_REFLECTABLE(FixedUncertainty, in, out);
 
     [[nodiscard]] constexpr gr::UncertainValue<float> processOne(float value) const noexcept { return {value, 0.5f}; }
 };
@@ -341,6 +341,26 @@ int main() {
         expect(eq(uint64.yAt(0UZ), 9007199254740992.0)) << "2^53 + 1 rounds to even, 2^53";
     };
 
+    // ground truth by construction: means 1 and 2 with standard deviations 0.1 and 0.2, paired in order
+    "ToUncertainValue pairs each value with its standard deviation, which a sink keeps for the charts"_test = [] {
+        gr::Graph graph;
+        auto&     means   = graph.emplaceBlock<gr::testing::TagSource<float>>({{"n_samples_max", gr::Size_t{2U}}, {"mark_tag", false}});
+        means.values      = gr::Tensor<float>(gr::data_from, std::vector{1.f, 2.f});
+        auto& deviations  = graph.emplaceBlock<gr::testing::TagSource<float>>({{"n_samples_max", gr::Size_t{2U}}, {"mark_tag", false}});
+        deviations.values = gr::Tensor<float>(gr::data_from, std::vector{0.1f, 0.2f});
+        auto& pair        = graph.emplaceBlock<ToUncertainValue<float>>();
+        auto& sink        = graph.emplaceBlock<ImPlotSink<gr::UncertainValue<float>>>({{"name", "pairedSink"}});
+        expect(graph.connect<"out", "value">(means, pair).has_value());
+        expect(graph.connect<"out", "uncertainty">(deviations, pair).has_value());
+        expect(graph.connect<"out", "in">(pair, sink).has_value());
+        gr::scheduler::Simple<> scheduler;
+        expect(scheduler.exchange(std::move(graph)).has_value());
+        expect(scheduler.runAndWait().has_value());
+        const SampleWindow window = sink.signalSink()->samples();
+        expect(eq(window.size(), 2UZ) >> fatal);
+        expect(eq(window.yAt(1UZ), 2.0) && approx(window.yErrorAt(0UZ), 0.1, 1e-6) && approx(window.yErrorAt(1UZ), 0.2, 1e-6));
+    };
+
     "a DataSet of UncertainValues keeps its values and their standard deviations, signal and axis"_test = [] {
         gr::Graph graph;
         auto&     source = graph.emplaceBlock<UncertainDataSetSource>();
@@ -464,7 +484,7 @@ int main() {
     "an UncertainValue sink keeps the values"_test = [] {
         gr::Graph graph;
         auto&     source  = graph.emplaceBlock<gr::testing::TagSource<float>>({{"n_samples_max", gr::Size_t{100U}}, {"mark_tag", false}});
-        auto&     convert = graph.emplaceBlock<ToUncertainValue>();
+        auto&     convert = graph.emplaceBlock<FixedUncertainty>();
         auto&     sink    = graph.emplaceBlock<ImPlotSink<gr::UncertainValue<float>>>();
         expect(graph.connect<"out", "in">(source, convert).has_value());
         expect(graph.connect<"out", "in">(convert, sink).has_value());
