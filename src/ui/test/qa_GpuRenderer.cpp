@@ -30,6 +30,11 @@ struct TestState {
     std::shared_ptr<SignalSink> sink;
     std::unique_ptr<XYChart>    gpu;
     std::unique_ptr<XYChart>    cpu;
+
+    // the density colour pass, read back from its image on the render thread
+    bool                  densityProgramBuilt = false;
+    std::vector<uint32_t> densityPixels; // [rows, columns] as drawn
+    uint32_t              densityFullScaleColour = 0U;
 };
 
 TestState* gState = nullptr;
@@ -107,6 +112,33 @@ void expectMatch(ImGuiTestContext* ctx, std::size_t total) {
     expect(differences.empty()) << std::format("{} samples: {} columns differ, first: {}", total, differences.size(), differences.empty() ? std::string() : differences.front());
     expect(compared > 300UZ) << std::format("{} samples: {} columns with a line", total, compared) << fatal;
 }
+// ground truth by construction: a constant spectrum at 5 in rows of 1 unit from yMax = 10 hits row 5 of every column; with
+// peak normalisation that cell is at full scale (the colormap's last entry) and every other cell is empty (transparent)
+void colourDensityOnce() {
+    if (!gState->densityPixels.empty()) {
+        return;
+    }
+    constexpr std::size_t             kColumns = 4UZ;
+    constexpr std::size_t             kRows    = 10UZ;
+    charts::DensityHistogram          density;
+    const std::array<float, kColumns> spectrum{5.f, 5.f, 5.f, 5.f};
+    for (int n = 0; n < 6; ++n) {
+        density.update(spectrum, kRows, 4.0, 0.0, 10.0, ImPlotColormap_Viridis);
+    }
+    gState->densityProgramBuilt = density.initProgram();
+    if (!gState->densityProgramBuilt) {
+        gState->densityPixels.assign(1UZ, 0U);
+        return;
+    }
+    density.colour(density._grid.fullScale(charts::DensityNormalisation::peak));
+    GLint previousFBO = 0;
+    glGetIntegerv(GL_FRAMEBUFFER_BINDING, &previousFBO);
+    glBindFramebuffer(GL_FRAMEBUFFER, density._imageFBO);
+    gState->densityPixels.resize(kColumns * kRows);
+    glReadPixels(0, 0, static_cast<GLsizei>(kColumns), static_cast<GLsizei>(kRows), GL_RGBA, GL_UNSIGNED_BYTE, gState->densityPixels.data());
+    glBindFramebuffer(GL_FRAMEBUFFER, static_cast<GLuint>(previousFBO));
+    gState->densityFullScaleColour = charts::buildColormapLut(ImPlotColormap_Viridis).back();
+}
 } // namespace
 
 struct TestApp : public test::ImGuiTestApp {
@@ -130,6 +162,22 @@ struct TestApp : public test::ImGuiTestApp {
                     test::waitUntil(ctx, "the GPU lines are uploaded or the line shader is unavailable", [&] { return (gpu._gpuLineProgram._compileAttempted && gpu._gpuLineProgram.handles.program == 0) || (!gpu._gpuLines.empty() && gpu._gpuLines.begin()->second._uploadedEnd == total); });
                     expect(!gpu._gpuLines.empty()) << "the GPU path draws" << fatal;
                     expectMatch(ctx, total);
+                }
+            };
+        };
+
+        ImGuiTest* density = IM_REGISTER_TEST(engine(), "gpurenderer", "density_colour_pass");
+        density->GuiFunc   = [](ImGuiTestContext*) { colourDensityOnce(); };
+        density->TestFunc  = [](ImGuiTestContext* ctx) {
+            "the density colour pass draws a full-scale cell in the colormap's last entry, an empty one transparent"_test = [&] {
+                test::waitUntil(ctx, "the density image is read back", [] { return !gState->densityPixels.empty(); });
+                expect(gState->densityProgramBuilt) << "the colour-map shader builds" << fatal;
+                for (std::size_t row = 0UZ; row < 10UZ; ++row) {
+                    for (std::size_t column = 0UZ; column < 4UZ; ++column) {
+                        const uint32_t pixel    = gState->densityPixels[row * 4UZ + column];
+                        const uint32_t expected = row == 5UZ ? gState->densityFullScaleColour : 0U;
+                        expect(eq(pixel, expected)) << "row" << row << "column" << column;
+                    }
                 }
             };
         };

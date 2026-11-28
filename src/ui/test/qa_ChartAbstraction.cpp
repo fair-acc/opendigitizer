@@ -411,20 +411,6 @@ int main() {
         }
     };
 
-    "a density cell without hits is transparent, a cell with hits takes its colormap entry"_test = [] {
-        std::array<uint32_t, kColormapSize> lut{};
-        for (std::size_t i = 0UZ; i < lut.size(); ++i) {
-            lut[i] = 0xFF000000U | static_cast<uint32_t>(i + 1UZ);
-        }
-        constexpr float kPeak = 510.f; // 1/255 of the peak: 2
-        expect(eq(densityColour(0.f, kPeak, lut), 0U)) << "empty";
-        expect(eq(densityColour(1.9f, kPeak, lut), 0U)) << "below 1/255 of the peak: the colormap's lowest entry";
-        expect(eq(densityColour(2.5f, kPeak, lut), lut[1])) << "just above 1/255 of the peak: the second entry";
-        expect(eq(densityColour(255.f, kPeak, lut), lut[127])) << "half the peak: 0.5 * 255 = 127.5, truncated";
-        expect(eq(densityColour(kPeak, kPeak, lut), lut[255])) << "the peak: the highest entry";
-        expect(eq(densityColour(2.f * kPeak, kPeak, lut), lut[255])) << "above the peak: clamped";
-    };
-
     "hold and average include every new spectrum"_test = [] {
         const std::array<std::array<float, 2UZ>, 3UZ> magnitudes{{{1.f, 6.f}, {5.f, 2.f}, {3.f, 4.f}}};
         std::vector<gr::DataSet<float>>               history(magnitudes.size());
@@ -786,6 +772,47 @@ int main() {
 
         expect(eq(axis::activeAxisCount(yCategories), 3UZ)) << "should fill all 3 Y-axis slots";
         expect(eq(overflowSinkIndices.size(), 1UZ)) << "4th distinct group should overflow";
+    };
+
+    // ground truth, analytic: a cell hit by n spectra with decay τ holds Σ_{k<n} (1 − 1/τ)^k = τ (1 − (1 − 1/τ)^n);
+    // τ = 4, n = 6: 4 (1 − 0.75^6) = 3.2880859375.
+    // Rows of 1 unit from yMax = 10: value 5 is row 5
+    "a constant spectrum fills one cell per column to tau (1 - (1 - 1/tau)^n), and the peak with it"_test = [] {
+        DensityGrid grid;
+        grid.resize(4UZ, 10UZ);
+        const std::array spectrum{5.f, 5.f, 5.f, 5.f};
+        for (int n = 0; n < 6; ++n) {
+            grid.accumulate(spectrum, 0.0, 10.0, 4.0);
+        }
+        constexpr float kExpected = 3.2880859375f;
+        for (std::size_t column = 0UZ; column < 4UZ; ++column) {
+            expect(approx(grid.cells[5UZ * 4UZ + column], kExpected, 1e-5f)) << "column" << column;
+        }
+        expect(approx(std::accumulate(grid.cells.begin(), grid.cells.end(), 0.f), 4.f * kExpected, 1e-4f)) << "no other cell";
+        expect(approx(grid.peak, kExpected, 1e-5f));
+        expect(approx(grid.fullScale(DensityNormalisation::peak), grid.fullScale(DensityNormalisation::maximum), 1e-5f)) << "a steady signal: the same full scale";
+    };
+
+    // ground truth by construction: rows of 1 unit from yMax = 10 down to yMin = 0
+    "a value beyond the range lands in the edge row, NaN in none"_test = [] {
+        DensityGrid grid;
+        grid.resize(4UZ, 10UZ);
+        grid.accumulate(std::array{11.f, -1.f, std::numeric_limits<float>::quiet_NaN(), 10.f}, 0.0, 10.0, 0.0);
+        expect(eq(grid.cells[0UZ * 4UZ + 0UZ], 1.f)) << "above yMax: the top row";
+        expect(eq(grid.cells[9UZ * 4UZ + 1UZ], 1.f)) << "below yMin: the bottom row";
+        expect(eq(std::ranges::count(grid.cells | std::views::drop(2UZ) | std::views::stride(4UZ), 0.f), 10)) << "NaN: nowhere";
+        expect(eq(grid.cells[0UZ * 4UZ + 3UZ], 1.f)) << "yMax itself: the top row";
+    };
+
+    // ground truth by construction: without decay, values 5 then 6 in one column hit two cells once each, after two spectra
+    "peak normalisation counts the spectra, maximum the densest cell"_test = [] {
+        DensityGrid grid;
+        grid.resize(1UZ, 10UZ);
+        grid.accumulate(std::array{5.f}, 0.0, 10.0, 0.0);
+        grid.accumulate(std::array{6.f}, 0.0, 10.0, 0.0);
+        expect(eq(grid.cells[5UZ], 1.f) && eq(grid.cells[4UZ], 1.f));
+        expect(eq(grid.fullScale(DensityNormalisation::peak), 2.f)) << "τ = 0 accumulates: the peak counts every spectrum";
+        expect(eq(grid.fullScale(DensityNormalisation::maximum), 1.f));
     };
 
     "capacity request expiry reduces capacity"_test = [] {

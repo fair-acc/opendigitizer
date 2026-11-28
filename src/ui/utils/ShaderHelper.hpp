@@ -75,26 +75,6 @@ inline GLuint linkProgram(GLuint vs, GLuint fs) {
     return program;
 }
 
-inline void createR32FTexture(GLuint& tex, GLsizei w, GLsizei h) {
-    glGenTextures(1, &tex);
-    glBindTexture(GL_TEXTURE_2D, tex);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_R32F, w, h, 0, GL_RED, GL_FLOAT, nullptr);
-}
-
-inline void createRGBA8Texture(GLuint& tex, GLsizei w, GLsizei h) {
-    glGenTextures(1, &tex);
-    glBindTexture(GL_TEXTURE_2D, tex);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
-}
-
 inline GLuint attachFBO(GLuint tex) {
     GLuint fbo = 0;
     glGenFramebuffers(1, &fbo);
@@ -104,28 +84,6 @@ inline GLuint attachFBO(GLuint tex) {
         std::println(stderr, "[ShaderHelper] FBO incomplete for texture {}", tex);
     }
     return fbo;
-}
-
-// probes whether the driver supports rendering into R32F textures (requires EXT_color_buffer_float on WebGL2)
-[[nodiscard]] inline bool supportsR32FFBO() {
-    static std::optional<bool> cached;
-    if (cached.has_value()) {
-        return *cached;
-    }
-    GLuint tex = 0, fbo = 0;
-    createR32FTexture(tex, 1, 1);
-    glGenFramebuffers(1, &fbo);
-    glBindFramebuffer(GL_FRAMEBUFFER, fbo);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, tex, 0);
-    bool complete = (glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE);
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    glDeleteFramebuffers(1, &fbo);
-    glDeleteTextures(1, &tex);
-    if (!complete) {
-        std::println(stderr, "[ShaderHelper] R32F FBO not supported (EXT_color_buffer_float missing?)");
-    }
-    cached = complete;
-    return complete;
 }
 
 /// GL objects die with their context; one freed without a current context would be a call into no context
